@@ -12,6 +12,8 @@
 出力:
   data/latest.json        … 最新スナップショット（前場終値・マクロ）
   data/ohlcv/<code>.csv   … 日足OHLCV（累積・追記マージ）
+                            Close=実際の取引価格（発注の指値に使う）
+                            Adj Close=分割・配当調整済み（指標の計算に使う）
   data/intraday/<code>.csv… 5分足（当日のみ）
   data/meta.json          … 取得時刻・成否・データソース・健全性
 
@@ -79,6 +81,21 @@ def fetch_daily_stooq(code):
         raise RuntimeError(f"stooq HTTP {r.status_code}")
     return pd.read_csv(io.StringIO(r.text), parse_dates=["Date"])
 
+def sanity(code, d):
+    """理由の説明できない価格の飛びを検出して meta に残す。
+       Close は実際の取引価格なので株式分割で不連続になる。指標計算には
+       Adj Close（分割・配当調整済み）を使うこと。ここでは Adj Close 側に
+       飛びが残っていないかを見る＝データ自体の異常の検出。"""
+    col = "Adj Close" if "Adj Close" in d.columns else "Close"
+    v = d[col].astype(float)
+    ch = (v / v.shift() - 1).abs()
+    bad = d.loc[ch > 0.25, "Date"]
+    if len(bad):
+        meta["anomalies"] = meta.get("anomalies", [])
+        meta["anomalies"].append({"code": code, "col": col,
+                                  "dates": [str(x.date()) for x in bad][:5],
+                                  "n": int(len(bad))})
+
 def merge_csv(path, new):
     """既存CSVに追記マージ（重複日は新しい方で上書き）。履歴を失わないため。"""
     new = new.dropna(subset=["Close"])
@@ -105,7 +122,10 @@ for code in ALL:
             d.columns = [str(c) for c in d.columns]
             datecol = "Date" if "Date" in d.columns else d.columns[0]
             d = d.rename(columns={datecol: "Date"})
-            d = d[["Date", "Open", "High", "Low", "Close", "Volume"]]
+            cols = ["Date", "Open", "High", "Low", "Close", "Volume"]
+            if "Adj Close" in d.columns:
+                cols.append("Adj Close")
+            d = d[cols]
             if d["Close"].dropna().empty:
                 d = None
             else:
@@ -121,6 +141,7 @@ for code in ALL:
         continue
     try:
         d["Date"] = norm_dates(d["Date"])
+        sanity(code, d)
         merge_csv(f"{OUT}/ohlcv/{slug(code)}.csv", d)
         ok += 1
     except Exception as e:
@@ -181,12 +202,13 @@ json.dump({"generated_at_jst": NOW.isoformat(), "snapshot": snap},
 meta["n_ok"] = ok
 meta["n_total"] = len(ALL)
 meta["holdings_ok"] = sum(1 for c in HOLDINGS if c in snap)
+meta["n_anomalies"] = sum(a["n"] for a in meta.get("anomalies", []))
 meta["health"] = ("ok" if meta["holdings_ok"] == len(HOLDINGS)
                   else "partial" if meta["holdings_ok"] >= 6 else "bad")
 json.dump(meta, open(f"{OUT}/meta.json", "w"), ensure_ascii=False, indent=1)
 
 print(f"保有銘柄: {meta['holdings_ok']}/{len(HOLDINGS)}  健全性: {meta['health']}")
-print(f"エラー件数: {len(meta['errors'])}")
+print(f"エラー件数: {len(meta['errors'])}  価格の飛び: {meta['n_anomalies']}件")
 for e in meta["errors"][:10]:
     print("  -", e)
 if meta["health"] == "bad":
