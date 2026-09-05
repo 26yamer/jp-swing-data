@@ -16,6 +16,8 @@
                             Adj Close=分割・配当調整済み（指標の計算に使う）
   data/intraday/<code>.csv… 5分足（当日のみ）
   data/meta.json          … 取得時刻・成否・データソース・健全性
+  data/jgb.csv            … 日本国債利回り（財務省・全年限）
+  data/events.json        … 分配金の実績と利回り、決算発表予定日
 
 方針:
   一部の銘柄が取れなくてもスクリプトは異常終了しない。取れた分は必ずコミットし、
@@ -202,13 +204,100 @@ json.dump({"generated_at_jst": NOW.isoformat(), "snapshot": snap},
 meta["n_ok"] = ok
 meta["n_total"] = len(ALL)
 meta["holdings_ok"] = sum(1 for c in HOLDINGS if c in snap)
+
+# ── 4) 日本国債利回り（財務省・公式）────────────────────────────
+#    米国債は ^TNX/^TYX で取れるが日本国債は Yahoo に無い。
+#    いまのレジーム判断の中心変数なので財務省の公表CSVから直接取る。
+#    形式: Shift-JIS / 日付が和暦(R8.9.4等) / 先頭に説明行あり、という癖がある。
+def fetch_jgb():
+    import io, requests
+    url = "https://www.mof.go.jp/jgbs/reference/interest_rate/jgbcm.csv"
+    r = requests.get(url, timeout=45)
+    r.raise_for_status()
+    txt = None
+    for enc in ("cp932", "shift_jis", "utf-8-sig", "utf-8"):
+        try:
+            txt = r.content.decode(enc); break
+        except Exception:
+            continue
+    if txt is None:
+        raise RuntimeError("JGB CSV decode failed")
+    lines = txt.splitlines()
+    hdr = next(i for i, l in enumerate(lines) if l.startswith("基準日"))
+    df = pd.read_csv(io.StringIO("\n".join(lines[hdr:])))
+    df = df.rename(columns={df.columns[0]: "Date"})
+
+    ERA = {"S": 1925, "H": 1988, "R": 2018}   # 昭和/平成/令和 の加算基準年
+    def wareki(x):
+        x = str(x).strip()
+        try:
+            e = x[0]
+            if e in ERA:
+                y, m, d = x[1:].split(".")
+                return pd.Timestamp(ERA[e] + int(y), int(m), int(d))
+            return pd.to_datetime(x)               # 西暦表記に変わっていた場合
+        except Exception:
+            return pd.NaT
+    df["Date"] = df["Date"].map(wareki)
+    df = df.dropna(subset=["Date"])
+    for c in df.columns[1:]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df
+
+try:
+    jgb = retry(fetch_jgb)
+    if jgb is not None and len(jgb):
+        merge_csv(f"{OUT}/jgb.csv", jgb.assign(Close=jgb.get("10年")))
+        last = jgb.iloc[-1]
+        meta["jgb"] = {"date": str(last["Date"].date()),
+                       "y2":  (float(last["2年"])  if pd.notna(last.get("2年"))  else None),
+                       "y10": (float(last["10年"]) if pd.notna(last.get("10年")) else None),
+                       "y30": (float(last["30年"]) if pd.notna(last.get("30年")) else None)}
+        print(f"JGB 10年: {meta['jgb']['y10']}%  ({meta['jgb']['date']})")
+except Exception as e:
+    meta["errors"].append(f"jgb: {type(e).__name__}: {e}")
+
+# ── 5) 分配金・決算発表予定日（損切りと建玉の可否に直結）──────────
+#    ETFの権利落ちは機械的な下落なので、知らないと損切りが誤発動する。
+#    決算をまたぐ建玉は避ける（4755は2026-08-12の決算で-13.8%）。
+events = {}
+try:
+    import yfinance as yf
+    for code in HOLDINGS:
+        ev = {}
+        try:
+            tk = yf.Ticker(code)
+            dv = tk.dividends
+            if dv is not None and len(dv):
+                dv = dv.tail(8)
+                ev["dividends"] = [{"date": str(pd.Timestamp(i).date()), "amount": float(v)}
+                                   for i, v in dv.items()]
+                ttm = float(dv[dv.index >= (dv.index[-1] - pd.Timedelta(days=365))].sum())
+                ev["ttm_dividend"] = ttm
+                if code in snap and snap[code]["close"]:
+                    ev["ttm_yield_pct"] = round(ttm / snap[code]["close"] * 100, 2)
+        except Exception as e:
+            ev["dividends_error"] = str(e)[:120]
+        try:
+            ed = tk.get_earnings_dates(limit=8)
+            if ed is not None and len(ed):
+                ev["earnings_dates"] = [str(pd.Timestamp(i).date()) for i in ed.index]
+        except Exception:
+            pass
+        if ev:
+            events[code] = ev
+    json.dump(events, open(f"{OUT}/events.json", "w"), ensure_ascii=False, indent=1)
+except Exception as e:
+    meta["errors"].append(f"events: {type(e).__name__}: {e}")
+meta["events_ok"] = len(events)
+
 meta["n_anomalies"] = sum(a["n"] for a in meta.get("anomalies", []))
 meta["health"] = ("ok" if meta["holdings_ok"] == len(HOLDINGS)
                   else "partial" if meta["holdings_ok"] >= 6 else "bad")
 json.dump(meta, open(f"{OUT}/meta.json", "w"), ensure_ascii=False, indent=1)
 
 print(f"保有銘柄: {meta['holdings_ok']}/{len(HOLDINGS)}  健全性: {meta['health']}")
-print(f"エラー件数: {len(meta['errors'])}  価格の飛び: {meta['n_anomalies']}件")
+print(f"エラー件数: {len(meta['errors'])}  価格の飛び: {meta['n_anomalies']}件  イベント: {meta['events_ok']}銘柄")
 for e in meta["errors"][:10]:
     print("  -", e)
 if meta["health"] == "bad":
