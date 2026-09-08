@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-08T15:53:19.901759+09:00",
+ "fetched_at_jst": "2026-09-08T17:45:41.509288+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -15,11 +15,9 @@
   "1459.T": "yfinance",
   "1568.T": "yfinance",
   "1699.T": "yfinance",
-  "2644.T": "yfinance",
   "8306.T": "yfinance",
   "8316.T": "yfinance",
   "8411.T": "yfinance",
-  "8604.T": "yfinance",
   "7203.T": "yfinance",
   "6758.T": "yfinance",
   "6501.T": "yfinance",
@@ -27,9 +25,25 @@
   "6857.T": "yfinance",
   "8035.T": "yfinance",
   "4063.T": "yfinance",
-  "6098.T": "yfinance",
   "9433.T": "yfinance",
   "9434.T": "yfinance",
+  "1617.T": "yfinance",
+  "1618.T": "yfinance",
+  "1619.T": "yfinance",
+  "1620.T": "yfinance",
+  "1621.T": "yfinance",
+  "1622.T": "yfinance",
+  "1623.T": "yfinance",
+  "1624.T": "yfinance",
+  "1625.T": "yfinance",
+  "1626.T": "yfinance",
+  "1627.T": "yfinance",
+  "1628.T": "yfinance",
+  "1629.T": "yfinance",
+  "1630.T": "yfinance",
+  "1631.T": "yfinance",
+  "1632.T": "yfinance",
+  "1633.T": "yfinance",
   "^N225": "yfinance",
   "^GSPC": "yfinance",
   "^IXIC": "yfinance",
@@ -42,7 +56,10 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [],
+ "errors": [
+  "fetch_feed('ロイター ビジネス', 'https://assets.wor.jp/rss/rdf/reuters/business.rdf'): HTTPError: 403 Client Error: Forbidden for url: https://assets.wor.jp/rss/rdf/reuters/business.rdf",
+  "fetch_feed('株探 市況', 'https://kabutan.jp/news/marketnews/rss/'): HTTPError: 405 Client Error: Not Allowed for url: https://kabutan.jp/news/marketnews/rss/"
+ ],
  "anomalies": [
   {
    "code": "1306.T",
@@ -73,12 +90,13 @@
    "n": 2
   },
   {
-   "code": "2644.T",
+   "code": "1629.T",
    "col": "Adj Close",
    "dates": [
-    "2024-10-09"
+    "2026-03-30",
+    "2026-04-01"
    ],
-   "n": 1
+   "n": 2
   },
   {
    "code": "^VIX",
@@ -101,9 +119,10 @@
    "n": 1
   }
  ],
- "n_ok": 40,
- "n_total": 40,
+ "n_ok": 54,
+ "n_total": 54,
  "holdings_ok": 9,
+ "news_ok": 2,
  "jgb": {
   "date": "2026-09-07",
   "y2": 1.852,
@@ -111,6 +130,7 @@
   "y30": 4.009
  },
  "events_ok": 8,
- "n_anomalies": 15,
- "health": "ok"
+ "n_anomalies": 16,
+ "health": "ok",
+ "analysis": "ok"
 }
