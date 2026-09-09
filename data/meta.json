@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-09T11:45:38.649820+09:00",
+ "fetched_at_jst": "2026-09-09T15:52:34.883889+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -122,7 +122,7 @@
  "n_ok": 54,
  "n_total": 54,
  "holdings_ok": 9,
- "news_ok": 9,
+ "news_ok": 7,
  "jgb": {
   "date": "2026-09-08",
   "y2": 1.848,
