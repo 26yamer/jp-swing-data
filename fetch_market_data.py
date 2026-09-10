@@ -33,7 +33,9 @@ NOW = dt.datetime.now(JST)
 # ── 監視ユニバース ────────────────────────────────────────────────
 HOLDINGS = ["1306.T","1343.T","1540.T","1615.T","2559.T","2563.T","2621.T","4755.T","9432.T"]
 # スイング候補の拡張ユニバース（値動きがあり流動性の高い日本株/ETF）
-WATCH    = ["1321.T","1357.T","1459.T","1568.T","1699.T",
+# レバレッジ/インバース型（1357・1459・1568）は日々減価する設計でスイングの
+# 保有候補にならず、株式併合が頻繁でデータも荒れるため監視対象から外した。
+WATCH    = ["1321.T","1699.T","2510.T","1343.T","2559.T","2621.T",
             "8306.T","8316.T","8411.T","7203.T","6758.T","6501.T",
             "9984.T","6857.T","8035.T","4063.T","9433.T","9434.T"]
 # 業種別ETF（TOPIX-17）。値上がり/値下がり銘柄数をスクレイピングする代わりに、
@@ -91,6 +93,8 @@ def fetch_daily_stooq(code):
     return pd.read_csv(io.StringIO(r.text), parse_dates=["Date"])
 
 def sanity(code, d):
+    if not code.endswith(".T"):     # ^VIX や SI=F は実際に25%動く。誤検知になるので対象外
+        return
     """理由の説明できない価格の飛びを検出して meta に残す。
        Close は実際の取引価格なので株式分割で不連続になる。指標計算には
        Adj Close（分割・配当調整済み）を使うこと。ここでは Adj Close 側に
@@ -217,16 +221,20 @@ meta["holdings_ok"] = sum(1 for c in HOLDINGS if c in snap)
 #    Claudeの定期実行では WebFetch が承認を要求して止まることがある。
 #    ニュースもここで取り、report.md に書き込んでしまえば、
 #    Claude側はレポートを1回読むだけで済み、承認の対象が減る。
+# フィードごとに信頼度を持たせる。market=True のものは市場記事しかないので
+# キーワード絞り込みをかけず全件採用する（日経マーケットが最も有用）。
 FEEDS = [
-    ("Yahoo!ニュース 経済", "https://news.yahoo.co.jp/rss/topics/business.xml"),
-    ("Yahoo!ニュース 市況", "https://news.yahoo.co.jp/rss/categories/business.xml"),
-    ("財経新聞",           "https://www.zaikei.co.jp/rss/"),
-    ("ロイター ビジネス",    "https://assets.wor.jp/rss/rdf/reuters/business.rdf"),
-    ("株探 市況",          "https://kabutan.jp/news/marketnews/rss/"),
+    ("日経 マーケット",     "https://assets.wor.jp/rss/rdf/nikkei/markets.rdf", True),
+    ("日経 政治・経済",     "https://assets.wor.jp/rss/rdf/nikkei/economy.rdf", False),
+    ("Yahoo!ニュース 市況", "https://news.yahoo.co.jp/rss/categories/business.xml", False),
+    ("Yahoo!ニュース 経済", "https://news.yahoo.co.jp/rss/topics/business.xml", False),
+    ("産経 経済",          "https://assets.wor.jp/rss/rdf/sankei/economy.rdf", False),
+    ("財経新聞",           "https://www.zaikei.co.jp/rss/", False),
 ]
-KEYS = ["日経平均","TOPIX","東証","長期金利","国債","日銀","利上げ","円安","円高","為替",
-        "原油","OPEC","FRB","CPI","物価","銀行株","半導体","決算","地政学","中東","イラン",
-        "REIT","不動産","金価格","米株","ナスダック","値上がり","値下がり","業種"]
+KEYS = ["日経平均","TOPIX","東証","株価","長期金利","国債","利回り","日銀","利上げ","金融政策",
+        "円安","円高","為替","ドル円","原油","OPEC","FRB","FOMC","CPI","物価","インフレ",
+        "銀行","半導体","決算","地政学","中東","イラン","REIT","不動産","金価格","米株",
+        "ナスダック","ダウ","先物","値上がり","値下がり","業種","相場","マーケット"]
 news = []
 def fetch_feed(name, url):
     import requests, xml.etree.ElementTree as ET, html as _h, re as _re
@@ -248,16 +256,20 @@ def fetch_feed(name, url):
             if ti: out.append({"src": name, "title": ti, "date": ""})
     return out[:40]
 
-for nm, u in FEEDS:
+for nm, u, is_market in FEEDS:
     got = retry(fetch_feed, nm, u)
-    if got: news.extend(got)
+    if got:
+        for g in got: g["market_feed"] = is_market
+        news.extend(got)
 seen = set(); hits = []
 for n in news:
     k = n["title"]
     if k in seen: continue
     seen.add(k)
-    if any(w in k for w in KEYS): hits.append(n)
-json.dump({"fetched_at_jst": NOW.isoformat(), "matched": hits[:40], "all_count": len(news)},
+    # 市場専門フィードは無条件採用、それ以外はキーワードで絞る
+    if n.get("market_feed") or any(w in k for w in KEYS): hits.append(n)
+hits.sort(key=lambda x: (not x.get("market_feed"),))   # 市場フィードを先頭に
+json.dump({"fetched_at_jst": NOW.isoformat(), "matched": hits[:45], "all_count": len(news)},
           open(f"{OUT}/news.json", "w"), ensure_ascii=False, indent=1)
 meta["news_ok"] = len(hits)
 print(f"ニュース: {len(news)}件取得 / 関連 {len(hits)}件")
@@ -268,7 +280,16 @@ print(f"ニュース: {len(news)}件取得 / 関連 {len(hits)}件")
 #    形式: Shift-JIS / 日付が和暦(R8.9.4等) / 先頭に説明行あり、という癖がある。
 def fetch_jgb():
     import io, requests
-    url = "https://www.mof.go.jp/jgbs/reference/interest_rate/jgbcm.csv"
+    # 手元の jgb.csv が短いうちは全履歴版を取りに行き、溜まったら当年版に切り替える
+    base = "https://www.mof.go.jp/jgbs/reference/interest_rate/"
+    have = 0
+    try:
+        if os.path.exists(f"{OUT}/jgb.csv"):
+            have = sum(1 for _ in open(f"{OUT}/jgb.csv", encoding="utf-8")) - 1
+    except Exception:
+        pass
+    url = base + ("jgbcm.csv" if have >= 250 else "jgbcm_all.csv")
+    print(f"JGB: 手元{have}行 → {'当年版' if have >= 250 else '全履歴版'}を取得")
     r = requests.get(url, timeout=45)
     r.raise_for_status()
     txt = None
@@ -329,7 +350,11 @@ try:
                 dv = dv.tail(8)
                 ev["dividends"] = [{"date": str(pd.Timestamp(i).date()), "amount": float(v)}
                                    for i, v in dv.items()]
-                ttm = float(dv[dv.index >= (dv.index[-1] - pd.Timedelta(days=365))].sum())
+                # 窓の起点は「最後の支払日」ではなく「本日」。境界は含まない。
+                # 起点を最後の支払日にすると年1回払いで2回分を合算してしまう。
+                _t = pd.Timestamp(NOW.date())
+                _idx = pd.to_datetime(dv.index).tz_localize(None)
+                ttm = float(dv[(_idx > _t - pd.Timedelta(days=365)) & (_idx <= _t)].sum())
                 ev["ttm_dividend"] = ttm
                 if code in snap and snap[code]["close"]:
                     ev["ttm_yield_pct"] = round(ttm / snap[code]["close"] * 100, 2)
@@ -377,7 +402,8 @@ def load_positions():
         meta["errors"].append(f"positions.json: {e}")
     return default
 
-ROUND = [1/10, 1/5, 1/4, 1/3, 1/2, 2, 3, 4, 5, 10]
+ROUND = [1/100, 1/50, 1/25, 1/20, 1/10, 1/5, 1/4, 1/3, 1/2,
+         2, 3, 4, 5, 10, 20, 25, 50, 100]
 def _near(r, tol=0.12):
     if r <= 0: return None
     import math
@@ -385,24 +411,40 @@ def _near(r, tol=0.12):
     return c if abs(math.log(c) - math.log(r)) < tol else None
 
 def repair(s, thr=0.20, maxrun=5):
-    """分割と異常値を直す。これを飛ばすと相関も指標も壊れる。
-       戻る段差=Yahoo側の異常値 / 戻らない段差=株式分割。"""
+    """株価系列の異常値と株式分割を直す。これを飛ばすと相関も指標も壊れる。
+
+    パス1（異常値）: 段差の後、数日以内に元の水準へ戻る区間は Yahoo 側の異常値。
+      **倍率がいくつであっても**前後を線形補間した値で置き換える。
+      （1306は3/30〜31に1/10、1629は同じ日に約1/500になっていた。
+        1/500は「丸い倍率」ではないため、倍率を見る方式では直せなかった。）
+    パス2（分割）: 水準が戻らない段差は株式分割とみなし、丸い倍率で遡及調整する。
+    """
     import numpy as np
     v = np.asarray(s.values, float).copy(); n = len(v); log = []
+
     i = 1
     while i < n:
-        if v[i-1] > 0 and abs(v[i]/v[i-1] - 1) > thr:
+        if v[i-1] > 0 and v[i] > 0 and abs(v[i]/v[i-1] - 1) > thr:
+            fixed = False
+            for k in range(1, maxrun+1):
+                j = i + k
+                if j < n and v[j] > 0 and abs(v[j]/v[i-1] - 1) < 0.15:
+                    before, after = v[i-1], v[j]
+                    for kk in range(i, j):                    # 前後をなめらかにつなぐ
+                        f = (kk - i + 1) / (j - i + 1)
+                        v[kk] = before + (after - before) * f
+                    log.append(f"異常値 {s.index[i].date()}〜{s.index[j-1].date()} を前後の水準で補間")
+                    fixed = True; break
+            if fixed:
+                i = i + 1; continue
+        i += 1
+
+    for i in range(1, n):
+        if v[i-1] > 0 and v[i] > 0 and abs(v[i]/v[i-1] - 1) > thr:
             r = _near(v[i]/v[i-1])
             if r:
-                for k in range(1, maxrun+1):
-                    j = i + k
-                    if j < n and abs(v[j]/v[i-1] - 1) < 0.15:
-                        v[i:j] /= r; log.append(f"異常値 {s.index[i].date()}〜{s.index[j-1].date()} ×{1/r:.0f}"); break
-        i += 1
-    for i in range(1, n):
-        if v[i-1] > 0 and abs(v[i]/v[i-1] - 1) > thr:
-            r = _near(v[i]/v[i-1])
-            if r: v[:i] *= r; log.append(f"分割 {s.index[i].date()} 1:{1/r:.0f}" if r < 1 else f"分割 {s.index[i].date()} {r:.0f}:1")
+                v[:i] *= r
+                log.append(f"分割 {s.index[i].date()} " + (f"1:{1/r:.0f}" if r < 1 else f"{r:.0f}:1"))
     return pd.Series(v, index=s.index), log
 
 def _rsi(c, n=14):
@@ -552,6 +594,18 @@ try:
         L.append(f"| {r['code'][:4]} | {r['name']} | {r['add_shares']:,} | {r['add_cost']:,.0f} | "
                  f"{r['stop']:,.1f} | {r['tp3']:,.1f} | {r['tp4']:,.1f} | {r['binding']} |")
 
+
+    # ── サイジング早見表（総額に依存しない。表を引くだけで株数が出る）──
+    L.append("\n## サイジング早見表（許容損失いくらなら何株か）\n")
+    L.append("**株数 = 許容損失 ÷ 2ATR幅**。許容損失は総額の0.75〜1.0%。損切り・利確は総額に依存しないのでそのまま使える。\n")
+    L.append("| コード | 銘柄 | 現値 | 2ATR幅 | 損切り | 利確3ATR | 利確4ATR | 損失2万 | 2.5万 | 3万 | 3.5万 | 4万 |")
+    L.append("|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|")
+    for _, r in t.iterrows():
+        w = 2*r["atr"]
+        cells = " | ".join(f"{int(x//w):,}" for x in (20000, 25000, 30000, 35000, 40000))
+        L.append(f"| {r['code'][:4]} | {r['name']} | {r['close']:,.1f} | {w:,.1f} | "
+                 f"{r['stop']:,.1f} | {r['tp3']:,.1f} | {r['tp4']:,.1f} | {cells} |")
+    L.append("\n**1銘柄の上限は総額の15%**。上の株数と、(総額×15% − その銘柄の既存評価額) ÷ 現値 を比べて**小さいほう**を採る。")
     L.append("\n## 分配金と決算予定\n")
     L.append("| コード | 銘柄 | 年間分配 | 利回り | 次回決算発表 |")
     L.append("|---|---|--:|--:|:-:|")
@@ -590,7 +644,7 @@ try:
         nj = json.load(open(f"{OUT}/news.json", encoding="utf-8"))
         if nj.get("matched"):
             L.append(f"\n## 市場関連の見出し（{len(nj['matched'])}件／取得 {nj['fetched_at_jst'][:16]}）\n")
-            for n in nj["matched"][:30]:
+            for n in nj["matched"][:35]:
                 L.append(f"- [{n['src']}] {n['title']}")
             L.append("\n※ 見出しのみ。判断に必要なら本文を確認すること。")
     except Exception:
