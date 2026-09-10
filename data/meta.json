@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-10T11:46:14.684362+09:00",
+ "fetched_at_jst": "2026-09-10T12:08:03.916699+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -11,10 +11,8 @@
   "4755.T": "yfinance",
   "9432.T": "yfinance",
   "1321.T": "yfinance",
-  "1357.T": "yfinance",
-  "1459.T": "yfinance",
-  "1568.T": "yfinance",
   "1699.T": "yfinance",
+  "2510.T": "yfinance",
   "8306.T": "yfinance",
   "8316.T": "yfinance",
   "8411.T": "yfinance",
@@ -57,8 +55,7 @@
   "^SOX": "yfinance"
  },
  "errors": [
-  "fetch_feed('ロイター ビジネス', 'https://assets.wor.jp/rss/rdf/reuters/business.rdf'): HTTPError: 403 Client Error: Forbidden for url: https://assets.wor.jp/rss/rdf/reuters/business.rdf",
-  "fetch_feed('株探 市況', 'https://kabutan.jp/news/marketnews/rss/'): HTTPError: 405 Client Error: Not Allowed for url: https://kabutan.jp/news/marketnews/rss/"
+  "fetch_jgb(): HTTPError: 404 Client Error: Not Found for url: https://www.mof.go.jp/jgbs/reference/interest_rate/jgbcm_all.csv"
  ],
  "anomalies": [
   {
@@ -81,13 +78,14 @@
    "n": 3
   },
   {
-   "code": "1357.T",
+   "code": "2559.T",
    "col": "Adj Close",
    "dates": [
-    "2024-12-16",
-    "2024-12-18"
+    "2026-06-05",
+    "2026-06-08",
+    "2026-06-09"
    ],
-   "n": 2
+   "n": 3
   },
   {
    "code": "1629.T",
@@ -97,40 +95,14 @@
     "2026-04-01"
    ],
    "n": 2
-  },
-  {
-   "code": "^VIX",
-   "col": "Adj Close",
-   "dates": [
-    "2024-12-18",
-    "2025-04-03",
-    "2025-04-04",
-    "2025-04-09",
-    "2025-10-10"
-   ],
-   "n": 6
-  },
-  {
-   "code": "SI=F",
-   "col": "Adj Close",
-   "dates": [
-    "2026-01-30"
-   ],
-   "n": 1
   }
  ],
- "n_ok": 54,
- "n_total": 54,
+ "n_ok": 55,
+ "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 5,
- "jgb": {
-  "date": "2026-09-09",
-  "y2": 1.833,
-  "y10": 2.891,
-  "y30": 3.956
- },
+ "news_ok": 41,
  "events_ok": 8,
- "n_anomalies": 16,
+ "n_anomalies": 10,
  "health": "ok",
  "analysis": "ok"
 }
