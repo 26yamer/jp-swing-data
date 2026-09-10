@@ -35,7 +35,7 @@
    }
   ],
   "ttm_dividend": 7.9,
-  "ttm_yield_pct": 1.88
+  "ttm_yield_pct": 1.87
  },
  "1343.T": {
   "dividends": [
@@ -73,7 +73,7 @@
    }
   ],
   "ttm_dividend": 92.9,
-  "ttm_yield_pct": 4.88
+  "ttm_yield_pct": 4.87
  },
  "1615.T": {
   "dividends": [
@@ -225,7 +225,7 @@
    }
   ],
   "ttm_dividend": 48.0,
-  "ttm_yield_pct": 4.84
+  "ttm_yield_pct": 4.83
  },
  "4755.T": {
   "dividends": [
