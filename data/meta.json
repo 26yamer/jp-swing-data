@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-11T15:52:32.663467+09:00",
+ "fetched_at_jst": "2026-09-11T22:39:07.373745+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -98,12 +98,13 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 48,
+ "news_ok": 38,
  "jgb": {
-  "date": "2026-08-31",
-  "y2": 1.743,
-  "y10": 2.943,
-  "y30": 4.092
+  "date": "2026-09-10",
+  "age_days": 1,
+  "y2": 1.823,
+  "y10": 2.92,
+  "y30": 3.995
  },
  "events_ok": 8,
  "n_anomalies": 10,
@@ -113,9 +114,9 @@
   "cached": true
  },
  "tdnet": {
-  "pages": 10,
-  "codes": 437,
-  "items": 728,
+  "pages": 11,
+  "codes": 489,
+  "items": 832,
   "errors": 0
  },
  "universe_source": "jpx_master",
@@ -126,8 +127,11 @@
   "named": true,
   "source": "jpx_master"
  },
- "s17_unmapped": {
-  "電力・ガス": 1
+ "cand_earnings": {
+  "asked": 40,
+  "ok": 10,
+  "unknown": 30,
+  "error": 0
  },
  "analysis": "ok"
 }
