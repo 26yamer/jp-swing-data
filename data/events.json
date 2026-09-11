@@ -35,7 +35,7 @@
    }
   ],
   "ttm_dividend": 7.9,
-  "ttm_yield_pct": 1.87
+  "ttm_yield_pct": 1.89
  },
  "1343.T": {
   "dividends": [
@@ -73,7 +73,7 @@
    }
   ],
   "ttm_dividend": 92.9,
-  "ttm_yield_pct": 4.87
+  "ttm_yield_pct": 4.91
  },
  "1615.T": {
   "dividends": [
@@ -111,7 +111,7 @@
    }
   ],
   "ttm_dividend": 20.9,
-  "ttm_yield_pct": 2.72
+  "ttm_yield_pct": 2.74
  },
  "2559.T": {
   "dividends": [
@@ -187,7 +187,7 @@
    }
   ],
   "ttm_dividend": 3.5999999999999996,
-  "ttm_yield_pct": 0.89
+  "ttm_yield_pct": 0.9
  },
  "2621.T": {
   "dividends": [
@@ -225,7 +225,7 @@
    }
   ],
   "ttm_dividend": 48.0,
-  "ttm_yield_pct": 4.83
+  "ttm_yield_pct": 4.9
  },
  "4755.T": {
   "dividends": [

@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-10T15:53:02.436192+09:00",
+ "fetched_at_jst": "2026-09-11T10:15:18.428322+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -55,7 +55,6 @@
   "^SOX": "yfinance"
  },
  "errors": [
-  "fetch_feed('財経新聞', 'https://www.zaikei.co.jp/rss/'): ConnectTimeout: HTTPSConnectionPool(host='www.zaikei.co.jp', port=443): Max retries exceeded with url: /rss/ (Caused by ConnectTimeoutError(<HTTPSConnection(host='www.zaikei.co.jp', port=443) at 0x7f2598f91a30>, 'Connection to www.zaikei.co.jp timed out. (connect timeout=25)'))",
   "fetch_jgb(): HTTPError: 404 Client Error: Not Found for url: https://www.mof.go.jp/jgbs/reference/interest_rate/jgbcm_all.csv"
  ],
  "anomalies": [
@@ -101,7 +100,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 46,
+ "news_ok": 54,
  "events_ok": 8,
  "n_anomalies": 10,
  "health": "ok",
