@@ -42,9 +42,9 @@ WATCH    = ["1321.T","1699.T","2510.T","1343.T","2559.T","2621.T",
 # セクターの物色動向を「価格データ」として取る。壊れにくく、遅延もない。
 SECTOR = {"1617.T":"食品","1618.T":"エネルギー資源","1619.T":"建設・資材","1620.T":"素材・化学",
           "1621.T":"医薬品","1622.T":"自動車・輸送機","1623.T":"鉄鋼・非鉄","1624.T":"機械",
-          "1625.T":"電機・精密","1626.T":"情報通信・サービス他","1627.T":"電力・ガス",
+          "1625.T":"電機・精密","1626.T":"情報通信・サービスその他","1627.T":"電気・ガス",
           "1628.T":"運輸・物流","1629.T":"商社・卸売","1630.T":"小売","1631.T":"銀行",
-          "1632.T":"金融(除く銀行)","1633.T":"不動産"}
+          "1632.T":"金融（除く銀行）","1633.T":"不動産"}
 MACRO    = ["^N225","^GSPC","^IXIC","^VIX","^TNX","^TYX",
             "JPY=X","CL=F","GC=F","SI=F","^SOX"]
 ALL = HOLDINGS + WATCH + list(SECTOR) + MACRO
@@ -280,7 +280,6 @@ print(f"ニュース: {len(news)}件取得 / 関連 {len(hits)}件")
 #    形式: Shift-JIS / 日付が和暦(R8.9.4等) / 先頭に説明行あり、という癖がある。
 def fetch_jgb():
     import io, requests
-    # 手元の jgb.csv が短いうちは全履歴版を取りに行き、溜まったら当年版に切り替える
     base = "https://www.mof.go.jp/jgbs/reference/interest_rate/"
     have = 0
     try:
@@ -288,30 +287,32 @@ def fetch_jgb():
             have = sum(1 for _ in open(f"{OUT}/jgb.csv", encoding="utf-8")) - 1
     except Exception:
         pass
-    # 全履歴版は data/ 配下に移動している（旧URLは404）。
-    # 履歴が取れなくても当年版で走れるよう、順に試して最初に通ったものを使う。
-    cands = ([base + "jgbcm.csv"] if have >= 250 else
-             [base + "data/jgbcm_all.csv", base + "jgbcm_all.csv", base + "jgbcm.csv"])
-    r, url, last = None, None, None
+    # jgbcm.csv は「当年版」ではなく **当月分だけ**（9月上旬なら7行しかない）。
+    # サイズで正否を判定すると、この正当なファイルを弾いてしまう。
+    # 判定は中身（基準日ヘッダの有無）で行い、全履歴版を第一候補にする。
+    # 全履歴版は data/ 配下に移動済み（旧URLは404のまま残っている）。
+    cands = [base + "data/jgbcm_all.csv", base + "jgbcm_all.csv", base + "jgbcm.csv"]
+    hdrs = {"User-Agent": "Mozilla/5.0 (compatible; market-bot)"}
+    txt, url, last = None, None, None
     for u in cands:
         try:
-            rr = requests.get(u, timeout=45)
-            if rr.status_code == 200 and len(rr.content) > 2000:
-                r, url = rr, u; break
-            last = f"{u} -> HTTP {rr.status_code}"
+            rr = requests.get(u, timeout=60, headers=hdrs)
+            if rr.status_code != 200:
+                last = f"{u} -> HTTP {rr.status_code}"; continue
+            t = None
+            for enc in ("cp932", "shift_jis", "utf-8-sig", "utf-8"):
+                try:
+                    t = rr.content.decode(enc); break
+                except Exception:
+                    continue
+            if t and "基準日" in t:
+                txt, url = t, u; break
+            last = f"{u} -> 基準日ヘッダなし ({len(rr.content)}bytes)"
         except Exception as e:
             last = f"{u} -> {type(e).__name__}"
-    if r is None:
-        raise RuntimeError(last or "JGB: 取得先なし")
-    print(f"JGB: 手元{have}行 → {url.rsplit('/', 1)[-1]} を取得")
-    txt = None
-    for enc in ("cp932", "shift_jis", "utf-8-sig", "utf-8"):
-        try:
-            txt = r.content.decode(enc); break
-        except Exception:
-            continue
     if txt is None:
-        raise RuntimeError("JGB CSV decode failed")
+        raise RuntimeError(last or "JGB: 取得先なし")
+    print(f"JGB: 手元{have}行 → {url.rsplit('/', 1)[-1]} ({len(txt):,}文字)")
     lines = txt.splitlines()
     hdr = next(i for i, l in enumerate(lines) if l.startswith("基準日"))
     df = pd.read_csv(io.StringIO("\n".join(lines[hdr:])))
@@ -336,6 +337,12 @@ def fetch_jgb():
 
 try:
     jgb = retry(fetch_jgb)
+    if jgb is None or not len(jgb):
+        # 当日取れなくても、蓄積済みの jgb.csv があれば金利は読める。
+        # 「取得できず」で金利を丸ごと落とすと、レジーム判断の主材料が消える。
+        if os.path.exists(f"{OUT}/jgb.csv"):
+            meta["jgb_stale"] = True
+            print("JGB: 当日の取得に失敗。蓄積済みの jgb.csv を使う")
     if jgb is not None and len(jgb):
         merge_csv(f"{OUT}/jgb.csv", jgb.assign(Close=jgb.get("10年")))
         last = jgb.iloc[-1]
@@ -701,6 +708,8 @@ SCREEN_CHUNK     = 180       # 1リクエストあたりの銘柄数
 MIN_TURNOVER     = 50_000_000   # 20日平均の売買代金がこの額未満は流動性不足として除外
 MIN_PRICE        = 100          # 低位株を除外（呼値の粗さで往復コストが重くなる）
 MIN_ATR_PCT      = 1.5          # これ未満は値幅が小さくスイングの期待値が立たない
+MAX_ATR_PCT      = 6.0          # これを超えるものは一過性の材料で動いている公算が大きい。
+                                # 材料の中身をこの仕組みは見られないので、順位以前に外す。
 
 def load_universe(master=None):
     """スクリーニング対象の銘柄リスト。
@@ -788,7 +797,7 @@ def screen_all(codes):
                 a = _atr(x.reset_index())
                 if not a or a != a: continue
                 atr_pct = a / last * 100
-                if atr_pct < MIN_ATR_PCT: continue
+                if atr_pct < MIN_ATR_PCT or atr_pct > MAX_ATR_PCT: continue
                 adj, _ = repair(cl)
                 w60 = x.tail(60)
                 rows.append(dict(
@@ -828,16 +837,23 @@ def rank_candidates(df):
     heat = np.where(d["rsi"] > 75, (d["rsi"]-75)/25*20, 0)
 
     # 順張り: 移動平均の上に並び、60日レンジの上方にいて、20日が伸びている
+    # 満点に達する水準が低すぎると、強い銘柄が全部同じ点になって順位が意味を失う。
+    # 初回の実運用では上位15件が 97.1〜99.3 の 2.2点差に固まっていた（4項目が飽和）。
+    # 実際の分布（25日 +9〜38% / 75日 +15〜84% / 20日 +11〜76%）に合わせて広げる。
     d["trend"] = (
-        20*np.clip(d["vs25"]/5, 0, 1) +          # 25日線からの上方乖離（5%で満点）
-        20*np.clip(d["vs75"]/12, 0, 1) +         # 75日線からの上方乖離（12%で満点）
+        20*np.clip(d["vs25"]/12, 0, 1) +         # 25日線からの上方乖離（12%で満点）
+        20*np.clip(d["vs75"]/30, 0, 1) +         # 75日線からの上方乖離（30%で満点）
         25*np.clip(d["pos60"]/100, 0, 1) +       # 60日レンジ内の位置
-        20*np.clip(d["r20"]/12, 0, 1) +          # 20日リターン
+        20*np.clip(d["r20"]/25, 0, 1) +          # 20日リターン（25%で満点）
         15*np.clip((d["atr_pct"]-1.5)/2.5, 0, 1) # 値幅（スイング適性）
         - heat
     ).round(1)
 
     # 逆張り: 長期トレンドは生きている（75日線の上）が、短期で売られすぎ
+    #   ★ 以前は「75日線を5%以上割ったら0」としていたが、これはほぼ効かなかった。
+    #     初回の実運用では上位8件中6件が75日線の -3.7〜-5.0% に固まり、
+    #     見出しの「長期は上向き」が事実と食い違っていた。
+    #     下降トレンドの途中を「押し目」と呼ばないよう、75日線の上を必須にする。
     d["revert"] = (
         25*np.clip(-d["vs25"]/8, 0, 1) +         # 25日線を下回るほど高得点
         25*np.clip((45-d["rsi"])/25, 0, 1) +     # RSIが低いほど高得点
@@ -845,7 +861,7 @@ def rank_candidates(df):
         15*np.clip(d["vs75"]/10, 0, 1) +         # ただし長期は上向きであること
         15*np.clip((d["atr_pct"]-1.5)/2.5, 0, 1)
     ).round(1)
-    d.loc[d["vs75"] < -5, "revert"] = 0          # 長期も崩れているものは逆張り対象外
+    d.loc[d["vs75"] < 0, "revert"] = 0           # 75日線の下にあるものは逆張り対象外
 
     return (d.sort_values("trend", ascending=False).head(20),
             d.sort_values("revert", ascending=False).head(20))
@@ -879,7 +895,14 @@ def _decorate(recs):
         r["s17"]    = m.get("s17", "")
         r["kind"]   = m.get("kind", "")
         r["size"]   = m.get("size", "")
-        r["sector_etf"] = S17_TO_ETF.get(m.get("s17", ""), "")[:4]
+        s17 = m.get("s17", "")
+        etf = S17_TO_ETF.get(s17, "")
+        if s17 and not etf:
+            # 表記のゆれで対応が取れないと、その業種の候補すべてでBが付かなくなる。
+            # 実際に「情報通信・サービスその他」を1文字違いで書いていて全滅した。
+            meta.setdefault("s17_unmapped", {})
+            meta["s17_unmapped"][s17] = meta["s17_unmapped"].get(s17, 0) + 1
+        r["sector_etf"] = etf[:4]
         r["news"]   = DISC.get(c4, [])[:3]
     return recs
 
@@ -906,7 +929,8 @@ try:
                        "tdnet": meta.get("tdnet", {}),
                        "skipped": meta.get("screen_skipped", {}),
                        "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
-                                   "min_atr_pct": MIN_ATR_PCT},
+                                   "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
+                       "s17_unmapped": meta.get("s17_unmapped", {}),
                        "trend": tr, "revert": rv},
                       open(f"{OUT}/candidates.json", "w"), ensure_ascii=False,
                       indent=1, default=str)
@@ -1167,7 +1191,13 @@ try:
         _uni, _sc = cj.get("universe", 0), cj["scanned"]
         L.append(f"対象 {_uni:,}銘柄 → 走査 {_sc:,} → フィルタ通過 **{cj['passed']:,}銘柄**"
                  f"（売買代金20日平均 {cj['filters']['min_turnover']/1e8:.1f}億円以上／"
-                 f"株価{cj['filters']['min_price']}円以上／ATR {cj['filters']['min_atr_pct']}%以上）")
+                 f"株価{cj['filters']['min_price']}円以上／"
+                 f"ATR {cj['filters']['min_atr_pct']}〜{cj['filters'].get('max_atr_pct', 99)}%）")
+        _un = cj.get("s17_unmapped") or {}
+        if _un:
+            L.append(f"\n> **注意: 業種名の対応が取れない値がある** → "
+                     + " / ".join(f"「{k}」{v}件" for k, v in list(_un.items())[:5])
+                     + "。該当銘柄は業種ETFが空欄になり、Bを機械的に付けられない。\n")
         L.append(f"銘柄マスタ {cj.get('master_count', 0):,}件（JPX上場銘柄一覧／"
                  f"ユニバースの出所: {cj.get('universe_source', '?')}）／"
                  f"適時開示 {cj.get('tdnet', {}).get('items', 0)}件・{cj.get('tdnet', {}).get('codes', 0)}銘柄\n")
