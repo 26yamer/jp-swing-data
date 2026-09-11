@@ -42,7 +42,7 @@ WATCH    = ["1321.T","1699.T","2510.T","1343.T","2559.T","2621.T",
 # セクターの物色動向を「価格データ」として取る。壊れにくく、遅延もない。
 SECTOR = {"1617.T":"食品","1618.T":"エネルギー資源","1619.T":"建設・資材","1620.T":"素材・化学",
           "1621.T":"医薬品","1622.T":"自動車・輸送機","1623.T":"鉄鋼・非鉄","1624.T":"機械",
-          "1625.T":"電機・精密","1626.T":"情報通信・サービスその他","1627.T":"電気・ガス",
+          "1625.T":"電機・精密","1626.T":"情報通信・サービスその他","1627.T":"電力・ガス",
           "1628.T":"運輸・物流","1629.T":"商社・卸売","1630.T":"小売","1631.T":"銀行",
           "1632.T":"金融（除く銀行）","1633.T":"不動産"}
 MACRO    = ["^N225","^GSPC","^IXIC","^VIX","^TNX","^TYX",
@@ -278,47 +278,39 @@ print(f"ニュース: {len(news)}件取得 / 関連 {len(hits)}件")
 #    米国債は ^TNX/^TYX で取れるが日本国債は Yahoo に無い。
 #    いまのレジーム判断の中心変数なので財務省の公表CSVから直接取る。
 #    形式: Shift-JIS / 日付が和暦(R8.9.4等) / 先頭に説明行あり、という癖がある。
-def fetch_jgb():
-    import io, requests
-    base = "https://www.mof.go.jp/jgbs/reference/interest_rate/"
-    have = 0
-    try:
-        if os.path.exists(f"{OUT}/jgb.csv"):
-            have = sum(1 for _ in open(f"{OUT}/jgb.csv", encoding="utf-8")) - 1
-    except Exception:
-        pass
-    # jgbcm.csv は「当年版」ではなく **当月分だけ**（9月上旬なら7行しかない）。
-    # サイズで正否を判定すると、この正当なファイルを弾いてしまう。
-    # 判定は中身（基準日ヘッダの有無）で行い、全履歴版を第一候補にする。
-    # 全履歴版は data/ 配下に移動済み（旧URLは404のまま残っている）。
-    cands = [base + "data/jgbcm_all.csv", base + "jgbcm_all.csv", base + "jgbcm.csv"]
-    hdrs = {"User-Agent": "Mozilla/5.0 (compatible; market-bot)"}
-    txt, url, last = None, None, None
-    for u in cands:
+JGB_BASE = "https://www.mof.go.jp/jgbs/reference/interest_rate/"
+JGB_HDRS = {"User-Agent": "Mozilla/5.0 (compatible; market-bot)"}
+
+def _jgb_text(urls):
+    """最初に「基準日」ヘッダを含む本文が取れたURLの中身を返す。
+       jgbcm.csv は当月分だけで数百バイトしかないので、サイズで判定してはいけない。"""
+    last = None
+    for u in urls:
         try:
-            rr = requests.get(u, timeout=60, headers=hdrs)
+            rr = __import__("requests").get(u, timeout=60, headers=JGB_HDRS)
             if rr.status_code != 200:
                 last = f"{u} -> HTTP {rr.status_code}"; continue
-            t = None
             for enc in ("cp932", "shift_jis", "utf-8-sig", "utf-8"):
                 try:
                     t = rr.content.decode(enc); break
                 except Exception:
-                    continue
+                    t = None
             if t and "基準日" in t:
-                txt, url = t, u; break
+                return t, u, None
             last = f"{u} -> 基準日ヘッダなし ({len(rr.content)}bytes)"
         except Exception as e:
             last = f"{u} -> {type(e).__name__}"
-    if txt is None:
-        raise RuntimeError(last or "JGB: 取得先なし")
-    print(f"JGB: 手元{have}行 → {url.rsplit('/', 1)[-1]} ({len(txt):,}文字)")
+    return None, None, last
+
+ERA = {"S": 1925, "H": 1988, "R": 2018}   # 昭和/平成/令和 の加算基準年
+
+def _jgb_parse(txt):
+    import io
     lines = txt.splitlines()
     hdr = next(i for i, l in enumerate(lines) if l.startswith("基準日"))
     df = pd.read_csv(io.StringIO("\n".join(lines[hdr:])))
     df = df.rename(columns={df.columns[0]: "Date"})
 
-    ERA = {"S": 1925, "H": 1988, "R": 2018}   # 昭和/平成/令和 の加算基準年
     def wareki(x):
         x = str(x).strip()
         try:
@@ -335,6 +327,33 @@ def fetch_jgb():
         df[c] = pd.to_numeric(df[c], errors="coerce")
     return df
 
+def fetch_jgb():
+    """★全履歴版は月次更新で、当月の日次が入っていない。
+       実際 9/11 の実行で最新が 8/31 のまま（11日遅れ）になっていた。
+       金利は保有の判断で最も効く変数（NTTの利回り差・銀行・REIT）なので、
+       履歴版と当月版の両方を取って結合する。片方だけでも走る。"""
+    frames, used, errs = [], [], []
+    for label, urls in [("履歴", [JGB_BASE + "data/jgbcm_all.csv", JGB_BASE + "jgbcm_all.csv"]),
+                        ("当月", [JGB_BASE + "jgbcm.csv"])]:
+        txt, url, err = _jgb_text(urls)
+        if txt is None:
+            errs.append(f"{label}: {err}"); continue
+        try:
+            d = _jgb_parse(txt)
+            if len(d):
+                frames.append(d); used.append(f"{label}({url.rsplit('/', 1)[-1]}:{len(d)}行)")
+        except Exception as e:
+            errs.append(f"{label}: parse {type(e).__name__}")
+    if not frames:
+        raise RuntimeError("JGB: " + " / ".join(errs) if errs else "JGB: 取得先なし")
+    df = (pd.concat(frames, ignore_index=True)
+            .drop_duplicates(subset=["Date"], keep="last")
+            .sort_values("Date").reset_index(drop=True))
+    if errs:
+        meta["errors"].append("jgb: " + " / ".join(errs))
+    print(f"JGB: {' + '.join(used)} → 結合 {len(df)}行（最新 {df['Date'].iloc[-1].date()}）")
+    return df
+
 try:
     jgb = retry(fetch_jgb)
     if jgb is None or not len(jgb):
@@ -346,10 +365,16 @@ try:
     if jgb is not None and len(jgb):
         merge_csv(f"{OUT}/jgb.csv", jgb.assign(Close=jgb.get("10年")))
         last = jgb.iloc[-1]
-        meta["jgb"] = {"date": str(last["Date"].date()),
+        age = (pd.Timestamp(NOW.date()) - last["Date"]).days
+        meta["jgb"] = {"date": str(last["Date"].date()), "age_days": int(age),
                        "y2":  (float(last["2年"])  if pd.notna(last.get("2年"))  else None),
                        "y10": (float(last["10年"]) if pd.notna(last.get("10年")) else None),
                        "y30": (float(last["30年"]) if pd.notna(last.get("30年")) else None)}
+        # 金利が数日古いまま「現在値」として使われると、NTTの利回り差や
+        # 銀行の追い風の判断が丸ごとずれる。古ければ必ず表に出す。
+        if age > 5:
+            meta["jgb_stale"] = True
+            meta["errors"].append(f"jgb: 最新が{age}日前（{last['Date'].date()}）")
         print(f"JGB 10年: {meta['jgb']['y10']}%  ({meta['jgb']['date']})")
 except Exception as e:
     meta["errors"].append(f"jgb: {type(e).__name__}: {e}")
@@ -660,6 +685,20 @@ def load_master():
 # 17業種区分 → 業種別ETF。セクター物色の表と候補を機械的に突き合わせるため。
 S17_TO_ETF = {v: k for k, v in SECTOR.items()}
 
+def _s17key(x):
+    """括弧の全半角・中黒・空白のゆれを吸収する。文字そのものが違う場合
+       （電力/電気 のような取り違え）は吸収せず、未対応として表に出す。"""
+    import unicodedata
+    x = unicodedata.normalize("NFKC", str(x or ""))
+    for ch in "（）()・･ 　":
+        x = x.replace(ch, "")
+    return x
+
+S17_NORM = {_s17key(v): k for k, v in SECTOR.items()}
+
+def s17_etf(name):
+    return S17_TO_ETF.get(name) or S17_NORM.get(_s17key(name), "")
+
 TDNET_MAX_PAGES = 12
 
 def fetch_tdnet(days=4):
@@ -835,6 +874,9 @@ def rank_candidates(df):
     if df.empty: return df, df
     d = df.copy()
     heat = np.where(d["rsi"] > 75, (d["rsi"]-75)/25*20, 0)
+    # 出来高を伴わない上昇は続きにくい。初回の実運用では上位15件のうち
+    # 9件が出来高比 1.0未満（0.46〜0.79倍）のまま20日+25〜37%という並びだった。
+    # 出来高比1.0を基準に ±8点。
 
     # 順張り: 移動平均の上に並び、60日レンジの上方にいて、20日が伸びている
     # 満点に達する水準が低すぎると、強い銘柄が全部同じ点になって順位が意味を失う。
@@ -847,6 +889,8 @@ def rank_candidates(df):
         20*np.clip(d["r20"]/25, 0, 1) +          # 20日リターン（25%で満点）
         15*np.clip((d["atr_pct"]-1.5)/2.5, 0, 1) # 値幅（スイング適性）
         - heat
+        # 列が欠けても順位付け全体を落とさない（1列の欠損でその日の候補が消えるのは割に合わない）
+        + np.clip((d.get("vol_ratio", pd.Series(1.0, index=d.index))-1.0)*8, -8, 8)
     ).round(1)
 
     # 逆張り: 長期トレンドは生きている（75日線の上）が、短期で売られすぎ
@@ -866,6 +910,47 @@ def rank_candidates(df):
     return (d.sort_values("trend", ascending=False).head(20),
             d.sort_values("revert", ascending=False).head(20))
 
+EARN_BUDGET_S = 240        # 候補の決算日照会に使ってよい秒数
+EARN_SOON_DAYS = 7         # これ以内なら「決算跨ぎ」として扱う
+
+def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
+    """候補の次回決算発表日。
+       全4,250銘柄には引けないが、**順位が付いた上位40銘柄だけ**なら
+       1銘柄1リクエストで間に合う。ここが埋まって初めて
+       「決算をまたぐ建玉は作らない」というルールが候補にも効く。
+
+       yfinance の日本株の決算日は推定値のことがあり、欠けることもある。
+       そこで「予定日あり」「照会したが不明」「照会失敗」を区別して返す。
+       区別せず空欄にすると『決算が無い』と読めてしまい、ルールが骨抜きになる。"""
+    import yfinance as yf
+    out, t0, today = {}, time.time(), str(NOW.date())
+    n_ok = n_none = n_err = 0
+    for c in sorted(codes):
+        if time.time() - t0 > budget_s:
+            out[c] = {"status": "timeout"}
+            continue
+        try:
+            ed = yf.Ticker(c).get_earnings_dates(limit=12)
+            ds = ([str(pd.Timestamp(i).date()) for i in ed.index]
+                  if ed is not None and len(ed) else [])
+            nxt = next((x for x in sorted(ds) if x >= today), "")
+            if nxt:
+                days = (pd.Timestamp(nxt) - pd.Timestamp(today)).days
+                out[c] = {"status": "ok", "next": nxt, "days": int(days)}
+                n_ok += 1
+            else:
+                out[c] = {"status": "unknown"}      # 照会できたが将来の予定が無い
+                n_none += 1
+        except Exception as e:
+            out[c] = {"status": "error", "why": type(e).__name__}
+            n_err += 1
+        time.sleep(0.15)                            # 連続照会でのレート制限を避ける
+    meta["cand_earnings"] = {"asked": len(codes), "ok": n_ok,
+                             "unknown": n_none, "error": n_err}
+    print(f"[決算] 候補{len(codes)}銘柄を照会: 予定日あり{n_ok} / 不明{n_none} / 失敗{n_err}")
+    return out
+
+CAND_EARN = {}
 MASTER = {}
 try:
     MASTER = load_master()
@@ -896,7 +981,7 @@ def _decorate(recs):
         r["kind"]   = m.get("kind", "")
         r["size"]   = m.get("size", "")
         s17 = m.get("s17", "")
-        etf = S17_TO_ETF.get(s17, "")
+        etf = s17_etf(s17)
         if s17 and not etf:
             # 表記のゆれで対応が取れないと、その業種の候補すべてでBが付かなくなる。
             # 実際に「情報通信・サービスその他」を1文字違いで書いていて全滅した。
@@ -904,6 +989,14 @@ def _decorate(recs):
             meta["s17_unmapped"][s17] = meta["s17_unmapped"].get(s17, 0) + 1
         r["sector_etf"] = etf[:4]
         r["news"]   = DISC.get(c4, [])[:3]
+        e = CAND_EARN.get(r["code"], {"status": "not_checked"})
+        r["earn_status"] = e.get("status")
+        r["earn_next"]   = e.get("next", "")
+        r["earn_days"]   = e.get("days")
+        # 決算跨ぎは執行の可否そのものを決めるので、行ごとに明示する
+        r["earn_soon"]   = bool(e.get("status") == "ok"
+                                and e.get("days") is not None
+                                and e["days"] <= EARN_SOON_DAYS)
     return recs
 
 try:
@@ -916,8 +1009,15 @@ try:
                               "source": meta.get("universe_source", "?")}
             if not sc.empty:
                 trend, revert = rank_candidates(sc)
-                tr = _decorate(trend.to_dict("records"))
-                rv = _decorate(revert.to_dict("records"))
+                tr0, rv0 = trend.to_dict("records"), revert.to_dict("records")
+                # 決算日は順位が付いてから、載る銘柄だけ引く（全銘柄には引けない）
+                try:
+                    CAND_EARN = next_earnings_for({r["code"] for r in tr0 + rv0})
+                except Exception as e:
+                    meta["errors"].append(f"cand_earnings: {type(e).__name__}: {e}")
+                    meta["cand_earnings"] = {"error": str(e)[:120]}
+                tr = _decorate(tr0)
+                rv = _decorate(rv0)
             else:
                 tr, rv = [], []
             # 通過0件でも必ず書く。書かないと report 側が「未実行」と表示してしまい、
@@ -928,6 +1028,7 @@ try:
                        "universe_source": meta.get("universe_source", "?"),
                        "tdnet": meta.get("tdnet", {}),
                        "skipped": meta.get("screen_skipped", {}),
+                       "cand_earnings": meta.get("cand_earnings", {}),
                        "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
                                    "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
                        "s17_unmapped": meta.get("s17_unmapped", {}),
@@ -1060,6 +1161,9 @@ try:
     if meta.get("jgb"):
         g = meta["jgb"]
         jgbline = f"{g['date']} 時点  2年 {g.get('y2')}% / 10年 {g.get('y10')}% / 30年 {g.get('y30')}%"
+        if (g.get("age_days") or 0) > 5:
+            jgbline += (f"  ← **{g['age_days']}日前の値。現在値として使わないこと**"
+                        "（NTTの利回り差・銀行の追い風の判断が丸ごとずれる）")
 
     L = []
     L.append(f"# 後場スイング 事前分析  {NOW:%Y-%m-%d %H:%M JST}\n")
@@ -1186,6 +1290,15 @@ try:
             ns = r.get("news") or []
             if not ns: return "—"
             return " / ".join(f"{x['title'][:26]}" for x in ns[:2])
+        def _earn(r):
+            """空欄にすると『決算が無い』と読めてしまう。状態を必ず言葉で出す。"""
+            st = r.get("earn_status")
+            if st == "ok":
+                d, n = r.get("earn_days"), r.get("earn_next", "")
+                mark = "**跨ぎ**" if r.get("earn_soon") else f"{d}日後"
+                return f"{n[5:].replace('-', '/')} {mark}"
+            return {"unknown": "予定なし(要確認)", "error": "照会失敗(要確認)",
+                    "timeout": "時間切れ(要確認)"}.get(st, "未照会(要確認)")
 
         L.append(f"\n## 新規候補（全銘柄スクリーニング）\n")
         _uni, _sc = cj.get("universe", 0), cj["scanned"]
@@ -1221,29 +1334,38 @@ try:
             L.append("")
 
         L.append("\n### 順張り候補（移動平均の上・レンジ上方・20日が伸びている）\n")
-        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 当日の開示 |")
-        L.append("|--:|---|---|---|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|")
+        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 決算 | 当日の開示 |")
+        L.append("|--:|---|---|---|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
         for i, r in enumerate(cj["trend"][:15]):
             L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
                      f"**{r['trend']:.1f}** | {r['close']:,.1f} | {r['rsi']:.0f} | "
                      f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
-                     f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {r['vol_ratio']:.2f}x | {_disc(r)} |")
+                     f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {r['vol_ratio']:.2f}x | {_earn(r)} | {_disc(r)} |")
 
         L.append("\n### 逆張り候補（長期は上向きだが短期で売られすぎ）\n")
-        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 当日の開示 |")
-        L.append("|--:|---|---|---|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|")
+        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 決算 | 当日の開示 |")
+        L.append("|--:|---|---|---|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
         for i, r in enumerate(cj["revert"][:15]):
             if r["revert"] <= 0: continue
             L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
                      f"**{r['revert']:.1f}** | {r['close']:,.1f} | {r['rsi']:.0f} | "
                      f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
-                     f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {_disc(r)} |")
+                     f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {_earn(r)} | {_disc(r)} |")
 
         L.append("\n**この表の読み方と限界**")
         L.append("- スコアは機械的な順位付けにすぎず、推奨ではない。順張りと逆張りは別の尺度なので**混ぜて比較しない**。")
         L.append("- 「業種ETF」列は業種別ETF17本の表と突き合わせるための対応コード。**候補のBはこの列の業種の位置から機械的に付けられる。**")
         L.append("- 「当日の開示」は TDnet の直近4日分（新しい順）。**空欄(—)は「開示が無い」であって「材料が無い」ではない**（報道・需給・指数入替は載らない）。")
-        L.append("- **決算発表日の照合は入っていない。** 発注前に必ず個別に確認すること。")
+        ce = cj.get("cand_earnings") or {}
+        if ce.get("ok") is not None:
+            L.append(f"- **決算列**: 上位候補 {ce.get('asked', 0)}銘柄を照会し、"
+                     f"予定日が取れたのは **{ce.get('ok', 0)}銘柄**"
+                     f"（不明 {ce.get('unknown', 0)} / 失敗 {ce.get('error', 0)}）。"
+                     f"**「跨ぎ」は{EARN_SOON_DAYS}日以内に決算がある。建てないこと。**")
+            L.append("- 「予定なし(要確認)」「照会失敗(要確認)」は**決算が無いという意味ではない**。"
+                     "データ元に予定が入っていないだけなので、発注前にSBIの銘柄ページで必ず確認する。")
+        else:
+            L.append("- **決算発表日の照合ができていない。** 発注前に必ず個別に確認すること。")
         L.append("- ATR%が突出して高いものは一過性の材料で動いている可能性が高い。順位が上でも採用しない。")
     except FileNotFoundError:
         L.append("\n## 新規候補\n\nスクリーニング未実行。")
@@ -1261,6 +1383,21 @@ try:
              f"数値はすべてコードが計算しており、モデルによる算術は介在していない。\n"
              f"モデル側の担当は B（レジーム適合）の判断、ニュース・マクロの解釈、スコアの上書き判断、文章化。\n"
              f"発注前にSBI証券の板・気配で価格を確認すること。")
+
+    # 表の検算: ヘッダと区切り行のセル数が食い違うと、その列は描画されずに消える。
+    # 目視では気づけないので機械的に確認し、食い違ったらレポート自身に書く。
+    _bad = []
+    for _i in range(len(L) - 1):
+        _a, _b = L[_i], L[_i + 1]
+        if _a.startswith("|") and re.fullmatch(r"\|[\s:|-]+\|", _b or ""):
+            _na, _nb = len(_a.split("|")) - 2, len(_b.split("|")) - 2
+            if _na != _nb:
+                _bad.append(f"ヘッダ{_na}列 / 区切り{_nb}列: {_a[:40]}")
+    if _bad:
+        meta["table_mismatch"] = _bad
+        L.append("\n> **注意: 表の列数が合っていない箇所がある（列が欠けて表示されている）**\n> "
+                 + "\n> ".join(_bad))
+        print("::warning::表の列数不一致:", " / ".join(_bad))
 
     open(f"{OUT}/report.md", "w", encoding="utf-8").write("\n".join(L))
     json.dump({"generated_at_jst": NOW.isoformat(), "total": TOT, "cash": CASH,
