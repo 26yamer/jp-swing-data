@@ -750,6 +750,119 @@ MIN_ATR_PCT      = 1.5          # これ未満は値幅が小さくスイング�
 MAX_ATR_PCT      = 6.0          # これを超えるものは一過性の材料で動いている公算が大きい。
                                 # 材料の中身をこの仕組みは見られないので、順位以前に外す。
 
+# ══════════════════════════════════════════════════════════════════════
+#  シグナル台帳 ── この仕組みに効き目があるのかを実測する
+#
+#  なぜ必要か:
+#    毎日推奨を出しているのに、それが儲かったのかを誰も測っていなかった。
+#    測らなければ「前提が崩れたら訂正する」も判断材料が無く、
+#    1ヶ月後に20本のレポートと0件の学習が残るだけになる。
+#
+#  何を測るのか:
+#    モデルのB（レジーム判断）は測れない。測れるのは**スクリーニング**の部分。
+#    その日の上位候補を、発注したものと見なして台帳に記録し、
+#    その後の実際の高値・安値で 2ATR損切り / 3ATR利確 のどちらに先に当たったかを追う。
+#
+#  乱数は一切使わない。使うのは実際に付いた値段だけ。
+#  ただしこれは**執行の記録ではなく、選別ロジックの追跡**である。
+#  実際の約定値・スリッページ・板の薄さは含まれない。そこは割り引いて読むこと。
+# ══════════════════════════════════════════════════════════════════════
+SIG_PATH      = f"{OUT}/signals.csv"
+SIG_TOP_N     = 10       # 各サイドの上位何件を台帳に載せるか
+SIG_MAX_HOLD  = 15       # これを超えたら時間切れとして手仕舞う（営業日）
+SIG_COLS = ["date", "kind", "rank", "code", "name", "s17", "score",
+            "entry", "atr", "stop", "target",
+            "status", "exit_date", "exit", "r_multiple", "bars"]
+
+def load_signals():
+    if not os.path.exists(SIG_PATH):
+        return pd.DataFrame(columns=SIG_COLS)
+    try:
+        df = pd.read_csv(SIG_PATH, dtype=str)
+        for c in SIG_COLS:
+            if c not in df.columns: df[c] = ""
+        return df[SIG_COLS]
+    except Exception as e:
+        meta["errors"].append(f"signals read: {type(e).__name__}")
+        return pd.DataFrame(columns=SIG_COLS)
+
+def open_signal_map(sig):
+    """未決着のシグナルを code ごとにまとめる。screen_all が各銘柄の日足を
+       持っている最中に、そのまま判定できるようにするため。"""
+    out = {}
+    if sig.empty: return out
+    op = sig[sig["status"].isin(["", "open", "nan"]) | sig["status"].isna()]
+    for i, r in op.iterrows():
+        out.setdefault(str(r["code"]), []).append(i)
+    return out
+
+def settle_signal(row, bars):
+    """entry日より後の実際の高値・安値で決着を付ける。
+       同じ日に損切りと利確の両方に触れた場合は**損切りを優先**する
+       （日足では順序が分からないため、都合の良い方を採らない）。"""
+    try:
+        entry = float(row["entry"]); stop = float(row["stop"]); tgt = float(row["target"])
+        atr = float(row["atr"]); kind = str(row["kind"])
+    except Exception:
+        return None
+    after = bars[bars.index > pd.Timestamp(row["date"])]
+    if not len(after): return None
+    long = True   # いまは買いのみ
+    for n, (ts, b) in enumerate(after.iterrows(), start=1):
+        hi, lo, cl = float(b["High"]), float(b["Low"]), float(b["Close"])
+        hit_stop = lo <= stop if long else hi >= stop
+        hit_tgt  = hi >= tgt if long else lo <= tgt
+        if hit_stop:
+            return dict(status="stop", exit_date=str(ts.date()), exit=round(stop, 2),
+                        r_multiple=round((stop-entry)/(2*atr), 2), bars=n)
+        if hit_tgt:
+            return dict(status="target", exit_date=str(ts.date()), exit=round(tgt, 2),
+                        r_multiple=round((tgt-entry)/(2*atr), 2), bars=n)
+        if n >= SIG_MAX_HOLD:
+            return dict(status="timeout", exit_date=str(ts.date()), exit=round(cl, 2),
+                        r_multiple=round((cl-entry)/(2*atr), 2), bars=n)
+    return None      # まだ決着していない
+
+def append_signals(sig, recs, kind, today):
+    """その日の上位を台帳に足す。同じ日・同じ銘柄は二重に入れない。"""
+    have = set(zip(sig["date"].astype(str), sig["code"].astype(str), sig["kind"].astype(str)))
+    add = []
+    for i, r in enumerate(recs[:SIG_TOP_N], start=1):
+        score = r.get("trend" if kind == "trend" else "revert", 0)
+        if not score or float(score) <= 0: continue
+        if (today, str(r["code"]), kind) in have: continue
+        entry, atr = float(r["close"]), float(r["atr"])
+        add.append({"date": today, "kind": kind, "rank": i, "code": r["code"],
+                    "name": r.get("name", ""), "s17": r.get("s17", ""),
+                    "score": score, "entry": round(entry, 2), "atr": round(atr, 2),
+                    "stop": round(entry - 2*atr, 2), "target": round(entry + 3*atr, 2),
+                    "status": "open", "exit_date": "", "exit": "", "r_multiple": "", "bars": ""})
+    if not add: return sig
+    return pd.concat([sig, pd.DataFrame(add)], ignore_index=True)[SIG_COLS]
+
+def signal_summary(sig):
+    """決着済みだけで集計する。未決着を混ぜると勝率が水増しされる。"""
+    if sig.empty: return {}
+    d = sig[sig["status"].isin(["stop", "target", "timeout"])].copy()
+    if d.empty: return {"closed": 0, "open": int((sig["status"] == "open").sum())}
+    d["r"] = pd.to_numeric(d["r_multiple"], errors="coerce")
+    d = d.dropna(subset=["r"])
+    out = {"closed": int(len(d)), "open": int((sig["status"] == "open").sum())}
+    for k in ("trend", "revert", None):
+        part = d if k is None else d[d["kind"] == k]
+        if not len(part): continue
+        win = int((part["r"] > 0).sum())
+        out[k or "all"] = {
+            "n": int(len(part)),
+            "win_pct": round(win / len(part) * 100, 1),
+            "avg_r": round(float(part["r"].mean()), 3),
+            "sum_r": round(float(part["r"].sum()), 2),
+            "target": int((part["status"] == "target").sum()),
+            "stop": int((part["status"] == "stop").sum()),
+            "timeout": int((part["status"] == "timeout").sum()),
+            "avg_bars": round(float(pd.to_numeric(part["bars"], errors="coerce").mean()), 1)}
+    return out
+
 def load_universe(master=None):
     """スクリーニング対象の銘柄リスト。
        第一候補は JPX の上場銘柄一覧（正確・英字コードも拾える・数秒で済む）。
@@ -809,12 +922,14 @@ def load_universe(master=None):
     meta["universe_source"] = "bruteforce" + ("(truncated)" if truncated else "")
     return found
 
-def screen_all(codes):
+def screen_all(codes, sig=None, open_map=None):
     """全銘柄の直近データを取得し、流動性と値幅で絞ってから指標を付ける。"""
     import yfinance as yf
     rows, t0 = [], time.time()
     done = 0
     skipped, skip_msg = {}, {}
+    settled = 0
+    open_map = open_map or {}
     for i in range(0, len(codes), SCREEN_CHUNK):
         if time.time() - t0 > SCREEN_BUDGET_S:
             print(f"[全銘柄] 時間予算に達したため {done}/{len(codes)} で打ち切り"); break
@@ -828,6 +943,18 @@ def screen_all(codes):
             done += 1
             try:
                 x = d[c].dropna(subset=["Close"])
+
+                # ── 台帳の決着（ここでやるのは、この銘柄の日足が今まさに手元にあるから）
+                if c in open_map and sig is not None and len(x):
+                    for idx in open_map[c]:
+                        try:
+                            out = settle_signal(sig.loc[idx], x)
+                        except Exception:
+                            out = None
+                        if out:
+                            for k, v in out.items(): sig.at[idx, k] = v
+                            settled += 1
+
                 if len(x) < 60: continue
                 cl = x["Close"]; last = float(cl.iloc[-1])
                 if last < MIN_PRICE: continue
@@ -865,6 +992,9 @@ def screen_all(codes):
         # フィルタ落ちではなく例外で全滅している場合は明確に警告する
         if len(rows) == 0 and done > 0:
             print(f"::warning::スクリーニングの通過が0件です。除外の内訳を data/meta.json で確認してください")
+    if settled:
+        print(f"[台帳] 未決着シグナルのうち {settled}件が決着")
+    meta["signals_settled"] = settled
     return pd.DataFrame(rows), done
 
 def rank_candidates(df):
@@ -882,16 +1012,23 @@ def rank_candidates(df):
     # 満点に達する水準が低すぎると、強い銘柄が全部同じ点になって順位が意味を失う。
     # 初回の実運用では上位15件が 97.1〜99.3 の 2.2点差に固まっていた（4項目が飽和）。
     # 実際の分布（25日 +9〜38% / 75日 +15〜84% / 20日 +11〜76%）に合わせて広げる。
-    d["trend"] = (
-        20*np.clip(d["vs25"]/12, 0, 1) +         # 25日線からの上方乖離（12%で満点）
-        20*np.clip(d["vs75"]/30, 0, 1) +         # 75日線からの上方乖離（30%で満点）
-        25*np.clip(d["pos60"]/100, 0, 1) +       # 60日レンジ内の位置
-        20*np.clip(d["r20"]/25, 0, 1) +          # 20日リターン（25%で満点）
-        15*np.clip((d["atr_pct"]-1.5)/2.5, 0, 1) # 値幅（スイング適性）
+    # 配点は 基礎92点 + 出来高±8点 = 0〜100。
+    # 以前は基礎100点に出来高を足していたため 101.6 のような値が出て、
+    # 「100点満点のスコア」という説明と食い違っていた。
+    d["trend"] = np.clip(
+        18*np.clip(d["vs25"]/12, 0, 1) +          # 25日線からの上方乖離（12%で満点）
+        18*np.clip(d["vs75"]/30, 0, 1) +          # 75日線からの上方乖離（30%で満点）
+        23*np.clip(d["pos60"]/100, 0, 1) +        # 60日レンジ内の位置
+        18*np.clip(d["r20"]/25, 0, 1) +           # 20日リターン（25%で満点）
+        15*np.clip((d["atr_pct"]-1.5)/2.5, 0, 1)  # 値幅（スイング適性）
         - heat
         # 列が欠けても順位付け全体を落とさない（1列の欠損でその日の候補が消えるのは割に合わない）
-        + np.clip((d.get("vol_ratio", pd.Series(1.0, index=d.index))-1.0)*8, -8, 8)
-    ).round(1)
+        + np.clip((d.get("vol_ratio", pd.Series(1.0, index=d.index))-1.0)*8, -8, 8),
+        0, 100).round(1)
+    # 保有の拒否ルール「RSI>78は買い増し不可」と揃える。
+    # 新規の順張りは買い増しそのものなので、同じ線を引かないと整合が取れない。
+    # 実測では4174（RSI81・出来高4.73倍・当日に業績開示）が1位に来ていた。
+    d.loc[d["rsi"] > 78, "trend"] = 0
 
     # 逆張り: 長期トレンドは生きている（75日線の上）が、短期で売られすぎ
     #   ★ 以前は「75日線を5%以上割ったら0」としていたが、これはほぼ効かなかった。
@@ -910,8 +1047,114 @@ def rank_candidates(df):
     return (d.sort_values("trend", ascending=False).head(20),
             d.sort_values("revert", ascending=False).head(20))
 
+# ── JPX 決算発表予定日（公式）─────────────────────────────────────
+#    yfinance の予定日は日本の中小型で欠けやすく、実測で 40件中10件（25%）しか
+#    埋まらなかった。4分の3が「要確認」では、決算跨ぎを避けるルールが働かない。
+#    JPXは決算発表予定日を決算期末月ごとにExcelで公開しているので、そちらを主にする。
+#    ファイル名の日付部分は更新のたびに変わるため、一覧ページからリンクを拾う。
+JPX_EARN_INDEX = "https://www.jpx.co.jp/listing/event-schedules/financial-announcement/index.html"
+JPX_EARN_MAX_FILES = 6          # 直近の数ファイルで足りる（決算は期末から45日以内）
+
+def _jpx_earn_links():
+    import requests
+    from urllib.parse import urljoin
+    r = requests.get(JPX_EARN_INDEX, timeout=60, headers=JGB_HDRS)
+    r.raise_for_status()
+    try:
+        html = r.content.decode("utf-8")
+    except UnicodeDecodeError:
+        html = r.content.decode("cp932", errors="replace")
+    hrefs = re.findall(r'href="([^"]*kessan[^"]*\.xlsx?)"', html, re.I)
+    seen, out = set(), []
+    for h in hrefs:
+        u = urljoin(JPX_EARN_INDEX, h)
+        if u not in seen:
+            seen.add(u); out.append(u)
+    # 新しいものから使う（ファイル名の数字が大きいほど新しい）
+    out.sort(reverse=True)
+    return out[:JPX_EARN_MAX_FILES]
+
+def _parse_jpx_earn(blob):
+    """コード→決算発表予定日。列名の正確な表記が分からなくても動くよう、
+       『コード』を含む列と『予定日』を含む列を見出し行から探す。"""
+    rows = _xlsx_rows(blob)
+    hdr_i, c_code, c_date = None, None, None
+    for i, r in enumerate(rows[:15]):                 # 見出しは上の方にある
+        cells = [str(x or "") for x in r]
+        code_i = next((j for j, x in enumerate(cells) if "コード" in x), None)
+        date_i = next((j for j, x in enumerate(cells)
+                       if "予定" in x and "日" in x and "前回" not in x), None)
+        if code_i is not None and date_i is not None:
+            hdr_i, c_code, c_date = i, code_i, date_i
+            break
+    if hdr_i is None:
+        raise RuntimeError(f"見出し行が見つからない: {[str(x)[:12] for x in (rows[0] if rows else [])][:8]}")
+
+    def to_date(v):
+        if v is None or str(v).strip() == "": return ""
+        s = str(v).strip()
+        # xlsxの日付はシリアル値で入っていることがある（1900年起点、1900をうるう年とみなす仕様）
+        try:
+            f = float(s)
+            if 30000 < f < 80000:
+                return str((dt.date(1899, 12, 30) + dt.timedelta(days=int(f))))
+        except ValueError:
+            pass
+        s = s.replace("年", "/").replace("月", "/").replace("日", "")
+        for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y/%m/%d ", "%m/%d"):
+            try:
+                d = dt.datetime.strptime(s.strip().split(" ")[0], fmt)
+                if fmt == "%m/%d": d = d.replace(year=NOW.year)
+                return str(d.date())
+            except ValueError:
+                continue
+        try:
+            return str(pd.to_datetime(s).date())
+        except Exception:
+            return ""
+
+    out = {}
+    for r in rows[hdr_i + 1:]:
+        if len(r) <= max(c_code, c_date): continue
+        code = str(r[c_code] or "").strip()
+        if code.endswith(".0"): code = code[:-2]          # 数値として読まれた場合
+        code = code.zfill(4) if code.isdigit() and len(code) < 4 else code
+        if not CODE_RE.match(code): continue
+        d = to_date(r[c_date])
+        if d: out[code] = d
+    return out
+
+def jpx_earnings():
+    """コード→決算発表予定日（公式）。取れなければ空を返し、yfinanceに任せる。"""
+    try:
+        links = _jpx_earn_links()
+    except Exception as e:
+        meta["errors"].append(f"jpx_earn index: {type(e).__name__}: {e}")
+        print("[決算] JPX一覧ページを取得できず:", e)
+        return {}
+    if not links:
+        meta["errors"].append("jpx_earn: リンクが見つからない")
+        return {}
+    import requests
+    merged, used = {}, []
+    for u in links:
+        try:
+            rr = requests.get(u, timeout=90, headers=JGB_HDRS)
+            if rr.status_code != 200 or len(rr.content) < 5000:
+                used.append(f"{u.rsplit('/', 1)[-1]}:HTTP{rr.status_code}"); continue
+            d = _parse_jpx_earn(rr.content)
+            merged.update(d)                    # 新しいファイルから順に、後のもので上書き
+            used.append(f"{u.rsplit('/', 1)[-1]}:{len(d)}件")
+        except Exception as e:
+            used.append(f"{u.rsplit('/', 1)[-1]}:{type(e).__name__}")
+    meta["jpx_earnings"] = {"files": used, "codes": len(merged)}
+    print(f"[決算] JPX予定日 {len(merged):,}銘柄 ({' / '.join(used)})")
+    return merged
+
 EARN_BUDGET_S = 240        # 候補の決算日照会に使ってよい秒数
 EARN_SOON_DAYS = 7         # これ以内なら「決算跨ぎ」として扱う
+
+JPX_EARN = {}
 
 def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
     """候補の次回決算発表日。
@@ -924,8 +1167,15 @@ def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
        区別せず空欄にすると『決算が無い』と読めてしまい、ルールが骨抜きになる。"""
     import yfinance as yf
     out, t0, today = {}, time.time(), str(NOW.date())
-    n_ok = n_none = n_err = 0
+    n_ok = n_none = n_err = n_jpx = 0
     for c in sorted(codes):
+        # JPX（公式）にあればそれを使う。1リクエストも増えないうえ確度が高い。
+        j = JPX_EARN.get(str(c)[:4])
+        if j and j >= today:
+            out[c] = {"status": "ok", "src": "jpx", "next": j,
+                      "days": int((pd.Timestamp(j) - pd.Timestamp(today)).days)}
+            n_ok += 1; n_jpx += 1
+            continue
         if time.time() - t0 > budget_s:
             out[c] = {"status": "timeout"}
             continue
@@ -936,7 +1186,7 @@ def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
             nxt = next((x for x in sorted(ds) if x >= today), "")
             if nxt:
                 days = (pd.Timestamp(nxt) - pd.Timestamp(today)).days
-                out[c] = {"status": "ok", "next": nxt, "days": int(days)}
+                out[c] = {"status": "ok", "src": "yf", "next": nxt, "days": int(days)}
                 n_ok += 1
             else:
                 out[c] = {"status": "unknown"}      # 照会できたが将来の予定が無い
@@ -945,9 +1195,10 @@ def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
             out[c] = {"status": "error", "why": type(e).__name__}
             n_err += 1
         time.sleep(0.15)                            # 連続照会でのレート制限を避ける
-    meta["cand_earnings"] = {"asked": len(codes), "ok": n_ok,
-                             "unknown": n_none, "error": n_err}
-    print(f"[決算] 候補{len(codes)}銘柄を照会: 予定日あり{n_ok} / 不明{n_none} / 失敗{n_err}")
+    meta["cand_earnings"] = {"asked": len(codes), "ok": n_ok, "from_jpx": n_jpx,
+                             "from_yf": n_ok - n_jpx, "unknown": n_none, "error": n_err}
+    print(f"[決算] 候補{len(codes)}銘柄: 予定日あり{n_ok}"
+          f"（JPX {n_jpx} / yfinance {n_ok-n_jpx}） 不明{n_none} 失敗{n_err}")
     return out
 
 CAND_EARN = {}
@@ -1003,7 +1254,8 @@ try:
     if SCREEN_ENABLED:
         uni = load_universe(MASTER)
         if uni:
-            sc, scanned = screen_all(uni)
+            SIG = load_signals()
+            sc, scanned = screen_all(uni, SIG, open_signal_map(SIG))
             meta["screen"] = {"universe": len(uni), "scanned": scanned, "passed": len(sc),
                               "named": bool(MASTER),
                               "source": meta.get("universe_source", "?")}
@@ -1012,14 +1264,29 @@ try:
                 tr0, rv0 = trend.to_dict("records"), revert.to_dict("records")
                 # 決算日は順位が付いてから、載る銘柄だけ引く（全銘柄には引けない）
                 try:
+                    JPX_EARN = jpx_earnings()          # 公式の予定日を先に用意する
+                except Exception as e:
+                    meta["errors"].append(f"jpx_earnings: {type(e).__name__}: {e}")
+                try:
                     CAND_EARN = next_earnings_for({r["code"] for r in tr0 + rv0})
                 except Exception as e:
                     meta["errors"].append(f"cand_earnings: {type(e).__name__}: {e}")
                     meta["cand_earnings"] = {"error": str(e)[:120]}
                 tr = _decorate(tr0)
                 rv = _decorate(rv0)
+                # 決着の書き込みが済んでから、その日の分を足す
+                _today = str(NOW.date())
+                SIG = append_signals(SIG, tr, "trend", _today)
+                SIG = append_signals(SIG, rv, "revert", _today)
             else:
                 tr, rv = [], []
+            try:
+                SIG.to_csv(SIG_PATH, index=False)
+                meta["signals"] = signal_summary(SIG)
+                print(f"[台帳] {len(SIG)}件 / 決着済 {meta['signals'].get('closed', 0)} "
+                      f"/ 未決着 {meta['signals'].get('open', 0)}")
+            except Exception as e:
+                meta["errors"].append(f"signals write: {type(e).__name__}: {e}")
             # 通過0件でも必ず書く。書かないと report 側が「未実行」と表示してしまい、
             # 「走らせたが0件だった」という事故が「まだ動かしていない」に見える。
             json.dump({"generated_at_jst": NOW.isoformat(),
@@ -1279,6 +1546,40 @@ try:
         L.append("\n## 保有銘柄の適時開示\n\n取得していません。")
     except Exception as e:
         L.append(f"\n## 保有銘柄の適時開示\n\n生成に失敗: {e}")
+
+    # ── シグナル台帳の成績 ────────────────────────────────────
+    #    「この仕組みは儲かっているのか」に、実際に付いた値段で答える唯一の節。
+    try:
+        sg = meta.get("signals") or {}
+        L.append("\n## シグナルの成績（選別ロジックの追跡）\n")
+        if not sg or not sg.get("closed"):
+            L.append(f"決着済み 0件 / 未決着 {sg.get('open', 0)}件。"
+                     "**判断に使える成績はまだ無い。**最初の決着まで2〜3週間かかる。")
+        else:
+            L.append("| 種別 | 件数 | 勝率 | 平均R | 累計R | 利確 | 損切 | 時間切れ | 平均保有 |")
+            L.append("|---|--:|--:|--:|--:|--:|--:|--:|--:|")
+            for k, lbl in [("all", "合計"), ("trend", "順張り"), ("revert", "逆張り")]:
+                v = sg.get(k)
+                if not v: continue
+                L.append(f"| {lbl} | {v['n']} | {v['win_pct']:.1f}% | {v['avg_r']:+.3f} | "
+                         f"{v['sum_r']:+.2f} | {v['target']} | {v['stop']} | {v['timeout']} | "
+                         f"{v['avg_bars']:.1f}日 |")
+            a = sg.get("all", {})
+            L.append(f"\n未決着 {sg.get('open', 0)}件。")
+            if a.get("n", 0) < 30:
+                L.append(f"> **件数が {a.get('n', 0)} 件しかない。まだ運不運の範囲で、優劣の根拠にはならない。**"
+                         "30件を超えるまでは傾向として眺めるだけにすること。")
+            elif a.get("avg_r", 0) <= 0:
+                L.append("> **平均Rがマイナス。この選別で建て続けると負ける。** "
+                         "スコアの閾値を上げるか、順張り／逆張りのどちらかを止めることを検討する。")
+            L.append("\n**この成績の読み方と限界**")
+            L.append("- 建値は**シグナル当日の終値**。実際には後場の板で約定するので、その差は含まれていない。")
+            L.append("- 損切り2ATR・利確3ATR・最長15営業日で機械的に決着させている。**実際の執行記録ではない。**")
+            L.append("- 同じ日に損切りと利確の両方に触れた場合は**損切りを先**として数えている（日足では順序が分からないため）。")
+            L.append("- 手数料は0円だが、**利益には20.315%課税**される。表のRは税引前。")
+            L.append("- 測っているのは**スクリーニングの選別**であって、モデルのB（レジーム判断）は含まない。")
+    except Exception as e:
+        L.append(f"\n## シグナルの成績\n\n生成に失敗: {e}")
 
     # ── 全銘柄スクリーニングの結果 ─────────────────────────────
     try:
