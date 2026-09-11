@@ -73,7 +73,7 @@
    }
   ],
   "ttm_dividend": 92.9,
-  "ttm_yield_pct": 4.91
+  "ttm_yield_pct": 4.92
  },
  "1615.T": {
   "dividends": [
@@ -111,7 +111,7 @@
    }
   ],
   "ttm_dividend": 20.9,
-  "ttm_yield_pct": 2.74
+  "ttm_yield_pct": 2.72
  },
  "2559.T": {
   "dividends": [
@@ -149,7 +149,7 @@
    }
   ],
   "ttm_dividend": 34.0,
-  "ttm_yield_pct": 1.17
+  "ttm_yield_pct": 1.18
  },
  "2563.T": {
   "dividends": [
@@ -328,7 +328,7 @@
    }
   ],
   "ttm_dividend": 5.3,
-  "ttm_yield_pct": 3.03,
+  "ttm_yield_pct": 3.02,
   "earnings_dates": [
    "2026-11-04",
    "2026-08-06",
