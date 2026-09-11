@@ -511,16 +511,81 @@ def _master_bytes():
             last = f"{u} -> {type(e).__name__}: {e}"
     raise RuntimeError(last or "URLなし")
 
+def _xlsx_rows(blob):
+    """.xlsx を標準ライブラリだけで読む（openpyxl 等が無い環境でも動かすため）。
+       xlsx は XML の zip なので、共有文字列表とシートを直接引けば足りる。
+       ここが動けば「銘柄名が付かない」という静かな劣化が環境依存でなくなる。"""
+    import zipfile, io
+    import xml.etree.ElementTree as ET
+    NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    z = zipfile.ZipFile(io.BytesIO(blob))
+
+    shared = []
+    if "xl/sharedStrings.xml" in z.namelist():
+        for si in ET.fromstring(z.read("xl/sharedStrings.xml")):
+            # <si> の下は <t> 直下か、書式ごとに分かれた <r><t> の連なり
+            shared.append("".join(t.text or "" for t in si.iter(NS + "t")))
+
+    names = [n for n in z.namelist() if n.startswith("xl/worksheets/sheet")]
+    if not names:
+        raise RuntimeError("シートが見つからない")
+    sheet = sorted(names)[0]
+
+    def colnum(ref):
+        n = 0
+        for ch in ref:
+            if not ch.isalpha(): break
+            n = n * 26 + (ord(ch.upper()) - 64)
+        return n - 1
+
+    rows = []
+    root = ET.fromstring(z.read(sheet))
+    for r in root.iter(NS + "row"):
+        cells, width = {}, 0
+        for c in r.iter(NS + "c"):
+            i = colnum(c.get("r") or "A")
+            t = c.get("t")
+            if t == "inlineStr":
+                v = "".join(x.text or "" for x in c.iter(NS + "t"))
+            else:
+                node = c.find(NS + "v")
+                v = node.text if node is not None else None
+                if t == "s" and v is not None:
+                    k = int(v)
+                    v = shared[k] if 0 <= k < len(shared) else ""
+            cells[i] = v
+            width = max(width, i + 1)
+        rows.append([cells.get(i) for i in range(width)])
+    return rows
+
 def _master_frame(blob):
-    """.xlsx と .xls のどちらで配信されても読めるようにエンジンを順に試す。"""
-    import io
+    """まず標準ライブラリで読む。だめなら pandas のエンジンを順に試す。
+       依存を1つ減らすほうが、環境差で静かに壊れる確率が下がる。"""
     errs = []
+    try:
+        rows = _xlsx_rows(blob)
+        rows = [r for r in rows if any(x not in (None, "") for x in r)]
+        if len(rows) < 2:
+            raise RuntimeError(f"行が足りない: {len(rows)}")
+        hdr = [str(x or "").strip() for x in rows[0]]
+        w = len(hdr)
+        body = [(r + [None] * w)[:w] for r in rows[1:]]
+        df = pd.DataFrame(body, columns=hdr).astype("object")
+        df = df.where(pd.notna(df), None)      # pandas が None を NaN にするのを戻す
+        print(f"[マスタ] 標準ライブラリで読み込み: {len(df):,}行 × {w}列")
+        return df
+    except Exception as e:
+        errs.append(f"stdlib:{type(e).__name__}:{str(e)[:60]}")
+
+    import io
     for eng in ("openpyxl", "calamine", "xlrd"):
         try:
-            return pd.read_excel(io.BytesIO(blob), dtype=str, engine=eng)
+            df = pd.read_excel(io.BytesIO(blob), dtype=str, engine=eng)
+            print(f"[マスタ] pandas({eng}) で読み込み: {len(df):,}行")
+            return df
         except Exception as e:
             errs.append(f"{eng}:{type(e).__name__}")
-    raise RuntimeError("read_excel失敗 " + " / ".join(errs))
+    raise RuntimeError("読み込み失敗 " + " / ".join(errs))
 
 def _col(df, *names):
     norm = lambda s: str(s).replace(" ", "").replace("　", "").strip()
@@ -550,18 +615,24 @@ def load_master():
         c_s33  = _col(df, "33業種区分");    c_sz  = _col(df, "規模区分")
         if not (c_code and c_name):
             raise RuntimeError(f"想定した列が無い: {list(df.columns)[:12]}")
+        def cell(r, c):
+            """読み手（標準ライブラリ / pandas）で None にも NaN にもなりうるので、
+               どちらでも空文字に寄せる。"""
+            if not c: return ""
+            v = r[c]
+            if v is None or v != v: return ""       # v != v は NaN の判定
+            v = str(v).strip()
+            return "" if v in ("nan", "None", "-", "－") else v
+
         rows = {}
         for _, r in df.iterrows():
-            code = str(r[c_code]).strip()
+            code = cell(r, c_code)
             if not CODE_RE.match(code): continue
-            mkt = str(r[c_mkt]).strip() if c_mkt else ""
+            mkt = cell(r, c_mkt)
             if any(k in mkt.lower() for k in EXCLUDE_MARKET_KW): continue
-            s17 = str(r[c_s17]).strip() if c_s17 else ""
-            rows[code] = {"name": str(r[c_name]).strip(), "market": mkt,
-                          "s17": "" if s17 in ("-", "－", "nan", "") else s17,
-                          "s33": (str(r[c_s33]).strip() if c_s33 else ""),
-                          "size": (str(r[c_sz]).strip() if c_sz else ""),
-                          "kind": classify_kind(mkt)}
+            rows[code] = {"name": cell(r, c_name), "market": mkt,
+                          "s17": cell(r, c_s17), "s33": cell(r, c_s33),
+                          "size": cell(r, c_sz), "kind": classify_kind(mkt)}
         if len(rows) < MASTER_MIN_ROWS:
             raise RuntimeError(f"件数が少なすぎる: {len(rows)}")
         json.dump({"built_at_jst": NOW.isoformat(), "source": url, "rows": rows},
@@ -623,7 +694,9 @@ def fetch_tdnet(days=4):
     return out
 
 SCREEN_ENABLED   = True
-SCREEN_BUDGET_S  = 1800      # 取得に使ってよい秒数（超えたら打ち切って結果を出す）
+SCREEN_BUDGET_S  = 2700      # 取得に使ってよい秒数（超えたら打ち切って結果を出す）
+                             # マスタ経由だと対象が約4,000銘柄になるため 30分→45分。
+                             # publicリポジトリのActionsは実行時間の上限が無い。
 SCREEN_CHUNK     = 180       # 1リクエストあたりの銘柄数
 MIN_TURNOVER     = 50_000_000   # 20日平均の売買代金がこの額未満は流動性不足として除外
 MIN_PRICE        = 100          # 低位株を除外（呼値の粗さで往復コストが重くなる）
@@ -1091,12 +1164,17 @@ try:
             return " / ".join(f"{x['title'][:26]}" for x in ns[:2])
 
         L.append(f"\n## 新規候補（全銘柄スクリーニング）\n")
-        L.append(f"対象 {cj.get('universe', 0):,}銘柄 → 走査 {cj['scanned']:,} → フィルタ通過 **{cj['passed']:,}銘柄**"
+        _uni, _sc = cj.get("universe", 0), cj["scanned"]
+        L.append(f"対象 {_uni:,}銘柄 → 走査 {_sc:,} → フィルタ通過 **{cj['passed']:,}銘柄**"
                  f"（売買代金20日平均 {cj['filters']['min_turnover']/1e8:.1f}億円以上／"
                  f"株価{cj['filters']['min_price']}円以上／ATR {cj['filters']['min_atr_pct']}%以上）")
         L.append(f"銘柄マスタ {cj.get('master_count', 0):,}件（JPX上場銘柄一覧／"
                  f"ユニバースの出所: {cj.get('universe_source', '?')}）／"
                  f"適時開示 {cj.get('tdnet', {}).get('items', 0)}件・{cj.get('tdnet', {}).get('codes', 0)}銘柄\n")
+        if _uni and _sc < _uni:
+            L.append(f"\n> **注意: 時間切れで {_sc:,}/{_uni:,} までしか走査していない。** "
+                     f"残り {_uni-_sc:,}銘柄は本日の候補に含まれていない。"
+                     f"上位に見えるものが「全体の上位」とは限らないので、採用のハードルを上げること。\n")
         if cj.get("master_count", 0) == 0:
             L.append("\n> **注意: 銘柄マスタが取得できていない。** 候補に銘柄名と業種が付かず、"
                      "候補のBを機械的に付けられない。`openpyxl` が入っているか確認すること。\n")
