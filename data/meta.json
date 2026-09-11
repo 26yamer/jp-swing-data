@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-11T15:30:33.378704+09:00",
+ "fetched_at_jst": "2026-09-11T15:52:32.663467+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -98,7 +98,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 45,
+ "news_ok": 48,
  "jgb": {
   "date": "2026-08-31",
   "y2": 1.743,
@@ -114,15 +114,15 @@
  },
  "tdnet": {
   "pages": 10,
-  "codes": 430,
-  "items": 712,
+  "codes": 437,
+  "items": 728,
   "errors": 0
  },
  "universe_source": "jpx_master",
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1735,
+  "passed": 1731,
   "named": true,
   "source": "jpx_master"
  },
