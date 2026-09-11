@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-11T15:09:51.594186+09:00",
+ "fetched_at_jst": "2026-09-11T15:30:33.378704+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -54,9 +54,7 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [
-  "fetch_jgb(): RuntimeError: https://www.mof.go.jp/jgbs/reference/interest_rate/jgbcm.csv -> HTTP 200"
- ],
+ "errors": [],
  "anomalies": [
   {
    "code": "1306.T",
@@ -100,27 +98,36 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 47,
+ "news_ok": 45,
+ "jgb": {
+  "date": "2026-08-31",
+  "y2": 1.743,
+  "y10": 2.943,
+  "y30": 4.092
+ },
  "events_ok": 8,
  "n_anomalies": 10,
  "health": "ok",
  "master": {
   "count": 4247,
-  "source": "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx"
+  "cached": true
  },
  "tdnet": {
-  "pages": 8,
-  "codes": 365,
-  "items": 582,
+  "pages": 10,
+  "codes": 430,
+  "items": 712,
   "errors": 0
  },
  "universe_source": "jpx_master",
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1893,
+  "passed": 1735,
   "named": true,
   "source": "jpx_master"
+ },
+ "s17_unmapped": {
+  "電力・ガス": 1
  },
  "analysis": "ok"
 }
