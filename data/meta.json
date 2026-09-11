@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-11T11:45:44.490312+09:00",
+ "fetched_at_jst": "2026-09-11T14:29:25.509903+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -55,7 +55,8 @@
   "^SOX": "yfinance"
  },
  "errors": [
-  "fetch_jgb(): HTTPError: 404 Client Error: Not Found for url: https://www.mof.go.jp/jgbs/reference/interest_rate/jgbcm_all.csv"
+  "fetch_jgb(): HTTPError: 404 Client Error: Not Found for url: https://www.mof.go.jp/jgbs/reference/interest_rate/jgbcm_all.csv",
+  "master: RuntimeError: read_excel失敗 openpyxl:ImportError / calamine:ImportError / xlrd:ImportError"
  ],
  "anomalies": [
   {
@@ -100,9 +101,24 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 47,
+ "news_ok": 46,
  "events_ok": 8,
  "n_anomalies": 10,
  "health": "ok",
+ "master": {
+  "error": "read_excel失敗 openpyxl:ImportError / calamine:ImportError / xlrd:ImportError"
+ },
+ "tdnet": {
+  "pages": 8,
+  "codes": 355,
+  "items": 562,
+  "errors": 0
+ },
+ "screen": {
+  "universe": 485,
+  "scanned": 485,
+  "passed": 0,
+  "named": false
+ },
  "analysis": "ok"
 }
