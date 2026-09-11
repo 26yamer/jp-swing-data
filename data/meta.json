@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-11T14:57:41.036967+09:00",
+ "fetched_at_jst": "2026-09-11T15:09:51.594186+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -55,7 +55,7 @@
   "^SOX": "yfinance"
  },
  "errors": [
-  "master: RuntimeError: read_excel失敗 openpyxl:ImportError / calamine:ImportError / xlrd:ImportError"
+  "fetch_jgb(): RuntimeError: https://www.mof.go.jp/jgbs/reference/interest_rate/jgbcm.csv -> HTTP 200"
  ],
  "anomalies": [
   {
@@ -100,32 +100,27 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 44,
- "jgb": {
-  "date": "2026-08-31",
-  "y2": 1.743,
-  "y10": 2.943,
-  "y30": 4.092
- },
+ "news_ok": 47,
  "events_ok": 8,
  "n_anomalies": 10,
  "health": "ok",
  "master": {
-  "error": "read_excel失敗 openpyxl:ImportError / calamine:ImportError / xlrd:ImportError"
+  "count": 4247,
+  "source": "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx"
  },
  "tdnet": {
   "pages": 8,
-  "codes": 357,
-  "items": 564,
+  "codes": 365,
+  "items": 582,
   "errors": 0
  },
- "universe_source": "bruteforce",
+ "universe_source": "jpx_master",
  "screen": {
-  "universe": 886,
-  "scanned": 886,
-  "passed": 310,
-  "named": false,
-  "source": "bruteforce"
+  "universe": 4247,
+  "scanned": 4247,
+  "passed": 1893,
+  "named": true,
+  "source": "jpx_master"
  },
  "analysis": "ok"
 }
