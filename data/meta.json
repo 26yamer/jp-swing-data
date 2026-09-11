@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-11T22:39:07.373745+09:00",
+ "fetched_at_jst": "2026-09-11T23:51:35.336997+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -98,7 +98,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 38,
+ "news_ok": 37,
  "jgb": {
   "date": "2026-09-10",
   "age_days": 1,
@@ -120,6 +120,7 @@
   "errors": 0
  },
  "universe_source": "jpx_master",
+ "signals_settled": 0,
  "screen": {
   "universe": 4247,
   "scanned": 4247,
@@ -127,11 +128,24 @@
   "named": true,
   "source": "jpx_master"
  },
+ "jpx_earnings": {
+  "files": [
+   "kessan08_0904.xlsx:420件",
+   "kessan07_0904.xlsx:236件"
+  ],
+  "codes": 656
+ },
  "cand_earnings": {
   "asked": 40,
-  "ok": 10,
-  "unknown": 30,
+  "ok": 13,
+  "from_jpx": 6,
+  "from_yf": 7,
+  "unknown": 27,
   "error": 0
+ },
+ "signals": {
+  "closed": 0,
+  "open": 20
  },
  "analysis": "ok"
 }
