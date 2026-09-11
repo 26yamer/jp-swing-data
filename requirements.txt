@@ -2,3 +2,4 @@ yfinance>=0.2.55
 pandas>=2.2
 requests>=2.31
 curl_cffi>=0.7
+openpyxl>=3.1

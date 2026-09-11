@@ -24,7 +24,7 @@
   何が取れなかったかを meta.json に残す。失敗を握りつぶすのではなく、
   「部分的な成功を捨てない」ための設計。
 """
-import os, sys, time, json, datetime as dt
+import os, sys, re, time, json, datetime as dt
 import pandas as pd
 
 JST = dt.timezone(dt.timedelta(hours=9))
@@ -377,6 +377,364 @@ meta["n_anomalies"] = sum(a["n"] for a in meta.get("anomalies", []))
 meta["health"] = ("ok" if meta["holdings_ok"] == len(HOLDINGS)
                   else "partial" if meta["holdings_ok"] >= 6 else "bad")
 
+
+# ══════════════════════════════════════════════════════════════════════
+#  7) 全銘柄スクリーニング
+#     これまでは保有銘柄しかスコアリングしておらず、東証約4,000のうち
+#     0.2%しか俎上に載っていなかった。「何を新しく買うか」を出せる状態にする。
+#
+#     設計上の要点:
+#       ・生データはコミットしない（4,000銘柄×2年をgitに置くと破綻する）。
+#         ジョブ内で取得→計算→**上位候補の表だけ**を残す。
+#       ・銘柄リストは初回に総当たりで作って universe.json に保存し、
+#         以降は再利用する（30日で作り直す）。
+#       ・時間予算を持ち、超えたらそこまでの分で結果を出す。止まらない。
+# ══════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+#  5a) 銘柄マスタ（JPX 東証上場銘柄一覧）と 適時開示（TDnet）
+#      狙い: スクリーニング結果に「銘柄名」「業種」「当日の開示」を付ける。
+#            コードだけの表は人間が検証できず、なぜ動いているかの裏も取れない。
+#      注意: どちらも取得に失敗してもジョブは止めない。マスタは前回の
+#            キャッシュにフォールバックし、開示は空で先に進む。
+# ══════════════════════════════════════════════════════════════════════
+JPX_URLS = [
+    "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx",
+    "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls",
+]
+MASTER_MIN_ROWS     = 1000        # これ未満しか取れなければ壊れたファイルとみなす
+MASTER_MAX_AGE_DAYS = 25          # 月初の第3営業日に更新されるので25日で取り直す
+EXCLUDE_MARKET_KW   = ["pro market", "pro-market", "ｐｒｏ"]
+# 2024年以降、新規コードには英字が入る（例 130A）。数字だけで判定してはいけない。
+CODE_RE = re.compile(r"^[0-9][0-9A-Za-z]{3}$")
+
+def classify_kind(mkt):
+    m = mkt or ""
+    if "ETF" in m or "ETN" in m: return "ETF/ETN"
+    if "REIT" in m or "インフラ" in m or "ベンチャー" in m or "カントリー" in m: return "REIT等"
+    if "出資証券" in m: return "出資証券"
+    if "内国株式" in m or "外国株式" in m: return "株式"
+    return (m[:8] or "不明")
+
+def _master_bytes():
+    import requests
+    last = None
+    for u in JPX_URLS:
+        try:
+            r = requests.get(u, timeout=120, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code == 200 and len(r.content) > 50_000:
+                return u, r.content
+            last = f"{u} -> HTTP {r.status_code} / {len(r.content)}bytes"
+        except Exception as e:
+            last = f"{u} -> {type(e).__name__}: {e}"
+    raise RuntimeError(last or "URLなし")
+
+def _master_frame(blob):
+    """.xlsx と .xls のどちらで配信されても読めるようにエンジンを順に試す。"""
+    import io
+    errs = []
+    for eng in ("openpyxl", "calamine", "xlrd"):
+        try:
+            return pd.read_excel(io.BytesIO(blob), dtype=str, engine=eng)
+        except Exception as e:
+            errs.append(f"{eng}:{type(e).__name__}")
+    raise RuntimeError("read_excel失敗 " + " / ".join(errs))
+
+def _col(df, *names):
+    norm = lambda s: str(s).replace(" ", "").replace("　", "").strip()
+    for n in names:
+        for c in df.columns:
+            if norm(c) == n: return c
+    return None
+
+def load_master():
+    """コード → 銘柄名・市場区分・17業種 の対照表。"""
+    p, cached = f"{OUT}/jpx_master.json", None
+    try:
+        if os.path.exists(p):
+            cached = json.load(open(p, encoding="utf-8"))
+            age = (NOW - dt.datetime.fromisoformat(cached["built_at_jst"])).days
+            if age < MASTER_MAX_AGE_DAYS and len(cached.get("rows", {})) >= MASTER_MIN_ROWS:
+                print(f"[マスタ] jpx_master.json を再利用 ({len(cached['rows']):,}銘柄 / {age}日前)")
+                meta["master"] = {"count": len(cached["rows"]), "cached": True}
+                return cached["rows"]
+    except Exception as e:
+        meta["errors"].append(f"master cache: {e}")
+    try:
+        url, blob = _master_bytes()
+        df = _master_frame(blob)
+        c_code = _col(df, "コード"); c_name = _col(df, "銘柄名")
+        c_mkt  = _col(df, "市場・商品区分"); c_s17 = _col(df, "17業種区分")
+        c_s33  = _col(df, "33業種区分");    c_sz  = _col(df, "規模区分")
+        if not (c_code and c_name):
+            raise RuntimeError(f"想定した列が無い: {list(df.columns)[:12]}")
+        rows = {}
+        for _, r in df.iterrows():
+            code = str(r[c_code]).strip()
+            if not CODE_RE.match(code): continue
+            mkt = str(r[c_mkt]).strip() if c_mkt else ""
+            if any(k in mkt.lower() for k in EXCLUDE_MARKET_KW): continue
+            s17 = str(r[c_s17]).strip() if c_s17 else ""
+            rows[code] = {"name": str(r[c_name]).strip(), "market": mkt,
+                          "s17": "" if s17 in ("-", "－", "nan", "") else s17,
+                          "s33": (str(r[c_s33]).strip() if c_s33 else ""),
+                          "size": (str(r[c_sz]).strip() if c_sz else ""),
+                          "kind": classify_kind(mkt)}
+        if len(rows) < MASTER_MIN_ROWS:
+            raise RuntimeError(f"件数が少なすぎる: {len(rows)}")
+        json.dump({"built_at_jst": NOW.isoformat(), "source": url, "rows": rows},
+                  open(p, "w"), ensure_ascii=False)
+        meta["master"] = {"count": len(rows), "source": url}
+        print(f"[マスタ] JPX 東証上場銘柄一覧を取得: {len(rows):,}銘柄")
+        return rows
+    except Exception as e:
+        meta["errors"].append(f"master: {type(e).__name__}: {e}")
+        if cached and cached.get("rows"):
+            print(f"[マスタ] 取得失敗。古いキャッシュで継続: {e}")
+            meta["master"] = {"count": len(cached["rows"]), "stale": True, "error": str(e)[:120]}
+            return cached["rows"]
+        print(f"[マスタ] 取得失敗・キャッシュ無し: {e}")
+        meta["master"] = {"error": str(e)[:120]}
+        return {}
+
+# 17業種区分 → 業種別ETF。セクター物色の表と候補を機械的に突き合わせるため。
+S17_TO_ETF = {v: k for k, v in SECTOR.items()}
+
+TDNET_MAX_PAGES = 12
+
+def fetch_tdnet(days=4):
+    """適時開示（TDnet）の直近4日分。月曜に金曜の開示を拾うため4日みる
+       （土日祝のURLは404になるだけなので空振りは安い）。「なぜ動いているか」の裏取りに使う。
+       TDnetは約31日分しか保持しないので、履歴の分析には使えない。"""
+    import requests, html as _html
+    out, pages, errs = {}, 0, 0
+    for back in range(days):
+        d = (NOW - dt.timedelta(days=back)).strftime("%Y%m%d")
+        for pg in range(1, TDNET_MAX_PAGES + 1):
+            u = f"https://www.release.tdnet.info/inbs/I_list_{pg:03d}_{d}.html"
+            try:
+                r = requests.get(u, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+            except Exception as e:
+                errs += 1; meta["errors"].append(f"tdnet {d}p{pg}: {type(e).__name__}"); break
+            if r.status_code != 200: break
+            try:
+                txt = r.content.decode("utf-8")
+            except UnicodeDecodeError:
+                txt = r.content.decode("cp932", errors="replace")
+            pages += 1
+            before = sum(len(v) for v in out.values())
+            for tr in re.split(r"<tr", txt, flags=re.I)[1:]:
+                # 属性は " と ' の両方があり得る。要素も td/div の両方が使われてきた。
+                mc = re.search(r'kjCode["\']?[^>]*>\s*([0-9][0-9A-Za-z]{3,4})', tr)
+                mt = re.search(r'kjTitle["\']?[^>]*>(.*?)</(?:td|th|div)>', tr, re.S | re.I)
+                mm = re.search(r'kjTime["\']?[^>]*>\s*([\d:]+)', tr)
+                if not (mc and mt): continue
+                title = _html.unescape(re.sub(r"<[^>]+>", " ", mt.group(1)))
+                title = re.sub(r"\s+", " ", title).strip()
+                if not title: continue
+                out.setdefault(mc.group(1)[:4], []).append(
+                    {"date": d, "time": (mm.group(1) if mm else ""), "title": title[:90]})
+            if sum(len(v) for v in out.values()) == before: break   # 空ページ＝終端
+    total = sum(len(v) for v in out.values())
+    meta["tdnet"] = {"pages": pages, "codes": len(out), "items": total, "errors": errs}
+    print(f"[適時開示] {pages}ページ / {len(out)}銘柄 / {total}件")
+    return out
+
+SCREEN_ENABLED   = True
+SCREEN_BUDGET_S  = 1800      # 取得に使ってよい秒数（超えたら打ち切って結果を出す）
+SCREEN_CHUNK     = 180       # 1リクエストあたりの銘柄数
+MIN_TURNOVER     = 50_000_000   # 20日平均の売買代金がこの額未満は流動性不足として除外
+MIN_PRICE        = 100          # 低位株を除外（呼値の粗さで往復コストが重くなる）
+MIN_ATR_PCT      = 1.5          # これ未満は値幅が小さくスイングの期待値が立たない
+
+def load_universe(master=None):
+    """スクリーニング対象の銘柄リスト。
+       第一候補は JPX の上場銘柄一覧（正確・英字コードも拾える・数秒で済む）。
+       取れなかったときだけ、従来どおり Yahoo を総当たりして作る。"""
+    if master:
+        keep = ("株式", "ETF/ETN", "REIT等", "出資証券")
+        codes = [f"{c}.T" for c, v in sorted(master.items()) if v.get("kind") in keep]
+        if len(codes) > 1000:
+            from collections import Counter
+            mix = Counter(v.get("kind") for v in master.values() if v.get("kind") in keep)
+            print(f"[全銘柄] JPXマスタから {len(codes):,}銘柄を対象にする "
+                  + " / ".join(f"{k}{n:,}" for k, n in mix.most_common()))
+            return codes
+        meta["errors"].append(f"universe from master too small: {len(codes)}")
+
+    p = f"{OUT}/universe.json"
+    try:
+        if os.path.exists(p):
+            u = json.load(open(p, encoding="utf-8"))
+            age = (NOW - dt.datetime.fromisoformat(u["built_at_jst"])).days
+            if age < 30 and len(u.get("codes", [])) > 500:
+                print(f"[全銘柄] universe.json を再利用 ({len(u['codes'])}銘柄 / {age}日前に作成)")
+                return u["codes"]
+    except Exception as e:
+        meta["errors"].append(f"universe read: {e}")
+
+    print("[全銘柄] JPXマスタが無いため総当たりで構築（初回のみ数分。英字コードは拾えない）")
+    import yfinance as yf
+    cands = [f"{c}.T" for c in range(1300, 10000)]
+    found, t0 = [], time.time()
+    for i in range(0, len(cands), SCREEN_CHUNK):
+        if time.time() - t0 > SCREEN_BUDGET_S:
+            print("[全銘柄] 時間予算に達したため打ち切り"); break
+        part = cands[i:i+SCREEN_CHUNK]
+        try:
+            d = yf.download(part, period="5d", interval="1d", auto_adjust=False,
+                            group_by="ticker", threads=True, progress=False)
+            for c in part:
+                try:
+                    if not d[c]["Close"].dropna().empty: found.append(c)
+                except Exception:
+                    pass
+        except Exception as e:
+            meta["errors"].append(f"universe chunk {i}: {type(e).__name__}")
+        if (i // SCREEN_CHUNK) % 10 == 0:
+            print(f"  {i+len(part)}/{len(cands)} 走査  有効 {len(found)}銘柄  {time.time()-t0:.0f}秒")
+    json.dump({"built_at_jst": NOW.isoformat(), "codes": found},
+              open(p, "w"), ensure_ascii=False)
+    print(f"[全銘柄] {len(found)}銘柄を universe.json に保存")
+    return found
+
+def screen_all(codes):
+    """全銘柄の直近データを取得し、流動性と値幅で絞ってから指標を付ける。"""
+    import yfinance as yf
+    rows, t0 = [], time.time()
+    done = 0
+    for i in range(0, len(codes), SCREEN_CHUNK):
+        if time.time() - t0 > SCREEN_BUDGET_S:
+            print(f"[全銘柄] 時間予算に達したため {done}/{len(codes)} で打ち切り"); break
+        part = codes[i:i+SCREEN_CHUNK]
+        try:
+            d = yf.download(part, period="6mo", interval="1d", auto_adjust=False,
+                            group_by="ticker", threads=True, progress=False)
+        except Exception as e:
+            meta["errors"].append(f"screen chunk {i}: {type(e).__name__}"); continue
+        for c in part:
+            done += 1
+            try:
+                x = d[c].dropna(subset=["Close"])
+                if len(x) < 60: continue
+                cl = x["Close"]; last = float(cl.iloc[-1])
+                if last < MIN_PRICE: continue
+                turnover = float((cl * x["Volume"]).tail(20).mean())
+                if turnover < MIN_TURNOVER: continue
+                a = _atr(x.reset_index())
+                if not a or a != a: continue
+                atr_pct = a / last * 100
+                if atr_pct < MIN_ATR_PCT: continue
+                adj, _ = repair(cl)
+                w60 = x.tail(60)
+                rows.append(dict(
+                    code=c, close=last, turnover=turnover,
+                    atr=round(a, 2), atr_pct=round(atr_pct, 2),
+                    rsi=round(_rsi(adj.values), 1),
+                    vs25=round((adj.iloc[-1]/adj.rolling(25).mean().iloc[-1]-1)*100, 2),
+                    vs75=round((adj.iloc[-1]/adj.rolling(75).mean().iloc[-1]-1)*100, 2),
+                    pos60=round((last-w60["Low"].min())/(w60["High"].max()-w60["Low"].min())*100, 1),
+                    r20=round((adj.iloc[-1]/adj.iloc[-21]-1)*100, 2),
+                    r60=round((adj.iloc[-1]/adj.iloc[-61]-1)*100, 2),
+                    vol_ratio=round(float(x["Volume"].iloc[-1]/x["Volume"].tail(20).mean()), 2)))
+            except Exception:
+                pass
+        if (i // SCREEN_CHUNK) % 5 == 0:
+            print(f"  {done}/{len(codes)} 処理  通過 {len(rows)}銘柄  {time.time()-t0:.0f}秒")
+    return pd.DataFrame(rows), done
+
+def rank_candidates(df):
+    """順張りと逆張りは別の設定なので、混ぜずに分けて順位を付ける。
+       単一の総合スコアにすると、性格の違う銘柄が同じ土俵で比較されて意味を失う。"""
+    import numpy as np
+    if df.empty: return df, df
+    d = df.copy()
+    heat = np.where(d["rsi"] > 75, (d["rsi"]-75)/25*20, 0)
+
+    # 順張り: 移動平均の上に並び、60日レンジの上方にいて、20日が伸びている
+    d["trend"] = (
+        20*np.clip(d["vs25"]/5, 0, 1) +          # 25日線からの上方乖離（5%で満点）
+        20*np.clip(d["vs75"]/12, 0, 1) +         # 75日線からの上方乖離（12%で満点）
+        25*np.clip(d["pos60"]/100, 0, 1) +       # 60日レンジ内の位置
+        20*np.clip(d["r20"]/12, 0, 1) +          # 20日リターン
+        15*np.clip((d["atr_pct"]-1.5)/2.5, 0, 1) # 値幅（スイング適性）
+        - heat
+    ).round(1)
+
+    # 逆張り: 長期トレンドは生きている（75日線の上）が、短期で売られすぎ
+    d["revert"] = (
+        25*np.clip(-d["vs25"]/8, 0, 1) +         # 25日線を下回るほど高得点
+        25*np.clip((45-d["rsi"])/25, 0, 1) +     # RSIが低いほど高得点
+        20*np.clip((40-d["pos60"])/40, 0, 1) +   # 60日レンジの下方
+        15*np.clip(d["vs75"]/10, 0, 1) +         # ただし長期は上向きであること
+        15*np.clip((d["atr_pct"]-1.5)/2.5, 0, 1)
+    ).round(1)
+    d.loc[d["vs75"] < -5, "revert"] = 0          # 長期も崩れているものは逆張り対象外
+
+    return (d.sort_values("trend", ascending=False).head(20),
+            d.sort_values("revert", ascending=False).head(20))
+
+MASTER = {}
+try:
+    MASTER = load_master()
+except Exception as e:
+    meta["errors"].append(f"master outer: {type(e).__name__}: {e}")
+
+DISC = {}
+try:
+    DISC = fetch_tdnet(days=4)
+    json.dump({"generated_at_jst": NOW.isoformat(),
+               "holdings": {c[:4]: DISC.get(c[:4], []) for c in HOLDINGS},
+               "count_codes": len(DISC),
+               "count_items": sum(len(v) for v in DISC.values())},
+              open(f"{OUT}/disclosures.json", "w"), ensure_ascii=False, indent=1)
+except Exception as e:
+    meta["errors"].append(f"tdnet outer: {type(e).__name__}: {e}")
+    meta["tdnet"] = {"error": str(e)[:120]}
+    print("[適時開示] 失敗:", e)
+
+def _decorate(recs):
+    """候補の行に 銘柄名・業種・対応する業種ETF・当日の開示 を付ける。
+       コードだけの表は人間が検証できず、材料の裏も取れないため必須。"""
+    for r in recs:
+        c4 = str(r["code"])[:4]
+        m = MASTER.get(c4, {})
+        r["name"]   = m.get("name", "")
+        r["s17"]    = m.get("s17", "")
+        r["kind"]   = m.get("kind", "")
+        r["size"]   = m.get("size", "")
+        r["sector_etf"] = S17_TO_ETF.get(m.get("s17", ""), "")[:4]
+        r["news"]   = DISC.get(c4, [])[:3]
+    return recs
+
+try:
+    if SCREEN_ENABLED:
+        uni = load_universe(MASTER)
+        if uni:
+            sc, scanned = screen_all(uni)
+            meta["screen"] = {"universe": len(uni), "scanned": scanned, "passed": len(sc),
+                              "named": bool(MASTER)}
+            if not sc.empty:
+                trend, revert = rank_candidates(sc)
+                tr = _decorate(trend.to_dict("records"))
+                rv = _decorate(revert.to_dict("records"))
+                json.dump({"generated_at_jst": NOW.isoformat(),
+                           "universe": len(uni), "scanned": scanned, "passed": len(sc),
+                           "master_count": len(MASTER),
+                           "tdnet": meta.get("tdnet", {}),
+                           "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
+                                       "min_atr_pct": MIN_ATR_PCT},
+                           "trend": tr, "revert": rv},
+                          open(f"{OUT}/candidates.json", "w"), ensure_ascii=False,
+                          indent=1, default=str)
+                named = sum(1 for r in tr + rv if r["name"])
+                print(f"[全銘柄] 走査{scanned} / 通過{len(sc)} / "
+                      f"銘柄名あり {named}/{len(tr)+len(rv)} / candidates.json を生成")
+except Exception as e:
+    import traceback
+    meta["errors"].append(f"screen: {type(e).__name__}: {e}")
+    meta["screen"] = {"error": str(e)[:120]}
+    print("[全銘柄] 失敗:", e); traceback.print_exc()
+
 # ══════════════════════════════════════════════════════════════════════
 #  6) 分析まで GitHub Actions 側でやりきる
 #     狙い: Claudeのセッションが承認待ちや障害で止まっても、
@@ -649,6 +1007,77 @@ try:
             L.append("\n※ 見出しのみ。判断に必要なら本文を確認すること。")
     except Exception:
         L.append("\n## 市場関連の見出し\n\n取得できませんでした。")
+
+    # ── 保有銘柄の適時開示（TDnet）──────────────────────────────
+    #    決算・上方下方修正・自社株買い・increase/decrease of 配当 など、
+    #    価格が動いた理由がここに出る。ニュース見出しより一次情報に近い。
+    try:
+        dj = json.load(open(f"{OUT}/disclosures.json", encoding="utf-8"))
+        hd = {k: v for k, v in dj.get("holdings", {}).items() if v}
+        n_items = sum(len(v) for v in hd.values())
+        L.append(f"\n## 保有銘柄の適時開示（TDnet 直近4日／全体 {dj.get('count_items',0)}件）\n")
+        if hd:
+            L.append("| コード | 日付 | 時刻 | 表題 |")
+            L.append("|---|:-:|:-:|---|")
+            for c, items in sorted(hd.items()):
+                for x in items[:4]:
+                    L.append(f"| {c} | {x['date'][4:6]}/{x['date'][6:]} | {x.get('time','')} | {x['title']} |")
+            L.append(f"\n※ 保有 {len(hd)}銘柄に {n_items}件。**開示が出た銘柄は指標より開示を優先して判断すること。**")
+        else:
+            L.append("保有銘柄に直近4日の適時開示はなし。")
+            L.append("\n※ 「開示なし」は「材料なし」ではない。報道・需給・指数入替はTDnetには載らない。")
+    except FileNotFoundError:
+        L.append("\n## 保有銘柄の適時開示\n\n取得していません。")
+    except Exception as e:
+        L.append(f"\n## 保有銘柄の適時開示\n\n生成に失敗: {e}")
+
+    # ── 全銘柄スクリーニングの結果 ─────────────────────────────
+    try:
+        cj = json.load(open(f"{OUT}/candidates.json", encoding="utf-8"))
+        def _nm(r):
+            n = (r.get("name") or "").strip()
+            return n[:14] if n else "*(名称取得できず)*"
+        def _disc(r):
+            ns = r.get("news") or []
+            if not ns: return "—"
+            return " / ".join(f"{x['title'][:26]}" for x in ns[:2])
+
+        L.append(f"\n## 新規候補（全銘柄スクリーニング）\n")
+        L.append(f"対象 {cj.get('universe', 0):,}銘柄 → 走査 {cj['scanned']:,} → フィルタ通過 **{cj['passed']:,}銘柄**"
+                 f"（売買代金20日平均 {cj['filters']['min_turnover']/1e8:.1f}億円以上／"
+                 f"株価{cj['filters']['min_price']}円以上／ATR {cj['filters']['min_atr_pct']}%以上）")
+        L.append(f"銘柄マスタ {cj.get('master_count', 0):,}件（JPX上場銘柄一覧）／"
+                 f"適時開示 {cj.get('tdnet', {}).get('items', 0)}件・{cj.get('tdnet', {}).get('codes', 0)}銘柄\n")
+
+        L.append("\n### 順張り候補（移動平均の上・レンジ上方・20日が伸びている）\n")
+        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 当日の開示 |")
+        L.append("|--:|---|---|---|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|")
+        for i, r in enumerate(cj["trend"][:15]):
+            L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
+                     f"**{r['trend']:.1f}** | {r['close']:,.1f} | {r['rsi']:.0f} | "
+                     f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
+                     f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {r['vol_ratio']:.2f}x | {_disc(r)} |")
+
+        L.append("\n### 逆張り候補（長期は上向きだが短期で売られすぎ）\n")
+        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 当日の開示 |")
+        L.append("|--:|---|---|---|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|")
+        for i, r in enumerate(cj["revert"][:15]):
+            if r["revert"] <= 0: continue
+            L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
+                     f"**{r['revert']:.1f}** | {r['close']:,.1f} | {r['rsi']:.0f} | "
+                     f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
+                     f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {_disc(r)} |")
+
+        L.append("\n**この表の読み方と限界**")
+        L.append("- スコアは機械的な順位付けにすぎず、推奨ではない。順張りと逆張りは別の尺度なので**混ぜて比較しない**。")
+        L.append("- 「業種ETF」列は業種別ETF17本の表と突き合わせるための対応コード。**候補のBはこの列の業種の位置から機械的に付けられる。**")
+        L.append("- 「当日の開示」は TDnet の直近4日分（新しい順）。**空欄(—)は「開示が無い」であって「材料が無い」ではない**（報道・需給・指数入替は載らない）。")
+        L.append("- **決算発表日の照合は入っていない。** 発注前に必ず個別に確認すること。")
+        L.append("- ATR%が突出して高いものは一過性の材料で動いている可能性が高い。順位が上でも採用しない。")
+    except FileNotFoundError:
+        L.append("\n## 新規候補\n\nスクリーニング未実行。")
+    except Exception as e:
+        L.append(f"\n## 新規候補\n\n生成に失敗: {e}")
     L.append("\n## マクロ\n")
     L.append("| 指標 | 日付 | 値 | 前日比 |")
     L.append("|---|:-:|--:|--:|")
