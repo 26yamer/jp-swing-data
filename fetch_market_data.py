@@ -288,10 +288,22 @@ def fetch_jgb():
             have = sum(1 for _ in open(f"{OUT}/jgb.csv", encoding="utf-8")) - 1
     except Exception:
         pass
-    url = base + ("jgbcm.csv" if have >= 250 else "jgbcm_all.csv")
-    print(f"JGB: 手元{have}行 → {'当年版' if have >= 250 else '全履歴版'}を取得")
-    r = requests.get(url, timeout=45)
-    r.raise_for_status()
+    # 全履歴版は data/ 配下に移動している（旧URLは404）。
+    # 履歴が取れなくても当年版で走れるよう、順に試して最初に通ったものを使う。
+    cands = ([base + "jgbcm.csv"] if have >= 250 else
+             [base + "data/jgbcm_all.csv", base + "jgbcm_all.csv", base + "jgbcm.csv"])
+    r, url, last = None, None, None
+    for u in cands:
+        try:
+            rr = requests.get(u, timeout=45)
+            if rr.status_code == 200 and len(rr.content) > 2000:
+                r, url = rr, u; break
+            last = f"{u} -> HTTP {rr.status_code}"
+        except Exception as e:
+            last = f"{u} -> {type(e).__name__}"
+    if r is None:
+        raise RuntimeError(last or "JGB: 取得先なし")
+    print(f"JGB: 手元{have}行 → {url.rsplit('/', 1)[-1]} を取得")
     txt = None
     for enc in ("cp932", "shift_jis", "utf-8-sig", "utf-8"):
         try:
@@ -390,6 +402,77 @@ meta["health"] = ("ok" if meta["holdings_ok"] == len(HOLDINGS)
 #         以降は再利用する（30日で作り直す）。
 #       ・時間予算を持ち、超えたらそこまでの分で結果を出す。止まらない。
 # ══════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+#  指標ヘルパ（repair / _rsi / _atr）
+#  ★ここに置く理由: 全銘柄スクリーニングがこれらを使う。以前は分析セクション
+#    （もっと下）で定義していたため、スクリーニング実行時には未定義で
+#    NameError が全銘柄で発生し、except で握りつぶされて通過0件になっていた。
+#    定義は必ず最初の呼び出しより前に置くこと。
+# ══════════════════════════════════════════════════════════════════════
+ROUND = [1/100, 1/50, 1/25, 1/20, 1/10, 1/5, 1/4, 1/3, 1/2,
+         2, 3, 4, 5, 10, 20, 25, 50, 100]
+def _near(r, tol=0.12):
+    if r <= 0: return None
+    import math
+    c = min(ROUND, key=lambda x: abs(math.log(x) - math.log(r)))
+    return c if abs(math.log(c) - math.log(r)) < tol else None
+
+def repair(s, thr=0.20, maxrun=5):
+    """株価系列の異常値と株式分割を直す。これを飛ばすと相関も指標も壊れる。
+
+    パス1（異常値）: 段差の後、数日以内に元の水準へ戻る区間は Yahoo 側の異常値。
+      **倍率がいくつであっても**前後を線形補間した値で置き換える。
+      （1306は3/30〜31に1/10、1629は同じ日に約1/500になっていた。
+        1/500は「丸い倍率」ではないため、倍率を見る方式では直せなかった。）
+    パス2（分割）: 水準が戻らない段差は株式分割とみなし、丸い倍率で遡及調整する。
+    """
+    import numpy as np
+    v = np.asarray(s.values, float).copy(); n = len(v); log = []
+
+    i = 1
+    while i < n:
+        if v[i-1] > 0 and v[i] > 0 and abs(v[i]/v[i-1] - 1) > thr:
+            fixed = False
+            for k in range(1, maxrun+1):
+                j = i + k
+                if j < n and v[j] > 0 and abs(v[j]/v[i-1] - 1) < 0.15:
+                    before, after = v[i-1], v[j]
+                    for kk in range(i, j):                    # 前後をなめらかにつなぐ
+                        f = (kk - i + 1) / (j - i + 1)
+                        v[kk] = before + (after - before) * f
+                    log.append(f"異常値 {s.index[i].date()}〜{s.index[j-1].date()} を前後の水準で補間")
+                    fixed = True; break
+            if fixed:
+                i = i + 1; continue
+        i += 1
+
+    for i in range(1, n):
+        if v[i-1] > 0 and v[i] > 0 and abs(v[i]/v[i-1] - 1) > thr:
+            r = _near(v[i]/v[i-1])
+            if r:
+                v[:i] *= r
+                log.append(f"分割 {s.index[i].date()} " + (f"1:{1/r:.0f}" if r < 1 else f"{r:.0f}:1"))
+    return pd.Series(v, index=s.index), log
+
+def _rsi(c, n=14):
+    import numpy as np
+    d = np.diff(c); u = np.where(d > 0, d, 0.); w = np.where(d < 0, -d, 0.)
+    if len(d) < n: return float("nan")
+    a, b = u[:n].mean(), w[:n].mean()
+    for i in range(n, len(d)): a = (a*(n-1)+u[i])/n; b = (b*(n-1)+w[i])/n
+    return 100.0 if b == 0 else 100 - 100/(1 + a/b)
+
+def _atr(d, n=14):
+    import numpy as np
+    h, l, c = d["High"].values, d["Low"].values, d["Close"].values
+    tr = [h[0]-l[0]] + [max(h[i]-l[i], abs(h[i]-c[i-1]), abs(l[i]-c[i-1])) for i in range(1, len(c))]
+    tr = np.array(tr)
+    if len(tr) < n+1: return float("nan")
+    a = tr[1:n+1].mean()
+    for i in range(n+1, len(tr)): a = (a*(n-1)+tr[i])/n
+    return a
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  5a) 銘柄マスタ（JPX 東証上場銘柄一覧）と 適時開示（TDnet）
 #      狙い: スクリーニング結果に「銘柄名」「業種」「当日の開示」を付ける。
@@ -558,6 +641,7 @@ def load_universe(master=None):
             mix = Counter(v.get("kind") for v in master.values() if v.get("kind") in keep)
             print(f"[全銘柄] JPXマスタから {len(codes):,}銘柄を対象にする "
                   + " / ".join(f"{k}{n:,}" for k, n in mix.most_common()))
+            meta["universe_source"] = "jpx_master"
             return codes
         meta["errors"].append(f"universe from master too small: {len(codes)}")
 
@@ -575,10 +659,10 @@ def load_universe(master=None):
     print("[全銘柄] JPXマスタが無いため総当たりで構築（初回のみ数分。英字コードは拾えない）")
     import yfinance as yf
     cands = [f"{c}.T" for c in range(1300, 10000)]
-    found, t0 = [], time.time()
+    found, t0, truncated = [], time.time(), False
     for i in range(0, len(cands), SCREEN_CHUNK):
         if time.time() - t0 > SCREEN_BUDGET_S:
-            print("[全銘柄] 時間予算に達したため打ち切り"); break
+            print("[全銘柄] 時間予算に達したため打ち切り"); truncated = True; break
         part = cands[i:i+SCREEN_CHUNK]
         try:
             d = yf.download(part, period="5d", interval="1d", auto_adjust=False,
@@ -592,9 +676,16 @@ def load_universe(master=None):
             meta["errors"].append(f"universe chunk {i}: {type(e).__name__}")
         if (i // SCREEN_CHUNK) % 10 == 0:
             print(f"  {i+len(part)}/{len(cands)} 走査  有効 {len(found)}銘柄  {time.time()-t0:.0f}秒")
-    json.dump({"built_at_jst": NOW.isoformat(), "codes": found},
-              open(p, "w"), ensure_ascii=False)
-    print(f"[全銘柄] {len(found)}銘柄を universe.json に保存")
+    # 途中で打ち切ったリストを保存すると、次回それを「完成品」として再利用し、
+    # 欠けたユニバースのまま何日も走ることになる。完走したときだけ保存する。
+    if truncated:
+        meta["errors"].append(f"universe truncated at {len(found)}; not cached")
+        print(f"[全銘柄] 打ち切りのため保存しない（{len(found)}銘柄／次回作り直す）")
+    else:
+        json.dump({"built_at_jst": NOW.isoformat(), "codes": found},
+                  open(p, "w"), ensure_ascii=False)
+        print(f"[全銘柄] {len(found)}銘柄を universe.json に保存")
+    meta["universe_source"] = "bruteforce" + ("(truncated)" if truncated else "")
     return found
 
 def screen_all(codes):
@@ -602,6 +693,7 @@ def screen_all(codes):
     import yfinance as yf
     rows, t0 = [], time.time()
     done = 0
+    skipped, skip_msg = {}, {}
     for i in range(0, len(codes), SCREEN_CHUNK):
         if time.time() - t0 > SCREEN_BUDGET_S:
             print(f"[全銘柄] 時間予算に達したため {done}/{len(codes)} で打ち切り"); break
@@ -636,10 +728,22 @@ def screen_all(codes):
                     r20=round((adj.iloc[-1]/adj.iloc[-21]-1)*100, 2),
                     r60=round((adj.iloc[-1]/adj.iloc[-61]-1)*100, 2),
                     vol_ratio=round(float(x["Volume"].iloc[-1]/x["Volume"].tail(20).mean()), 2)))
-            except Exception:
-                pass
+            except Exception as e:
+                # 握りつぶすと「全銘柄が同じ理由で落ちている」事故が見えなくなる。
+                # 種類ごとに件数を数え、最初の1件はメッセージも残す。
+                k = type(e).__name__
+                skipped[k] = skipped.get(k, 0) + 1
+                if k not in skip_msg: skip_msg[k] = str(e)[:80]
         if (i // SCREEN_CHUNK) % 5 == 0:
             print(f"  {done}/{len(codes)} 処理  通過 {len(rows)}銘柄  {time.time()-t0:.0f}秒")
+    if skipped:
+        meta["screen_skipped"] = {k: {"n": v, "例": skip_msg.get(k, "")}
+                                  for k, v in sorted(skipped.items(), key=lambda x: -x[1])}
+        print("[全銘柄] 除外の内訳:", ", ".join(f"{k}×{v}" for k, v in
+              sorted(skipped.items(), key=lambda x: -x[1])[:5]))
+        # フィルタ落ちではなく例外で全滅している場合は明確に警告する
+        if len(rows) == 0 and done > 0:
+            print(f"::warning::スクリーニングの通過が0件です。除外の内訳を data/meta.json で確認してください")
     return pd.DataFrame(rows), done
 
 def rank_candidates(df):
@@ -712,23 +816,30 @@ try:
         if uni:
             sc, scanned = screen_all(uni)
             meta["screen"] = {"universe": len(uni), "scanned": scanned, "passed": len(sc),
-                              "named": bool(MASTER)}
+                              "named": bool(MASTER),
+                              "source": meta.get("universe_source", "?")}
             if not sc.empty:
                 trend, revert = rank_candidates(sc)
                 tr = _decorate(trend.to_dict("records"))
                 rv = _decorate(revert.to_dict("records"))
-                json.dump({"generated_at_jst": NOW.isoformat(),
-                           "universe": len(uni), "scanned": scanned, "passed": len(sc),
-                           "master_count": len(MASTER),
-                           "tdnet": meta.get("tdnet", {}),
-                           "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
-                                       "min_atr_pct": MIN_ATR_PCT},
-                           "trend": tr, "revert": rv},
-                          open(f"{OUT}/candidates.json", "w"), ensure_ascii=False,
-                          indent=1, default=str)
-                named = sum(1 for r in tr + rv if r["name"])
-                print(f"[全銘柄] 走査{scanned} / 通過{len(sc)} / "
-                      f"銘柄名あり {named}/{len(tr)+len(rv)} / candidates.json を生成")
+            else:
+                tr, rv = [], []
+            # 通過0件でも必ず書く。書かないと report 側が「未実行」と表示してしまい、
+            # 「走らせたが0件だった」という事故が「まだ動かしていない」に見える。
+            json.dump({"generated_at_jst": NOW.isoformat(),
+                       "universe": len(uni), "scanned": scanned, "passed": len(sc),
+                       "master_count": len(MASTER),
+                       "universe_source": meta.get("universe_source", "?"),
+                       "tdnet": meta.get("tdnet", {}),
+                       "skipped": meta.get("screen_skipped", {}),
+                       "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
+                                   "min_atr_pct": MIN_ATR_PCT},
+                       "trend": tr, "revert": rv},
+                      open(f"{OUT}/candidates.json", "w"), ensure_ascii=False,
+                      indent=1, default=str)
+            named = sum(1 for r in tr + rv if r["name"])
+            print(f"[全銘柄] 走査{scanned} / 通過{len(sc)} / "
+                  f"銘柄名あり {named}/{max(len(tr)+len(rv),1)} / candidates.json を生成")
 except Exception as e:
     import traceback
     meta["errors"].append(f"screen: {type(e).__name__}: {e}")
@@ -759,69 +870,6 @@ def load_positions():
     except Exception as e:
         meta["errors"].append(f"positions.json: {e}")
     return default
-
-ROUND = [1/100, 1/50, 1/25, 1/20, 1/10, 1/5, 1/4, 1/3, 1/2,
-         2, 3, 4, 5, 10, 20, 25, 50, 100]
-def _near(r, tol=0.12):
-    if r <= 0: return None
-    import math
-    c = min(ROUND, key=lambda x: abs(math.log(x) - math.log(r)))
-    return c if abs(math.log(c) - math.log(r)) < tol else None
-
-def repair(s, thr=0.20, maxrun=5):
-    """株価系列の異常値と株式分割を直す。これを飛ばすと相関も指標も壊れる。
-
-    パス1（異常値）: 段差の後、数日以内に元の水準へ戻る区間は Yahoo 側の異常値。
-      **倍率がいくつであっても**前後を線形補間した値で置き換える。
-      （1306は3/30〜31に1/10、1629は同じ日に約1/500になっていた。
-        1/500は「丸い倍率」ではないため、倍率を見る方式では直せなかった。）
-    パス2（分割）: 水準が戻らない段差は株式分割とみなし、丸い倍率で遡及調整する。
-    """
-    import numpy as np
-    v = np.asarray(s.values, float).copy(); n = len(v); log = []
-
-    i = 1
-    while i < n:
-        if v[i-1] > 0 and v[i] > 0 and abs(v[i]/v[i-1] - 1) > thr:
-            fixed = False
-            for k in range(1, maxrun+1):
-                j = i + k
-                if j < n and v[j] > 0 and abs(v[j]/v[i-1] - 1) < 0.15:
-                    before, after = v[i-1], v[j]
-                    for kk in range(i, j):                    # 前後をなめらかにつなぐ
-                        f = (kk - i + 1) / (j - i + 1)
-                        v[kk] = before + (after - before) * f
-                    log.append(f"異常値 {s.index[i].date()}〜{s.index[j-1].date()} を前後の水準で補間")
-                    fixed = True; break
-            if fixed:
-                i = i + 1; continue
-        i += 1
-
-    for i in range(1, n):
-        if v[i-1] > 0 and v[i] > 0 and abs(v[i]/v[i-1] - 1) > thr:
-            r = _near(v[i]/v[i-1])
-            if r:
-                v[:i] *= r
-                log.append(f"分割 {s.index[i].date()} " + (f"1:{1/r:.0f}" if r < 1 else f"{r:.0f}:1"))
-    return pd.Series(v, index=s.index), log
-
-def _rsi(c, n=14):
-    import numpy as np
-    d = np.diff(c); u = np.where(d > 0, d, 0.); w = np.where(d < 0, -d, 0.)
-    if len(d) < n: return float("nan")
-    a, b = u[:n].mean(), w[:n].mean()
-    for i in range(n, len(d)): a = (a*(n-1)+u[i])/n; b = (b*(n-1)+w[i])/n
-    return 100.0 if b == 0 else 100 - 100/(1 + a/b)
-
-def _atr(d, n=14):
-    import numpy as np
-    h, l, c = d["High"].values, d["Low"].values, d["Close"].values
-    tr = [h[0]-l[0]] + [max(h[i]-l[i], abs(h[i]-c[i-1]), abs(l[i]-c[i-1])) for i in range(1, len(c))]
-    tr = np.array(tr)
-    if len(tr) < n+1: return float("nan")
-    a = tr[1:n+1].mean()
-    for i in range(n+1, len(tr)): a = (a*(n-1)+tr[i])/n
-    return a
 
 def ttm_div(code, price, today):
     """events.json の集計値は使わない（窓の起点が最後の支払日で回数を誤る）。
@@ -1046,8 +1094,23 @@ try:
         L.append(f"対象 {cj.get('universe', 0):,}銘柄 → 走査 {cj['scanned']:,} → フィルタ通過 **{cj['passed']:,}銘柄**"
                  f"（売買代金20日平均 {cj['filters']['min_turnover']/1e8:.1f}億円以上／"
                  f"株価{cj['filters']['min_price']}円以上／ATR {cj['filters']['min_atr_pct']}%以上）")
-        L.append(f"銘柄マスタ {cj.get('master_count', 0):,}件（JPX上場銘柄一覧）／"
+        L.append(f"銘柄マスタ {cj.get('master_count', 0):,}件（JPX上場銘柄一覧／"
+                 f"ユニバースの出所: {cj.get('universe_source', '?')}）／"
                  f"適時開示 {cj.get('tdnet', {}).get('items', 0)}件・{cj.get('tdnet', {}).get('codes', 0)}銘柄\n")
+        if cj.get("master_count", 0) == 0:
+            L.append("\n> **注意: 銘柄マスタが取得できていない。** 候補に銘柄名と業種が付かず、"
+                     "候補のBを機械的に付けられない。`openpyxl` が入っているか確認すること。\n")
+        if not cj.get("trend") and not cj.get("revert"):
+            L.append(f"\n> **本日の通過は0件。** これはフィルタが厳しすぎるか、走査側で例外が出ているかのどちらか。")
+            sk = cj.get("skipped") or {}
+            if sk:
+                L.append("> 除外の内訳（例外の種類ごと）: "
+                         + " / ".join(f"`{k}`×{v['n']}（例: {v['例']}）" for k, v in list(sk.items())[:4]))
+                L.append("> **例外が大半を占める場合は、フィルタの結果ではなく不具合。** "
+                         "この日の候補は信用しないこと。")
+            else:
+                L.append("> 例外は記録されていないので、フィルタ（売買代金・価格・ATR）で全件が落ちたということ。")
+            L.append("")
 
         L.append("\n### 順張り候補（移動平均の上・レンジ上方・20日が伸びている）\n")
         L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 当日の開示 |")
