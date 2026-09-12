@@ -486,6 +486,22 @@ def repair(s, thr=0.20, maxrun=5):
                 log.append(f"分割 {s.index[i].date()} " + (f"1:{1/r:.0f}" if r < 1 else f"{r:.0f}:1"))
     return pd.Series(v, index=s.index), log
 
+def adjusted_frame(x):
+    """OHLC を Adj Close の比率で調整した枠を返す。
+       Adj Close が無い／壊れている場合は素通りさせる（生値のまま）。"""
+    out = x.copy()
+    if "Adj Close" not in out.columns:
+        return out
+    f = out["Adj Close"] / out["Close"]
+    f = f.replace([float("inf"), float("-inf")], float("nan"))
+    if f.isna().all():
+        return out
+    f = f.ffill().bfill()
+    for c in ("Open", "High", "Low", "Close"):
+        if c in out.columns:
+            out[c] = out[c] * f
+    return out
+
 def _rsi(c, n=14):
     import numpy as np
     d = np.diff(c); u = np.where(d > 0, d, 0.); w = np.where(d < 0, -d, 0.)
@@ -751,6 +767,246 @@ MAX_ATR_PCT      = 6.0          # これを超えるものは一過性の材料�
                                 # 材料の中身をこの仕組みは見られないので、順位以前に外す。
 
 # ══════════════════════════════════════════════════════════════════════
+#  過去検証 ── このスコアに優位性があるのかを、実際に付いた値段で確かめる
+#
+#  なぜ要るか:
+#    台帳は前向きに積み上がるが、平均+0.10Rを判定するには400件規模が要り、
+#    しかも同じ日の銘柄は独立でないので、実効的には1年以上かかる。
+#    一方、過去2年の実データは今ある。同じ問いに今日答えられる。
+#
+#  何を比べるのか（先に決めておく。後から良い結果を探さない）:
+#    ① 順張り上位10件 vs 同じ母集団からの無作為10件
+#    ② 逆張り上位10件 vs 同じ母集団からの無作為10件
+#    ③ ①②を「TOPIXが200日線の上/下」で分けたとき
+#    比較対象が無作為抽出なのが肝心。「平均Rがプラス」では意味がない。
+#    流動性と値幅で絞った母集団から適当に買っても同じ結果なら、
+#    順位付けは何もしていないことになる。
+#
+#  自分を欺かないための約束:
+#    ・指標は t 時点までのデータだけで計算する（先読みしない）
+#    ・建値は t の終値、決着は t+1 以降の高安。窓は寄値で約定
+#    ・価格はすべて調整済み
+#    ・保有期間の感度（10/15/25日）は「頑健性の確認」であって、
+#      良い数字を選ぶためではない
+#
+#  どうしても残るバイアス（結果を良い方に歪める）:
+#    ・生存バイアス。銘柄一覧は「今上場している会社」なので、
+#      この2年で上場廃止になった会社が母集団から抜けている。
+#    ・スリッページ・板の薄さ・約定できない場面を含まない。
+#    ・税を引いていない。
+# ══════════════════════════════════════════════════════════════════════
+BT_ENABLED   = True
+BT_PERIOD    = "2y"
+BT_STEP      = 5        # 何営業日ごとに建てるか
+BT_TOP       = 10       # 各サイドの採用数
+BT_HOLDS     = (10, 15, 25)
+BT_WARMUP    = 80       # 指標が立ち上がるのに要る本数
+BT_MAX_AGE_D = 30       # これより新しい結果があれば作り直さない
+BT_BUDGET_S  = 1500
+BT_CHUNK     = 180
+BT_DRAWS     = 5        # 無作為抽出の試行回数（ばらつきを均す）
+BT_SEED      = 20260911
+
+def _rsi_series(c, n=14):
+    """全期間のRSI。1点ずつ再計算すると検証が終わらないので通しで出す。"""
+    import numpy as np
+    c = np.asarray(c, float)
+    d = np.diff(c, prepend=c[0])
+    up = np.where(d > 0, d, 0.0); dn = np.where(d < 0, -d, 0.0)
+    au = np.full(len(c), np.nan); ad = np.full(len(c), np.nan)
+    if len(c) <= n: return np.full(len(c), np.nan)
+    au[n] = up[1:n+1].mean(); ad[n] = dn[1:n+1].mean()
+    for i in range(n+1, len(c)):
+        au[i] = (au[i-1]*(n-1) + up[i]) / n
+        ad[i] = (ad[i-1]*(n-1) + dn[i]) / n
+    rs = np.where(ad > 0, au/np.where(ad == 0, np.nan, ad), np.inf)
+    return 100 - 100/(1+rs)
+
+def _atr_series(h, l, c, n=14):
+    import numpy as np
+    h, l, c = map(lambda z: np.asarray(z, float), (h, l, c))
+    pc = np.roll(c, 1); pc[0] = c[0]
+    tr = np.maximum(h-l, np.maximum(abs(h-pc), abs(l-pc)))
+    a = np.full(len(c), np.nan)
+    if len(c) <= n: return a
+    a[n] = tr[1:n+1].mean()
+    for i in range(n+1, len(c)):
+        a[i] = (a[i-1]*(n-1) + tr[i]) / n
+    return a
+
+def bt_features(ax, vol):
+    """調整済みの枠から、全期間ぶんの指標を一度に作る。
+       各検証日では添字を引くだけにして、計算量を抑える。"""
+    import numpy as np
+    cl = ax["Close"].to_numpy(float)
+    out = {
+        "close": cl,
+        "rsi":   _rsi_series(cl),
+        "atr":   _atr_series(ax["High"].to_numpy(float), ax["Low"].to_numpy(float), cl),
+        "ma25":  ax["Close"].rolling(25).mean().to_numpy(float),
+        "ma75":  ax["Close"].rolling(75).mean().to_numpy(float),
+        "hi60":  ax["High"].rolling(60).max().to_numpy(float),
+        "lo60":  ax["Low"].rolling(60).min().to_numpy(float),
+        "open":  ax["Open"].to_numpy(float),
+        "high":  ax["High"].to_numpy(float),
+        "low":   ax["Low"].to_numpy(float),
+        "turn":  (ax["Close"]*vol).rolling(20).mean().to_numpy(float),
+        "volr":  (vol / vol.rolling(20).mean()).to_numpy(float),
+    }
+    r20 = np.full(len(cl), np.nan); r20[21:] = cl[21:]/cl[:-21] - 1
+    out["r20"] = r20*100
+    return out
+
+def bt_score_at(f, i):
+    """日 i 時点の特徴量。i より後のデータは一切使わない。"""
+    import numpy as np
+    c, a = f["close"][i], f["atr"][i]
+    if not (c > 0) or not (a > 0): return None
+    rng = f["hi60"][i] - f["lo60"][i]
+    if not (rng > 0): return None
+    m25, m75 = f["ma25"][i], f["ma75"][i]
+    if not (m25 > 0) or not (m75 > 0): return None
+    atr_pct = a/c*100
+    return dict(close=c, atr=a, atr_pct=atr_pct, rsi=f["rsi"][i],
+                vs25=(c/m25-1)*100, vs75=(c/m75-1)*100,
+                pos60=(c-f["lo60"][i])/rng*100, r20=f["r20"][i],
+                volr=f["volr"][i] if f["volr"][i] == f["volr"][i] else 1.0,
+                turn=f["turn"][i])
+
+def bt_simulate(f, i, entry, atr, hold):
+    """i+1 以降の実際の高安で決着させる。窓は寄値で約定。"""
+    stop, tgt = entry - 2*atr, entry + 3*atr
+    n = len(f["close"])
+    for k in range(i+1, min(i+1+hold, n)):
+        op, hi, lo, cl = f["open"][k], f["high"][k], f["low"][k], f["close"][k]
+        if lo <= stop:
+            fill = min(op, stop) if op == op else stop
+            return (fill-entry)/(2*atr), k-i, "stop"
+        if hi >= tgt:
+            fill = max(op, tgt) if op == op else tgt
+            return (fill-entry)/(2*atr), k-i, "target"
+    k = min(i+hold, n-1)
+    return (f["close"][k]-entry)/(2*atr), k-i, "timeout"
+
+def run_backtest(codes, bench="1306.T"):
+    """過去2年で、順位付けに情報があるかを無作為抽出と比べる。
+
+       ★全銘柄を同じ営業日カレンダーに揃えてから位置で引く。
+         揃えないと、配列の位置 i が銘柄ごとに違う日付を指し、
+         「同じ日に建てた」という前提が崩れて比較そのものが無意味になる。"""
+    import numpy as np, yfinance as yf
+    rng = np.random.default_rng(BT_SEED)
+
+    # ① 基準となる営業日カレンダーと、その日のレジーム（200日線の上か）
+    b = yf.download(bench, period=BT_PERIOD, interval="1d",
+                    auto_adjust=False, progress=False)
+    if isinstance(b.columns, pd.MultiIndex): b.columns = b.columns.get_level_values(0)
+    b = b.dropna(subset=["Close"])
+    cal = b.index
+    bc = adjusted_frame(b)["Close"]
+    bma = bc.rolling(200).mean()
+    above = {i: (bool(bc.iloc[i] > bma.iloc[i]) if bma.iloc[i] == bma.iloc[i] else None)
+             for i in range(len(cal))}
+    print(f"[検証] 基準カレンダー {len(cal)}営業日（{cal[0].date()}〜{cal[-1].date()}）")
+
+    # ★コード順のまま取ると、時間切れで打ち切られたときに
+    #   1300〜4000番台（ETF・REIT・食品・化学）に偏った標本になり、
+    #   それを市場全体の結果として報告してしまう。
+    #   固定の種で混ぜてから取るので、打ち切られても中立な部分標本になる。
+    codes = list(codes)
+    rng.shuffle(codes)
+
+    feats, t0, asked = {}, time.time(), 0
+    for j in range(0, len(codes), BT_CHUNK):
+        if time.time() - t0 > BT_BUDGET_S:
+            print(f"[検証] 時間予算に達したため {len(feats)}銘柄で打ち切り"); break
+        part = codes[j:j+BT_CHUNK]; asked += len(part)
+        try:
+            d = yf.download(part, period=BT_PERIOD, interval="1d", auto_adjust=False,
+                            group_by="ticker", threads=True, progress=False)
+        except Exception as e:
+            meta["errors"].append(f"bt chunk {j}: {type(e).__name__}"); continue
+        for c in part:
+            try:
+                x = d[c].dropna(subset=["Close"])
+                if len(x) < len(cal)*0.9: continue      # 歯抜けが多い銘柄は外す
+                x = x.reindex(cal)                      # ★同じカレンダーに揃える
+                if x["Close"].isna().mean() > 0.05: continue
+                x = x.ffill().dropna(subset=["Close"])
+                if len(x) < len(cal): continue          # 先頭が埋まらないもの（新規上場）は外す
+                ax = adjusted_frame(x)
+                feats[c] = bt_features(ax, x["Volume"])
+            except Exception:
+                pass
+        if (j // BT_CHUNK) % 4 == 0:
+            print(f"  検証データ {len(feats)}銘柄  {time.time()-t0:.0f}秒")
+    if len(feats) < 200:
+        raise RuntimeError(f"検証に足る銘柄が集まらない: {len(feats)}")
+
+    nbar = len(cal)
+    trades = {k: [] for k in ("trend", "revert", "random")}
+    n_dates = 0
+    for i in range(BT_WARMUP, nbar - max(BT_HOLDS) - 1, BT_STEP):
+        pool = []
+        for c, f in feats.items():
+            s = bt_score_at(f, i)
+            if s is None: continue
+            if s["close"] < MIN_PRICE: continue
+            if not (s["turn"] >= MIN_TURNOVER): continue
+            if not (MIN_ATR_PCT <= s["atr_pct"] <= MAX_ATR_PCT): continue
+            s["code"] = c; pool.append(s)
+        if len(pool) < 50: continue
+        n_dates += 1
+        df = pd.DataFrame(pool)
+        tr, rv = rank_candidates(df)
+        picks = {"trend": [r for _, r in tr.head(BT_TOP).iterrows() if r["trend"] > 0],
+                 "revert": [r for _, r in rv.head(BT_TOP).iterrows() if r["revert"] > 0]}
+        # 無作為は同じ母集団から。これが比較の基準線
+        for _ in range(BT_DRAWS):
+            idx = rng.choice(len(df), size=min(BT_TOP, len(df)), replace=False)
+            picks.setdefault("random", []).extend(df.iloc[k] for k in idx)
+        for kind, rows in picks.items():
+            w = 1.0/BT_DRAWS if kind == "random" else 1.0
+            for r in rows:
+                f = feats[r["code"]]
+                for hold in BT_HOLDS:
+                    R, bars, how = bt_simulate(f, i, float(r["close"]), float(r["atr"]), hold)
+                    trades[kind].append({"i": i, "hold": hold, "R": R, "bars": bars,
+                                         "how": how, "w": w, "up": above.get(i)})
+    meta["backtest_dates"] = n_dates
+    cov = round(asked/len(codes)*100, 1) if codes else 0
+    meta["backtest_coverage"] = {"asked": asked, "universe": len(codes),
+                                 "pct": cov, "usable": len(feats)}
+    print(f"[検証] {len(feats)}銘柄（母集団{len(codes):,}中{asked:,}件に照会 = {cov}%）/ "
+          f"{n_dates}回の建て日 / 延べ {sum(len(v) for v in trades.values()):,}件")
+    return trades, n_dates, len(feats), str(cal[0].date()), str(cal[-1].date()), cov
+
+def bt_summary(trades, hold, regime=None):
+    out = {}
+    for kind, rows in trades.items():
+        d = [r for r in rows if r["hold"] == hold
+             and (regime is None or r["up"] == regime)]
+        if not d: continue
+        w = sum(r["w"] for r in d)
+        if w <= 0: continue
+        sR = sum(r["R"]*r["w"] for r in d)
+        win = sum(r["w"] for r in d if r["R"] > 0)
+        out[kind] = {"n": round(w, 1), "avg_r": round(sR/w, 4),
+                     "win_pct": round(win/w*100, 1),
+                     "target": round(sum(r["w"] for r in d if r["how"] == "target")/w*100, 1),
+                     "stop": round(sum(r["w"] for r in d if r["how"] == "stop")/w*100, 1),
+                     "timeout": round(sum(r["w"] for r in d if r["how"] == "timeout")/w*100, 1)}
+    # 無作為との差が、順位付けが生んでいる値
+    base = out.get("random", {}).get("avg_r")
+    for k in ("trend", "revert"):
+        if k in out and base is not None:
+            out[k]["vs_random"] = round(out[k]["avg_r"] - base, 4)
+            # 平均の差の粗い有意性（1件あたりのRの散らばりを1.0とみなす）
+            n = out[k]["n"]
+            out[k]["t_rough"] = round(out[k]["vs_random"] / (1.0/max(n, 1)**0.5), 2) if n else None
+    return out
+
+# ══════════════════════════════════════════════════════════════════════
 #  シグナル台帳 ── この仕組みに効き目があるのかを実測する
 #
 #  なぜ必要か:
@@ -767,11 +1023,17 @@ MAX_ATR_PCT      = 6.0          # これを超えるものは一過性の材料�
 #  ただしこれは**執行の記録ではなく、選別ロジックの追跡**である。
 #  実際の約定値・スリッページ・板の薄さは含まれない。そこは割り引いて読むこと。
 # ══════════════════════════════════════════════════════════════════════
+# ── 執行の前提（ここ以外に数字を散らさない）─────────────────────
+LOT              = 100      # 日本株の売買単位。10株単位で丸めると発注できない
+RISK_PER_TRADE_P = 0.009    # 1トレードの許容損失（総額比）
+MAX_WEIGHT       = 0.15     # 1銘柄の上限（総額比）
+MIN_CASH_RATIO   = 0.20     # 現金比率の下限。これを割る発注はしない
+
 SIG_PATH      = f"{OUT}/signals.csv"
 SIG_TOP_N     = 10       # 各サイドの上位何件を台帳に載せるか
 SIG_MAX_HOLD  = 15       # これを超えたら時間切れとして手仕舞う（営業日）
 SIG_COLS = ["date", "kind", "rank", "code", "name", "s17", "score",
-            "entry", "atr", "stop", "target",
+            "entry", "atr", "stop", "target", "adjf",
             "status", "exit_date", "exit", "r_multiple", "bars"]
 
 def load_signals():
@@ -796,46 +1058,71 @@ def open_signal_map(sig):
         out.setdefault(str(r["code"]), []).append(i)
     return out
 
-def settle_signal(row, bars):
+def settle_signal(row, bars, adjf_now=None):
     """entry日より後の実際の高値・安値で決着を付ける。
        同じ日に損切りと利確の両方に触れた場合は**損切りを優先**する
-       （日足では順序が分からないため、都合の良い方を採らない）。"""
+       （日足では順序が分からないため、都合の良い方を採らない）。
+
+       ★bars は**調整済み**の枠を渡すこと。生値で見ると、建てたあとに
+         分割があった銘柄で価格が不連続に下がり、架空の損切りを量産する。
+         建値・損切り・利確は建てた時点の調整係数で同じ土俵に移してから比べる。"""
     try:
         entry = float(row["entry"]); stop = float(row["stop"]); tgt = float(row["target"])
-        atr = float(row["atr"]); kind = str(row["kind"])
+        atr = float(row["atr"])
+        f0 = float(row.get("adjf") or 1.0)
     except Exception:
         return None
+    if not f0 or f0 != f0: f0 = 1.0
+    # 建値側を調整済みの土俵へ移す
+    entry_a, stop_a, tgt_a, atr_a = entry*f0, stop*f0, tgt*f0, atr*f0
     after = bars[bars.index > pd.Timestamp(row["date"])]
     if not len(after): return None
-    long = True   # いまは買いのみ
     for n, (ts, b) in enumerate(after.iterrows(), start=1):
-        hi, lo, cl = float(b["High"]), float(b["Low"]), float(b["Close"])
-        hit_stop = lo <= stop if long else hi >= stop
-        hit_tgt  = hi >= tgt if long else lo <= tgt
-        if hit_stop:
-            return dict(status="stop", exit_date=str(ts.date()), exit=round(stop, 2),
-                        r_multiple=round((stop-entry)/(2*atr), 2), bars=n)
-        if hit_tgt:
-            return dict(status="target", exit_date=str(ts.date()), exit=round(tgt, 2),
-                        r_multiple=round((tgt-entry)/(2*atr), 2), bars=n)
+        op, hi, lo, cl = (float(b["Open"]) if "Open" in b else float(b["Close"]),
+                          float(b["High"]), float(b["Low"]), float(b["Close"]))
+        # ★寄りで損切り水準を飛び越えた日は、損切り値ではなく**寄値**で約定する。
+        #   常に -1.00R として記録すると、窓を開けて下げた分の損が消え、
+        #   成績が実態より良く出る（窓は下に開くほうが多い）。
+        if lo <= stop_a:
+            fill = min(op, stop_a)
+            return dict(status="stop", exit_date=str(ts.date()), exit=round(fill/f0, 2),
+                        r_multiple=round((fill-entry_a)/(2*atr_a), 2), bars=n)
+        if hi >= tgt_a:
+            fill = max(op, tgt_a)
+            return dict(status="target", exit_date=str(ts.date()), exit=round(fill/f0, 2),
+                        r_multiple=round((fill-entry_a)/(2*atr_a), 2), bars=n)
         if n >= SIG_MAX_HOLD:
-            return dict(status="timeout", exit_date=str(ts.date()), exit=round(cl, 2),
-                        r_multiple=round((cl-entry)/(2*atr), 2), bars=n)
+            return dict(status="timeout", exit_date=str(ts.date()), exit=round(cl/f0, 2),
+                        r_multiple=round((cl-entry_a)/(2*atr_a), 2), bars=n)
     return None      # まだ決着していない
 
 def append_signals(sig, recs, kind, today):
-    """その日の上位を台帳に足す。同じ日・同じ銘柄は二重に入れない。"""
-    have = set(zip(sig["date"].astype(str), sig["code"].astype(str), sig["kind"].astype(str)))
+    """その日の上位を台帳に足す。
+       ★未決着の同じ銘柄があるうちは追加しない。
+         以前は(日付,銘柄,種別)でしか重複を見ておらず、上位に居座る銘柄が
+         連日で別行になっていた。1つの値動きを12回数えれば、件数だけが
+         増えて「30件超えたので判断できる」と誤認する。"""
+    have_open = set(sig.loc[sig["status"].isin(["", "open"]) | sig["status"].isna(),
+                            "code"].astype(str)) if len(sig) else set()
+    have_today = set(zip(sig["date"].astype(str), sig["code"].astype(str))) if len(sig) else set()
     add = []
     for i, r in enumerate(recs[:SIG_TOP_N], start=1):
         score = r.get("trend" if kind == "trend" else "revert", 0)
-        if not score or float(score) <= 0: continue
-        if (today, str(r["code"]), kind) in have: continue
+        try:
+            score = float(score)
+        except (TypeError, ValueError):
+            continue
+        if not (score > 0): continue          # NaN もここで落ちる
+        code = str(r["code"])
+        if code in have_open or (today, code) in have_today: continue
         entry, atr = float(r["close"]), float(r["atr"])
-        add.append({"date": today, "kind": kind, "rank": i, "code": r["code"],
+        if not (entry > 0 and atr > 0): continue
+        have_open.add(code)
+        add.append({"date": today, "kind": kind, "rank": i, "code": code,
                     "name": r.get("name", ""), "s17": r.get("s17", ""),
                     "score": score, "entry": round(entry, 2), "atr": round(atr, 2),
                     "stop": round(entry - 2*atr, 2), "target": round(entry + 3*atr, 2),
+                    "adjf": r.get("adjf", 1.0),
                     "status": "open", "exit_date": "", "exit": "", "r_multiple": "", "bars": ""})
     if not add: return sig
     return pd.concat([sig, pd.DataFrame(add)], ignore_index=True)[SIG_COLS]
@@ -847,7 +1134,8 @@ def signal_summary(sig):
     if d.empty: return {"closed": 0, "open": int((sig["status"] == "open").sum())}
     d["r"] = pd.to_numeric(d["r_multiple"], errors="coerce")
     d = d.dropna(subset=["r"])
-    out = {"closed": int(len(d)), "open": int((sig["status"] == "open").sum())}
+    out = {"closed": int(len(d)), "open": int((sig["status"] == "open").sum()),
+           "days": int(sig["date"].astype(str).nunique())}
     for k in ("trend", "revert", None):
         part = d if k is None else d[d["kind"] == k]
         if not len(part): continue
@@ -946,35 +1234,53 @@ def screen_all(codes, sig=None, open_map=None):
 
                 # ── 台帳の決着（ここでやるのは、この銘柄の日足が今まさに手元にあるから）
                 if c in open_map and sig is not None and len(x):
+                    _ax = adjusted_frame(x)
                     for idx in open_map[c]:
                         try:
-                            out = settle_signal(sig.loc[idx], x)
-                        except Exception:
+                            out = settle_signal(sig.loc[idx], _ax)
+                        except Exception as _e:
                             out = None
+                            k = "settle:" + type(_e).__name__
+                            skipped[k] = skipped.get(k, 0) + 1
+                            if k not in skip_msg: skip_msg[k] = str(_e)[:80]
                         if out:
                             for k, v in out.items(): sig.at[idx, k] = v
                             settled += 1
 
-                if len(x) < 60: continue
+                if len(x) < 76: continue      # vs75 と r60 に必要な本数を満たすこと
                 cl = x["Close"]; last = float(cl.iloc[-1])
                 if last < MIN_PRICE: continue
                 turnover = float((cl * x["Volume"]).tail(20).mean())
                 if turnover < MIN_TURNOVER: continue
-                a = _atr(x.reset_index())
-                if not a or a != a: continue
+
+                # ★指標は調整済み、発注価格は実際の価格。
+                #  以前は変数名だけ adj で中身は Close を使っており、分割も
+                #  配当落ちも指標に素通りしていた（配当2.5%落ちの銘柄が
+                #  「売られすぎ」として逆張り上位に入る形になっていた）。
+                ax = adjusted_frame(x)
+                acl, _ = repair(ax["Close"])
+                if acl.isna().all(): continue
+                # ATRは調整済みで計算し、今日の実際の価格水準に戻す。
+                # 分割が窓に入ると生値のATRは桁がずれ、株数と損切り幅が壊れる。
+                a_adj = _atr(ax.reset_index())
+                if not a_adj or a_adj != a_adj: continue
+                f_last = float(ax["Close"].iloc[-1] / last) if last else 1.0
+                a = a_adj / f_last if f_last else a_adj
                 atr_pct = a / last * 100
                 if atr_pct < MIN_ATR_PCT or atr_pct > MAX_ATR_PCT: continue
-                adj, _ = repair(cl)
-                w60 = x.tail(60)
+
+                w60 = ax.tail(60)                      # レンジ位置も調整済みで揃える
+                rng = float(w60["High"].max() - w60["Low"].min())
+                if rng <= 0: continue
                 rows.append(dict(
                     code=c, close=last, turnover=turnover,
-                    atr=round(a, 2), atr_pct=round(atr_pct, 2),
-                    rsi=round(_rsi(adj.values), 1),
-                    vs25=round((adj.iloc[-1]/adj.rolling(25).mean().iloc[-1]-1)*100, 2),
-                    vs75=round((adj.iloc[-1]/adj.rolling(75).mean().iloc[-1]-1)*100, 2),
-                    pos60=round((last-w60["Low"].min())/(w60["High"].max()-w60["Low"].min())*100, 1),
-                    r20=round((adj.iloc[-1]/adj.iloc[-21]-1)*100, 2),
-                    r60=round((adj.iloc[-1]/adj.iloc[-61]-1)*100, 2),
+                    atr=round(a, 2), atr_pct=round(atr_pct, 2), adjf=round(f_last, 6),
+                    rsi=round(_rsi(acl.values), 1),
+                    vs25=round((acl.iloc[-1]/acl.rolling(25).mean().iloc[-1]-1)*100, 2),
+                    vs75=round((acl.iloc[-1]/acl.rolling(75).mean().iloc[-1]-1)*100, 2),
+                    pos60=round((float(ax["Close"].iloc[-1])-w60["Low"].min())/rng*100, 1),
+                    r20=round((acl.iloc[-1]/acl.iloc[-21]-1)*100, 2),
+                    r60=round((acl.iloc[-1]/acl.iloc[-61]-1)*100, 2),
                     vol_ratio=round(float(x["Volume"].iloc[-1]/x["Volume"].tail(20).mean()), 2)))
             except Exception as e:
                 # 握りつぶすと「全銘柄が同じ理由で落ちている」事故が見えなくなる。
@@ -1052,6 +1358,119 @@ def rank_candidates(df):
 #    埋まらなかった。4分の3が「要確認」では、決算跨ぎを避けるルールが働かない。
 #    JPXは決算発表予定日を決算期末月ごとにExcelで公開しているので、そちらを主にする。
 #    ファイル名の日付部分は更新のたびに変わるため、一覧ページからリンクを拾う。
+# ── 決算発表の履歴から次回を推定する ──────────────────────────────
+#   なぜ要るか:
+#     JPXが予定日を載せるのは「直前の四半期が終わった会社」だけ（実測で
+#     7月期末420社＋8月期末236社＝656社）。それ以外は未掲載になる。
+#     実測でも候補40件のうち日付が付いたのは13件で、しかも**全部32〜62日後**
+#     だった。つまり「予定なし」の多くは本当に遠いだけなのだが、
+#     表示上は「不明」と区別できず、毎回あなたが調べ直すことになる。
+#
+#   やること:
+#     TDnetの「決算短信」を日々ためて、その銘柄が最後に決算を出した日を持つ。
+#     四半期決算はほぼ91日間隔なので、そこから次回のおおよその時期が出せる。
+#     TDnetは約31日しか遡れないので、履歴は今日から前向きに積み上がる。
+#
+#   扱い:
+#     これは**予定ではなく推定**。表示は必ず「推定」と「要確認」を併記し、
+#     これだけを根拠に建てさせない。逆に「直近で発表済み」は確定情報として使える。
+EHIST_PATH      = f"{OUT}/earnings_hist.json"
+EHIST_DAYS      = 31        # TDnetが保持している範囲
+EHIST_BUDGET_S  = 240
+EHIST_KEEP_DAYS = 500       # 履歴の保持期間
+QUARTER_DAYS    = 91        # 四半期の間隔（次回の推定に使う）
+RECENT_DAYS     = 45        # これ以内に発表済みなら「当面は決算をまたがない」
+
+def _load_ehist():
+    try:
+        if os.path.exists(EHIST_PATH):
+            h = json.load(open(EHIST_PATH, encoding="utf-8"))
+            h.setdefault("days", []); h.setdefault("kessan", {})
+            return h
+    except Exception as e:
+        meta["errors"].append(f"ehist read: {type(e).__name__}")
+    return {"days": [], "kessan": {}}
+
+def update_earnings_history():
+    """TDnetの決算短信だけを日付ごとに拾って積み上げる。
+       取得済みの日は二度と取りに行かないので、初回以降は1日分で済む。"""
+    import requests, html as _html
+    h = _load_ehist()
+    have = set(h["days"])
+    want = [(NOW - dt.timedelta(days=i)).strftime("%Y%m%d") for i in range(EHIST_DAYS)]
+    todo = [d for d in want if d not in have]
+    # 当日分は場中に増えるので、常に取り直す
+    today = NOW.strftime("%Y%m%d")
+    if today not in todo: todo.insert(0, today)
+
+    t0, fetched, found = time.time(), 0, 0
+    for d in todo:
+        if time.time() - t0 > EHIST_BUDGET_S:
+            print(f"[決算履歴] 時間予算に達したため {fetched}/{len(todo)}日で打ち切り"); break
+        got_any = False
+        for pg in range(1, TDNET_MAX_PAGES + 1):
+            u = f"https://www.release.tdnet.info/inbs/I_list_{pg:03d}_{d}.html"
+            try:
+                r = requests.get(u, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+            except Exception:
+                break
+            if r.status_code != 200: break
+            try:
+                txt = r.content.decode("utf-8")
+            except UnicodeDecodeError:
+                txt = r.content.decode("cp932", errors="replace")
+            n_before = found
+            for tr in re.split(r"<tr", txt, flags=re.I)[1:]:
+                mc = re.search(r'kjCode["\']?[^>]*>\s*([0-9][0-9A-Za-z]{3,4})', tr)
+                mt = re.search(r'kjTitle["\']?[^>]*>(.*?)</(?:td|th|div)>', tr, re.S | re.I)
+                if not (mc and mt): continue
+                title = _html.unescape(re.sub(r"<[^>]+>", " ", mt.group(1)))
+                # 「決算短信」だけを拾う。予想の修正や配当のお知らせは決算発表ではない。
+                # 「決算短信」を含んでも、訂正・修正は発表そのものではない。
+                # これを発表済みと数えると、本番の決算直前に「安全」と表示してしまう。
+                if "決算短信" not in title: continue
+                if any(k in title for k in ("訂正", "修正", "差替", "差し替")): continue
+                code = mc.group(1)[:4]
+                iso = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+                lst = h["kessan"].setdefault(code, [])
+                if iso not in lst:
+                    lst.append(iso); found += 1
+            if found == n_before and pg > 1: break
+            got_any = True
+        fetched += 1
+        if got_any and d not in have and d != today:
+            h["days"].append(d)
+    # 古い履歴を落とす
+    cut = str((NOW - dt.timedelta(days=EHIST_KEEP_DAYS)).date())
+    for c in list(h["kessan"]):
+        h["kessan"][c] = sorted({x for x in h["kessan"][c] if x >= cut})
+        if not h["kessan"][c]: del h["kessan"][c]
+    h["days"] = sorted(set(h["days"]))[-EHIST_KEEP_DAYS:]
+    try:
+        json.dump(h, open(EHIST_PATH, "w"), ensure_ascii=False)
+    except Exception as e:
+        meta["errors"].append(f"ehist write: {type(e).__name__}")
+    meta["earnings_hist"] = {"days_cached": len(h["days"]), "codes": len(h["kessan"]),
+                             "fetched_now": fetched, "new_items": found}
+    print(f"[決算履歴] {fetched}日分を取得（新規{found}件）／"
+          f"蓄積 {len(h['kessan']):,}銘柄 / {len(h['days'])}日分")
+    return h["kessan"]
+
+def estimate_from_history(code, hist, today):
+    """最後の決算短信から次回を推定する。間隔が2つ以上あれば実測の中央値を使う。"""
+    ds = sorted(hist.get(str(code)[:4], []))
+    if not ds: return None
+    last = ds[-1]
+    gap = QUARTER_DAYS
+    if len(ds) >= 3:
+        gaps = [(pd.Timestamp(b) - pd.Timestamp(a)).days for a, b in zip(ds, ds[1:])]
+        gaps = [g for g in gaps if 60 <= g <= 130]
+        if gaps: gap = int(pd.Series(gaps).median())
+    since = (pd.Timestamp(today) - pd.Timestamp(last)).days
+    nxt = str((pd.Timestamp(last) + pd.Timedelta(days=gap)).date())
+    return {"last": last, "since": int(since), "est": nxt,
+            "est_days": int((pd.Timestamp(nxt) - pd.Timestamp(today)).days)}
+
 JPX_EARN_INDEX = "https://www.jpx.co.jp/listing/event-schedules/financial-announcement/index.html"
 JPX_EARN_MAX_FILES = 6          # 直近の数ファイルで足りる（決算は期末から45日以内）
 
@@ -1155,6 +1574,7 @@ EARN_BUDGET_S = 240        # 候補の決算日照会に使ってよい秒数
 EARN_SOON_DAYS = 7         # これ以内なら「決算跨ぎ」として扱う
 
 JPX_EARN = {}
+EHIST = {}
 
 def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
     """候補の次回決算発表日。
@@ -1167,15 +1587,29 @@ def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
        区別せず空欄にすると『決算が無い』と読めてしまい、ルールが骨抜きになる。"""
     import yfinance as yf
     out, t0, today = {}, time.time(), str(NOW.date())
-    n_ok = n_none = n_err = n_jpx = 0
+    n_ok = n_none = n_err = n_jpx = n_recent = n_est = 0
     for c in sorted(codes):
-        # JPX（公式）にあればそれを使う。1リクエストも増えないうえ確度が高い。
+        # ① JPX（公式の予定日）。確度が最も高い。
         j = JPX_EARN.get(str(c)[:4])
         if j and j >= today:
             out[c] = {"status": "ok", "src": "jpx", "next": j,
                       "days": int((pd.Timestamp(j) - pd.Timestamp(today)).days)}
             n_ok += 1; n_jpx += 1
             continue
+        # ② 決算短信の履歴。「直近で発表済み」は確定情報として使える
+        #    （出したばかりなら当面またがない）。次回は推定にとどめる。
+        e = estimate_from_history(c, EHIST, today)
+        if e:
+            if e["since"] <= RECENT_DAYS:
+                out[c] = {"status": "recent", "src": "tdnet", "last": e["last"],
+                          "since": e["since"], "next": e["est"], "days": e["est_days"]}
+                n_recent += 1
+                continue
+            if 0 < e["est_days"]:
+                out[c] = {"status": "estimate", "src": "tdnet", "last": e["last"],
+                          "next": e["est"], "days": e["est_days"]}
+                n_est += 1
+                continue
         if time.time() - t0 > budget_s:
             out[c] = {"status": "timeout"}
             continue
@@ -1196,15 +1630,35 @@ def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
             n_err += 1
         time.sleep(0.15)                            # 連続照会でのレート制限を避ける
     meta["cand_earnings"] = {"asked": len(codes), "ok": n_ok, "from_jpx": n_jpx,
-                             "from_yf": n_ok - n_jpx, "unknown": n_none, "error": n_err}
-    print(f"[決算] 候補{len(codes)}銘柄: 予定日あり{n_ok}"
-          f"（JPX {n_jpx} / yfinance {n_ok-n_jpx}） 不明{n_none} 失敗{n_err}")
+                             "from_yf": n_ok - n_jpx, "recent": n_recent,
+                             "estimate": n_est, "unknown": n_none, "error": n_err}
+    print(f"[決算] 候補{len(codes)}銘柄: 確定{n_ok}（JPX {n_jpx} / yfinance {n_ok-n_jpx}）"
+          f" 発表済{n_recent} 推定{n_est} 不明{n_none} 失敗{n_err}")
     return out
 
+# 保有している「業種の賭け」。個別株はマスタから、業種ETFは対応表から引く。
+HOLD_S17_FIXED = {"1615": "銀行", "1617": "食品", "1618": "エネルギー資源",
+                  "1619": "建設・資材", "1620": "素材・化学", "1621": "医薬品",
+                  "1622": "自動車・輸送機", "1623": "鉄鋼・非鉄", "1624": "機械",
+                  "1625": "電機・精密", "1626": "情報通信・サービスその他",
+                  "1627": "電力・ガス", "1628": "運輸・物流", "1629": "商社・卸売",
+                  "1630": "小売", "1631": "銀行", "1632": "金融（除く銀行）",
+                  "1633": "不動産"}
+
+def held_sectors(holdings, master):
+    out = {}
+    for c in holdings:
+        c4 = str(c)[:4]
+        s = HOLD_S17_FIXED.get(c4) or (master.get(c4, {}) or {}).get("s17", "")
+        if s: out.setdefault(s, []).append(c4)
+    return out
+
+HELD_S17 = {}
 CAND_EARN = {}
 MASTER = {}
 try:
     MASTER = load_master()
+    HELD_S17 = held_sectors(HOLDINGS, MASTER)
 except Exception as e:
     meta["errors"].append(f"master outer: {type(e).__name__}: {e}")
 
@@ -1240,14 +1694,24 @@ def _decorate(recs):
             meta["s17_unmapped"][s17] = meta["s17_unmapped"].get(s17, 0) + 1
         r["sector_etf"] = etf[:4]
         r["news"]   = DISC.get(c4, [])[:3]
+        # 既に同じ業種を持っているかどうか。持っているなら同じ賭けの上乗せ。
+        r["overlap"] = HELD_S17.get(s17, []) if s17 else []
         e = CAND_EARN.get(r["code"], {"status": "not_checked"})
         r["earn_status"] = e.get("status")
         r["earn_next"]   = e.get("next", "")
         r["earn_days"]   = e.get("days")
         # 決算跨ぎは執行の可否そのものを決めるので、行ごとに明示する
+        r["earn_src"]    = e.get("src", "")
+        r["earn_last"]   = e.get("last", "")
+        r["earn_since"]  = e.get("since")
+        # 「跨ぎ」は確定した予定日のときだけ立てる。推定で建玉を止めると
+        # 機会を失い、推定で建てさせると事故る。推定は情報として出すだけ。
         r["earn_soon"]   = bool(e.get("status") == "ok"
                                 and e.get("days") is not None
                                 and e["days"] <= EARN_SOON_DAYS)
+        r["earn_watch"]  = bool(e.get("status") == "estimate"
+                                and e.get("days") is not None
+                                and e["days"] <= EARN_SOON_DAYS * 2)
     return recs
 
 try:
@@ -1264,6 +1728,10 @@ try:
                 tr0, rv0 = trend.to_dict("records"), revert.to_dict("records")
                 # 決算日は順位が付いてから、載る銘柄だけ引く（全銘柄には引けない）
                 try:
+                    EHIST = update_earnings_history()  # 決算短信の履歴を積み上げる
+                except Exception as e:
+                    meta["errors"].append(f"earnings_hist: {type(e).__name__}: {e}")
+                try:
                     JPX_EARN = jpx_earnings()          # 公式の予定日を先に用意する
                 except Exception as e:
                     meta["errors"].append(f"jpx_earnings: {type(e).__name__}: {e}")
@@ -1274,12 +1742,49 @@ try:
                     meta["cand_earnings"] = {"error": str(e)[:120]}
                 tr = _decorate(tr0)
                 rv = _decorate(rv0)
-                # 決着の書き込みが済んでから、その日の分を足す
+                # ★台帳への追加は大引け後の実行だけ。
+                #   11:35の実行では当日足がまだ未完成で、それを「終値」として
+                #   建値に使うと、成績の前提（当日終値で建てた）が嘘になる。
                 _today = str(NOW.date())
-                SIG = append_signals(SIG, tr, "trend", _today)
-                SIG = append_signals(SIG, rv, "revert", _today)
+                if NOW.hour >= 15:
+                    SIG = append_signals(SIG, tr, "trend", _today)
+                    SIG = append_signals(SIG, rv, "revert", _today)
+                    meta["signals_appended"] = True
+                else:
+                    meta["signals_appended"] = False
+                    print("[台帳] 場中の実行のため追加は見送り（大引け後の実行で記録する）")
             else:
                 tr, rv = [], []
+            # ── 過去検証（月1回・大引け後だけ）────────────────────
+            try:
+                _btp = f"{OUT}/backtest.json"
+                _age = 999
+                if os.path.exists(_btp):
+                    try:
+                        _age = (NOW - dt.datetime.fromisoformat(
+                            json.load(open(_btp, encoding="utf-8"))["generated_at_jst"])).days
+                    except Exception:
+                        _age = 999
+                if BT_ENABLED and NOW.hour >= 15 and _age >= BT_MAX_AGE_D:
+                    print(f"[検証] 過去検証を実行（前回から{_age}日）")
+                    tk, nd, nf, d0, d1, cov = run_backtest(uni)
+                    bt = {"generated_at_jst": NOW.isoformat(),
+                          "from": d0, "to": d1, "tickers": nf, "entry_dates": nd, "coverage_pct": cov,
+                          "step": BT_STEP, "top": BT_TOP, "holds": list(BT_HOLDS),
+                          "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
+                                      "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
+                          "all": {str(h): bt_summary(tk, h) for h in BT_HOLDS},
+                          "regime": {"above200": bt_summary(tk, 15, True),
+                                     "below200": bt_summary(tk, 15, False)}}
+                    json.dump(bt, open(_btp, "w"), ensure_ascii=False, indent=1)
+                    meta["backtest"] = {"tickers": nf, "dates": nd,
+                                        "main": bt["all"][str(15)]}
+                    print("[検証] backtest.json を生成")
+            except Exception as e:
+                import traceback
+                meta["errors"].append(f"backtest: {type(e).__name__}: {e}")
+                print("[検証] 失敗:", e); traceback.print_exc()
+
             try:
                 SIG.to_csv(SIG_PATH, index=False)
                 meta["signals"] = signal_summary(SIG)
@@ -1296,6 +1801,8 @@ try:
                        "tdnet": meta.get("tdnet", {}),
                        "skipped": meta.get("screen_skipped", {}),
                        "cand_earnings": meta.get("cand_earnings", {}),
+                       "jpx_earnings": meta.get("jpx_earnings", {}),
+                       "earnings_hist": meta.get("earnings_hist", {}),
                        "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
                                    "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
                        "s17_unmapped": meta.get("s17_unmapped", {}),
@@ -1392,26 +1899,43 @@ try:
                                 if x >= str(today)), "")))
     t = pd.DataFrame(rows)
     TOT = float(t["mkt"].sum() + CASH)
+    RISK_PER_TRADE = TOT * RISK_PER_TRADE_P
 
     R = pd.DataFrame(rets).dropna(how="any").tail(120)
     C = R.corr()
     t["avg_corr"] = [round(float(C[c].drop(c).abs().mean()), 3) for c in t["code"]]
-    t["A"] = (25*np.clip((t["atr_pct"]-0.5)/3.0, 0, 1)).round(1)
+    def _swing_fit(a):
+        """スイングの「やりやすさ」。1.5〜4.0%を満点とし、外れるほど下げる。
+           高ければ高いほど良い、ではない（5%超は材料で動いている公算が高い）。"""
+        a = np.asarray(a, float)
+        lo = np.clip((a - 0.6) / 0.9, 0, 1)      # 1.5%で満点
+        hi = np.clip((7.0 - a) / 3.0, 0, 1)      # 4.0%から下がり7.0%で0
+        return np.minimum(lo, hi)
+    t["A"] = (25*_swing_fit(t["atr_pct"])).round(1)
     heat = np.where(t["rsi"] > 75, (t["rsi"]-75)/25, 0)
     t["C"] = (25*np.clip(0.5*np.clip(t["pos60"]/100, 0, 1)
                          + 0.5*np.clip((t["rs20"]+8)/16, 0, 1) - heat, 0, 1)).round(1)
     t["D"] = (25*np.clip(1-(t["avg_corr"]-0.1)/0.5, 0, 1)).round(1)
     t["ACD"] = (t["A"]+t["C"]+t["D"]).round(1)   # B（レジーム適合）はモデルが判断して足す
+    # スイングの土俵に乗るかどうか。乗らないものはスコアで売買を語らない。
+    t["swingable"] = t["atr_pct"] >= MIN_ATR_PCT
 
     # サイジング: ATR基準と1銘柄15%上限の、小さいほう
     def size(r):
         stop_w = 2*r["atr"]
-        n_atr = int(TOT*0.01 // stop_w) if stop_w > 0 else 0
-        n_cap = int(max(TOT*0.15 - r["mkt"], 0) // r["close"]) if r["close"] > 0 else 0
-        n = min(n_atr, n_cap); n = int(round(n, -1))
+        # 許容損失は RISK_PER_TRADE 一本。以前は表が総額1.0%、運用ルールが0.9%で
+        # 食い違い、表どおりに建てると常に11%オーバーサイズになっていた。
+        n_atr = int(RISK_PER_TRADE // stop_w) if stop_w > 0 else 0
+        n_cap = int(max(TOT*MAX_WEIGHT - r["mkt"], 0) // r["close"]) if r["close"] > 0 else 0
+        # 現金で買えない株数を出しても意味がない。現金比率の下限も守る。
+        buyable = max(CASH - TOT*MIN_CASH_RATIO, 0)
+        n_cash = int(buyable // r["close"]) if r["close"] > 0 else 0
+        n = min(n_atr, n_cap, n_cash)
+        n = (n // LOT) * LOT          # 単元(100株)で切り捨て。切り上げるとリスク超過
         return pd.Series([n, round(r["close"]-stop_w, 1), round(r["close"]+3*r["atr"], 1),
                           round(r["close"]+4*r["atr"], 1), round(n*r["close"]),
-                          "ATR" if n_atr <= n_cap else "15%上限"])
+                          min([(n_atr, "ATR"), (n_cap, f"{MAX_WEIGHT:.0%}上限"),
+                               (n_cash, "現金")], key=lambda z: z[0])[1]])
     t[["add_shares","stop","tp3","tp4","add_cost","binding"]] = t.apply(size, axis=1)
     t = t.sort_values("ACD", ascending=False).reset_index(drop=True)
 
@@ -1423,6 +1947,42 @@ try:
         nk = (f"日経-TOPIX騰落差 {gap:+.2f}pt" + ("（**指数が歪んでいる。物色の偏りに注意**）" if abs(gap) > 1.0 else "（正常）")
               + f" / 健全性チェック: 1306と日経の120日相関 {corr:.3f}"
               + ("" if corr >= 0.80 else " ← **0.80未満。データを疑うこと**"))
+
+    # ── レジーム（機械的に出す。Bの出発点にする）────────────────
+    regime = {}
+    try:
+        bser = pd.read_csv(f"{OUT}/ohlcv/{slug(BENCH)}.csv")
+        bc = pd.to_numeric(bser.get("Adj Close", bser["Close"]), errors="coerce").dropna()
+        if len(bc) >= 200:
+            ma200 = float(bc.rolling(200).mean().iloc[-1])
+            ma25  = float(bc.rolling(25).mean().iloc[-1])
+            px    = float(bc.iloc[-1])
+            regime = {"px": px, "vs200": round((px/ma200-1)*100, 2),
+                      "vs25": round((px/ma25-1)*100, 2),
+                      "above200": bool(px > ma200)}
+            # 業種ETF17本のうち何本が25日線の上か（市場の広がり）
+            above = tot = 0
+            for sc in SECTOR:
+                try:
+                    q = pd.read_csv(f"{OUT}/ohlcv/{slug(sc)}.csv")
+                    qc = pd.to_numeric(q.get("Adj Close", q["Close"]), errors="coerce").dropna()
+                    if len(qc) >= 25:
+                        tot += 1
+                        above += int(float(qc.iloc[-1]) > float(qc.rolling(25).mean().iloc[-1]))
+                except Exception:
+                    pass
+            if tot: regime["breadth"] = f"{above}/{tot}"
+            regime["breadth_pct"] = round(above/tot*100, 0) if tot else None
+            # 買い持ちで15営業日を狙うなら、指数が200日線の下では素直に縮める
+            b = 0.5
+            if regime["above200"]: b += 0.2
+            else: b -= 0.2
+            if (regime.get("breadth_pct") or 50) >= 60: b += 0.1
+            elif (regime.get("breadth_pct") or 50) <= 35: b -= 0.1
+            regime["b_suggest"] = round(min(max(b, 0.1), 0.9), 2)
+        meta["regime"] = regime
+    except Exception as e:
+        meta["errors"].append(f"regime: {type(e).__name__}")
 
     jgbline = "取得できず"
     if meta.get("jgb"):
@@ -1437,11 +1997,21 @@ try:
     L.append(f"データ健全性: **{meta['health']}**  保有{meta['holdings_ok']}/{len(HOLDINGS)}  "
              f"全体{meta['n_ok']}/{meta['n_total']}  エラー{len(meta['errors'])}件\n")
     L.append(f"日本国債（財務省）: {jgbline}\n")
+    if regime:
+        L.append(f"**レジーム（機械計算）**: TOPIX {regime['px']:,.1f} ／ "
+                 f"200日線 {regime['vs200']:+.2f}%（{'上' if regime['above200'] else '**下**'}）／ "
+                 f"25日線 {regime['vs25']:+.2f}% ／ 25日線の上にある業種 {regime.get('breadth', '—')}\n")
+        L.append(f"> **Bの出発点: {regime['b_suggest']:.2f}**（指数の200日線との位置と業種の広がりから機械的に算出）。"
+                 "銘柄ごとの材料で上下させてよいが、**動かしたら理由を書くこと**。"
+                 + ("\n> **指数が200日線の下にある。** 買い持ち中心の運用では、"
+                    "この局面は建玉を減らすか見送るほうが理に適う。" if not regime["above200"] else "") + "\n")
     if nk: L.append(f"{nk}\n")
     if rep_log:
         L.append("補正した系列: " + " / ".join(f"{k}: {'; '.join(v)}" for k, v in rep_log.items()) + "\n")
     L.append(f"\n総額 **¥{TOT:,.0f}**（保有 ¥{t['mkt'].sum():,.0f} + 現金 ¥{CASH:,.0f} = 現金比率 {CASH/TOT*100:.1f}%）")
-    L.append(f"／ 1トレード許容損失(1.0%) ¥{TOT*0.01:,.0f}\n")
+    L.append(f"／ 1トレード許容損失({RISK_PER_TRADE/TOT:.2%}) ¥{RISK_PER_TRADE:,.0f}"
+             f"／ 発注可能現金 ¥{max(CASH - TOT*MIN_CASH_RATIO, 0):,.0f}"
+             f"（現金 ¥{CASH:,.0f} − 下限 {MIN_CASH_RATIO:.0%}）\n")
 
     L.append("\n## テクニカル（ベンチマーク=TOPIX/1306）\n")
     L.append("| コード | 銘柄 | 終値 | 損益% | RSI | MACD | 25日 | 75日 | 200日 | 60日位置 | ATR% | 対TOPIX 1d/5d/20d | 出来高 |")
@@ -1453,6 +2023,13 @@ try:
                  f"{r['rs1']:+.1f} / {r['rs5']:+.1f} / {r['rs20']:+.1f} | {r['vol_ratio']:.2f}x |")
 
     L.append("\n## スコア（A/C/D は計算済み。**B＝レジーム適合はモデルが判断して加算する**）\n")
+    _ns = t[~t["swingable"]]["code"].tolist()
+    if len(_ns):
+        L.append("> **スイング対象外（ATR {:.1f}%未満）: {}**".format(
+                 MIN_ATR_PCT, "、".join(c[:4] for c in _ns)))
+        L.append("> これらは値幅が小さくスイングの道具にならないだけで、**下落を予想しているのではない**。")
+        L.append("> スコアは構造上必ず低く出るので、**この点数を根拠に売却・縮小を推奨してはいけない**。")
+        L.append("> 判定は「コアとして継続」か「資金を別の用途に回すかの別途判断」のどちらかで書くこと。\n")
     L.append("| コード | 銘柄 | 評価額 | 比率 | A 適性 | C 位置 | D 分散 | A+C+D | B込み満点 |")
     L.append("|---|---|--:|--:|--:|--:|--:|--:|:-:|")
     for _, r in t.iterrows():
@@ -1547,6 +2124,76 @@ try:
     except Exception as e:
         L.append(f"\n## 保有銘柄の適時開示\n\n生成に失敗: {e}")
 
+    # ── 過去検証 ──────────────────────────────────────────────
+    #    順位付けに情報があるのか。無作為抽出との差だけが答え。
+    try:
+        bt = json.load(open(f"{OUT}/backtest.json", encoding="utf-8"))
+        m = bt["all"][str(15)]
+        _cov = bt.get("coverage_pct")
+        L.append(f"\n## 過去検証（{bt['from']}〜{bt['to']} / {bt['tickers']:,}銘柄 / "
+                 f"{bt['entry_dates']}回の建て日）\n")
+        if _cov is not None and _cov < 95:
+            L.append(f"> **母集団の {_cov}% までしか照会できていない**（時間予算）。"
+                     "無作為に混ぜてから取っているので業種の偏りは無いが、"
+                     "標本が小さいぶん差の検出力は落ちる。\n")
+        L.append("**問い: この順位付けは、同じ母集団から無作為に選ぶより良いのか。**\n")
+        L.append("| 選び方 | 件数 | 勝率 | 平均R | 無作為との差 | 粗いt値 | 利確% | 損切% | 時間切れ% |")
+        L.append("|---|--:|--:|--:|--:|--:|--:|--:|--:|")
+        for k, lbl in [("trend", "順張り上位10"), ("revert", "逆張り上位10"),
+                       ("random", "**無作為10（基準）**")]:
+            v = m.get(k)
+            if not v: continue
+            vr = f"{v['vs_random']:+.4f}" if "vs_random" in v else "—"
+            tv = f"{v['t_rough']:+.2f}" if v.get("t_rough") is not None else "—"
+            L.append(f"| {lbl} | {v['n']:,.0f} | {v['win_pct']:.1f}% | {v['avg_r']:+.4f} | "
+                     f"{vr} | {tv} | {v['target']:.0f}% | {v['stop']:.0f}% | {v['timeout']:.0f}% |")
+
+        def _verdict(k, lbl):
+            v = m.get(k) or {}
+            t = v.get("t_rough")
+            if t is None: return None
+            if t >= 2.0:  return f"- **{lbl}: 無作為を上回っている（t={t:+.2f}）。** 使う根拠がある。"
+            if t <= -2.0: return f"- **{lbl}: 無作為を下回っている（t={t:+.2f}）。使うのをやめること。**"
+            return (f"- **{lbl}: 無作為との差は誤差の範囲（t={t:+.2f}）。** "
+                    "順位付けに情報があるとは言えない。**この順位を根拠に建てる意味は無い。**")
+        L.append("")
+        for line in filter(None, [_verdict("trend", "順張り"), _verdict("revert", "逆張り")]):
+            L.append(line)
+
+        rg = bt.get("regime", {})
+        if rg.get("above200") and rg.get("below200"):
+            L.append("\n**TOPIXが200日線の上か下かで分けたとき（保有15日）**\n")
+            L.append("| 局面 | 選び方 | 件数 | 勝率 | 平均R | 無作為との差 |")
+            L.append("|---|---|--:|--:|--:|--:|")
+            for key, lbl in [("above200", "200日線の上"), ("below200", "200日線の下")]:
+                for k, kl in [("trend", "順張り"), ("revert", "逆張り"), ("random", "無作為")]:
+                    v = (rg.get(key) or {}).get(k)
+                    if not v: continue
+                    vr = f"{v['vs_random']:+.4f}" if "vs_random" in v else "—"
+                    L.append(f"| {lbl} | {kl} | {v['n']:,.0f} | {v['win_pct']:.1f}% | "
+                             f"{v['avg_r']:+.4f} | {vr} |")
+
+        L.append("\n**保有期間を変えたとき（頑健性の確認。良い数字を選ぶためではない）**\n")
+        L.append("| 保有 | 順張り平均R | 逆張り平均R | 無作為平均R |")
+        L.append("|--:|--:|--:|--:|")
+        for h in bt["holds"]:
+            a = bt["all"][str(h)]
+            g = lambda k: f"{a[k]['avg_r']:+.4f}" if k in a else "—"
+            L.append(f"| {h}日 | {g('trend')} | {g('revert')} | {g('random')} |")
+
+        L.append("\n**この検証の限界（結果を良い方に歪めるもの）**")
+        L.append("- **生存バイアス。** 銘柄一覧は「いま上場している会社」なので、"
+                 "この期間に上場廃止になった会社が母集団から抜けている。実際より良く出る。")
+        L.append("- **スリッページ・板の薄さ・約定できない場面を含まない。** 建値は終値、損切りは水準どおり（窓は寄値）。")
+        L.append("- **税を引いていない。** 特定口座の利益には20.315%かかる。")
+        L.append("- 同じ日に建てた10件は相場つきを共有していて独立ではない。**t値は目安であって検定ではない。**")
+        L.append("- 比較したのは**この4つだけ**（順張り/逆張り × 全期間/レジーム別）。"
+                 "条件を変えて良い結果を探す作業はしていない。")
+    except FileNotFoundError:
+        L.append("\n## 過去検証\n\n未実施。大引け後の実行で自動的に走る（月1回）。")
+    except Exception as e:
+        L.append(f"\n## 過去検証\n\n生成に失敗: {e}")
+
     # ── シグナル台帳の成績 ────────────────────────────────────
     #    「この仕組みは儲かっているのか」に、実際に付いた値段で答える唯一の節。
     try:
@@ -1565,10 +2212,19 @@ try:
                          f"{v['sum_r']:+.2f} | {v['target']} | {v['stop']} | {v['timeout']} | "
                          f"{v['avg_bars']:.1f}日 |")
             a = sg.get("all", {})
-            L.append(f"\n未決着 {sg.get('open', 0)}件。")
-            if a.get("n", 0) < 30:
-                L.append(f"> **件数が {a.get('n', 0)} 件しかない。まだ運不運の範囲で、優劣の根拠にはならない。**"
-                         "30件を超えるまでは傾向として眺めるだけにすること。")
+            L.append(f"\n未決着 {sg.get('open', 0)}件／記録した日数 {sg.get('days', 0)}日。")
+            # 1件あたりのRのばらつきは概ね1.0。平均+0.10R を t=2 で検出するには
+            # n=(2×1.0/0.10)^2≒400件が要る。しかも同じ日の複数銘柄は独立でないので、
+            # 実効的な標本数は「件数」ではなく「日数」に近い。
+            if a.get("n", 0) < 400:
+                L.append(f"> **決着 {a.get('n', 0)}件では、平均Rの正負を統計的に判定できない。** "
+                         "1件あたりのRのばらつきが概ね1.0なので、平均+0.10Rを検出するには"
+                         "**400件規模**が要る。さらに同じ日に記録した複数銘柄は相場つきを共有していて"
+                         f"独立ではないため、実効的な標本は件数より**日数（現在{sg.get('days', 0)}日）**に近い。"
+                         "**この表は動作確認であって、優劣の根拠にはまだ使えない。**")
+            if a.get("n", 0) >= 60 and a.get("avg_r", 0) <= -0.30:
+                L.append("> **平均Rが −0.30 を下回っている。** 統計的な結論には早いが、"
+                         "この水準が続くなら選別を止めるか閾値を上げる判断が要る。")
             elif a.get("avg_r", 0) <= 0:
                 L.append("> **平均Rがマイナス。この選別で建て続けると負ける。** "
                          "スコアの閾値を上げるか、順張り／逆張りのどちらかを止めることを検討する。")
@@ -1591,13 +2247,24 @@ try:
             ns = r.get("news") or []
             if not ns: return "—"
             return " / ".join(f"{x['title'][:26]}" for x in ns[:2])
+        def _ov(r):
+            o = r.get("overlap") or []
+            return ("**" + "/".join(o) + "と重複**") if o else "—"
         def _earn(r):
-            """空欄にすると『決算が無い』と読めてしまう。状態を必ず言葉で出す。"""
+            """空欄にすると『決算が無い』と読めてしまう。状態を必ず言葉で出す。
+               確定・発表済み・推定・不明の4つを取り違えさせないことが要点。"""
             st = r.get("earn_status")
+            md = lambda x: str(x)[5:].replace("-", "/")
             if st == "ok":
-                d, n = r.get("earn_days"), r.get("earn_next", "")
-                mark = "**跨ぎ**" if r.get("earn_soon") else f"{d}日後"
-                return f"{n[5:].replace('-', '/')} {mark}"
+                mark = "**跨ぎ**" if r.get("earn_soon") else f"{r.get('earn_days')}日後"
+                return f"{md(r.get('earn_next'))} {mark}"
+            if st == "recent":
+                sc = r.get("earn_since")
+                return f"{md(r.get('earn_last'))}発表済({sc}日前)" if sc is not None else \
+                       f"{md(r.get('earn_last'))}発表済"
+            if st == "estimate":
+                w = "**要警戒**" if r.get("earn_watch") else "頃"
+                return f"推定 {md(r.get('earn_next'))}{w}(要確認)"
             return {"unknown": "予定なし(要確認)", "error": "照会失敗(要確認)",
                     "timeout": "時間切れ(要確認)"}.get(st, "未照会(要確認)")
 
@@ -1635,26 +2302,34 @@ try:
             L.append("")
 
         L.append("\n### 順張り候補（移動平均の上・レンジ上方・20日が伸びている）\n")
-        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 決算 | 当日の開示 |")
-        L.append("|--:|---|---|---|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
+        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | 重複 | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 決算 | 当日の開示 |")
+        L.append("|--:|---|---|---|:-:|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
         for i, r in enumerate(cj["trend"][:15]):
             L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
-                     f"**{r['trend']:.1f}** | {r['close']:,.1f} | {r['rsi']:.0f} | "
+                     f"{_ov(r)} | **{r['trend']:.1f}** | {r['close']:,.1f} | {r['rsi']:.0f} | "
                      f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
                      f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {r['vol_ratio']:.2f}x | {_earn(r)} | {_disc(r)} |")
 
         L.append("\n### 逆張り候補（長期は上向きだが短期で売られすぎ）\n")
-        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 決算 | 当日の開示 |")
-        L.append("|--:|---|---|---|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
+        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | 重複 | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 決算 | 当日の開示 |")
+        L.append("|--:|---|---|---|:-:|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
         for i, r in enumerate(cj["revert"][:15]):
             if r["revert"] <= 0: continue
             L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
-                     f"**{r['revert']:.1f}** | {r['close']:,.1f} | {r['rsi']:.0f} | "
+                     f"{_ov(r)} | **{r['revert']:.1f}** | {r['close']:,.1f} | {r['rsi']:.0f} | "
                      f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
                      f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {_earn(r)} | {_disc(r)} |")
 
         L.append("\n**この表の読み方と限界**")
-        L.append("- スコアは機械的な順位付けにすぎず、推奨ではない。順張りと逆張りは別の尺度なので**混ぜて比較しない**。")
+        L.append("- **スコアの重み・閾値は検証されていない。** 配点も境目も手で決めた値で、"
+                 "過去データで当てはめた結果ではない。順張りスコアは実質的に"
+                 "「直近1〜3ヶ月の上昇率」を4つの形で測り直したものに近く、"
+                 "**独立した4項目を見ているわけではない**。順位に情報があるかどうかは"
+                 "「シグナルの成績」で検証中で、現時点では**未証明**。")
+        L.append("- したがってこの表は**発注の根拠ではなく、目で見る対象を絞るための入口**として使うこと。")
+        L.append("- **「重複」が付いた銘柄は、既に持っている業種の上乗せ。** 1銘柄0.9%のつもりでも、"
+                 "業種ショックでは同時に動く。採るなら片方だけにする。")
+        L.append("- 順張りと逆張りは別の尺度なので**混ぜて比較しない**。")
         L.append("- 「業種ETF」列は業種別ETF17本の表と突き合わせるための対応コード。**候補のBはこの列の業種の位置から機械的に付けられる。**")
         L.append("- 「当日の開示」は TDnet の直近4日分（新しい順）。**空欄(—)は「開示が無い」であって「材料が無い」ではない**（報道・需給・指数入替は載らない）。")
         ce = cj.get("cand_earnings") or {}
@@ -1663,8 +2338,17 @@ try:
                      f"予定日が取れたのは **{ce.get('ok', 0)}銘柄**"
                      f"（不明 {ce.get('unknown', 0)} / 失敗 {ce.get('error', 0)}）。"
                      f"**「跨ぎ」は{EARN_SOON_DAYS}日以内に決算がある。建てないこと。**")
+            L.append(f"  内訳: 確定 {ce.get('ok', 0)}（JPX {ce.get('from_jpx', 0)} / yfinance {ce.get('from_yf', 0)}）"
+                     f" ／ 直近発表済 {ce.get('recent', 0)} ／ 推定 {ce.get('estimate', 0)}"
+                     f" ／ 不明 {ce.get('unknown', 0)}")
+            L.append("- **「◯/◯発表済(N日前)」は確定情報**。出したばかりなので当面は決算をまたがない。")
+            L.append("- **「推定 ◯/◯頃」は予定ではない。** 過去の決算短信の間隔から割り出した目安で、"
+                     "**これだけを根拠に建てない／見送らない**。**要警戒**は推定日が近い印。")
             L.append("- 「予定なし(要確認)」「照会失敗(要確認)」は**決算が無いという意味ではない**。"
-                     "データ元に予定が入っていないだけなので、発注前にSBIの銘柄ページで必ず確認する。")
+                     "発注前にSBIの銘柄ページで必ず確認する。")
+            L.append(f"- JPXが予定日を載せるのは**直前の四半期が終わった会社だけ**"
+                     f"（今回 {(cj.get('jpx_earnings') or {}).get('codes', 0):,}社）。"
+                     "載っていない会社は、直近に決算がある可能性はむしろ低い。")
         else:
             L.append("- **決算発表日の照合ができていない。** 発注前に必ず個別に確認すること。")
         L.append("- ATR%が突出して高いものは一過性の材料で動いている可能性が高い。順位が上でも採用しない。")
