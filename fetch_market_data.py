@@ -755,6 +755,495 @@ def fetch_tdnet(days=4):
     print(f"[適時開示] {pages}ページ / {len(out)}銘柄 / {total}件")
     return out
 
+# ══════════════════════════════════════════════════════════════════════
+#  J-Quants 財務情報 ── 欠けていた「ファンダメンタルズ」の半分
+#
+#  なぜ入れるか:
+#    自作の trend / revert は実測で無作為抽出との差が t=+0.08 / +0.06 だった。
+#    値動きの形だけでは順位に情報が無い。一方、日本株はバリューが効き
+#    モメンタムが効かないとする研究が複数ある（Fama-French 2012 /
+#    Asness-Moskowitz-Pedersen 2013）。証拠の強い側を作っていなかった。
+#
+#  認証:
+#    V2 は APIキーを x-api-key ヘッダーに載せるだけ。期限の記載なし。
+#    （V1 のリフレッシュトークン方式は 2026-06-01 に終了している）
+#    キーは環境変数からのみ読み、ログにも data/ にも一切出さない。
+#    public リポジトリの Actions ログは誰でも読めるので、失敗時も
+#    ステータスコードだけを出しレスポンス本文は出さない。
+#
+#  ライセンス上の制約（重要・設計を縛る）:
+#    利用条件は「本データを第三者が閲覧できる状態である時には私的利用には
+#    該当しません」。このリポジトリは public なので、取得した財務数値
+#    そのものをコミットすることはできない。同じ条件が「ご自身の分析結果や
+#    分析手法を公開いただくことは構いません」としているので、
+#    書き出すのは **断面での順位（パーセンタイル）だけ** にする。
+#    生値はこのプロセスのメモリ上だけに置く。
+#    → 機械的な保証は commit_guard() で行う（人の注意力に頼らない）。
+#
+#  取れないもの:
+#    有利子負債と投資有価証券は財務諸表(/spec/fin-details)で Premium 限定。
+#    よって清原式のネットキャッシュ比率は無料では組めない。
+#    現金だけを見て負債を見ないネットキャッシュは符号が反転しうるので作らない。
+#    競争優位そのもの（シェア・参入障壁）も無料データに無い。
+#    代理として営業利益率の「水準」と「ばらつきの小ささ」を使う。
+#    これは代理指標であって競争優位の測定ではない。表示にもそう書く。
+# ══════════════════════════════════════════════════════════════════════
+JQ_BASE      = "https://api.jquants.com"
+JQ_PATH      = "/v2/fins/summary"
+JQ_KEY       = (os.environ.get("JQUANTS_API_KEY") or "").strip()
+JQ_LAG_D     = 84 + 3    # Freeは「12週間前〜2年12週間前」。3日は境界のぶれの余裕
+JQ_HIST_D    = 730       # 2年（Freeで取れる全期間）
+# ★遡る日数は「1四半期ぶん」では足りない。
+#   業績修正の方向は同じ決算期の予想を2回以上、営業利益率の安定性は
+#   4回以上の開示が要る。200日（=約2回）だと安定性が常に空になり、
+#   修正方向も半分しか埋まらない。実測（偽の応答での通し）でこれに気づいた。
+#   730日なら四半期開示が6〜8回入る。
+JQ_RECENT_D  = 730
+JQ_GAP_S     = 0.5       # 公式サンプルが推奨する間隔
+JQ_MAX_REQ   = 1400      # 事故で叩き続けないための上限（730日＝約520営業日）
+JQ_RETRY     = 3
+JQ_MIN_POOL  = 50        # 断面の順位付けに要る最低銘柄数
+
+_JQ = {"req": 0, "n429": 0, "err": {}, "blocked": None, "key_used": None}
+
+# V2の短い項目名を主に、V1の長い名前を予備に見る。
+# 名前が変わっても静かに全欠損にならないようにするため。
+JQ_F = {
+    "date":  ("DiscDate", "DisclosedDate"),
+    "code":  ("Code", "LocalCode"),
+    "doc":   ("DocType", "TypeOfDocument"),
+    "per":   ("CurPerType", "TypeOfCurrentPeriod"),
+    "fyend": ("CurFYEn", "CurrentFiscalYearEndDate"),
+    "sales": ("Sales", "NetSales"),
+    "op":    ("OP", "OperatingProfit"),
+    "eps":   ("EPS", "EarningsPerShare"),
+    "bps":   ("BPS", "BookValuePerShare"),
+    "ta":    ("TA", "TotalAssets"),
+    "eqar":  ("EqAR", "EquityToAssetRatio"),
+    "cfo":   ("CFO", "CashFlowsFromOperatingActivities"),
+    "feps":  ("FEPS", "ForecastEarningsPerShare"),
+    "fop":   ("FOP", "ForecastOperatingProfit"),
+    "fnp":   ("FNP", "ForecastProfit"),
+}
+
+def _jqv(row, name):
+    for k in JQ_F[name]:
+        if k in row:
+            v = row[k]
+            if v in ("", None): return None
+            return v
+    return None
+
+def _jqf(row, name):
+    v = _jqv(row, name)
+    if v is None: return None
+    try: f = float(v)
+    except (TypeError, ValueError): return None
+    return f if f == f else None
+
+def jq_dates(end_lag_d, span_d):
+    """開示日として問い合わせる日付の列。土日は開示が無いので省く。
+       Freeの提供範囲（12週間前より過去）に収まる側だけを返す。"""
+    end = (NOW - dt.timedelta(days=end_lag_d)).date()
+    out = []
+    for k in range(span_d + 1):
+        d = end - dt.timedelta(days=k)
+        if d.weekday() >= 5: continue
+        out.append(d.isoformat())
+    return out          # 新しい順
+
+def _jq_get(params):
+    """1回分を取る。pagination_key を辿って全件返す。
+       401/403 は叩き続けても直らないので、以後の呼び出しを止める。"""
+    import urllib.parse, urllib.request, urllib.error
+    if not JQ_KEY or _JQ["blocked"]: return None
+    rows, pk = [], None
+    while True:
+        if _JQ["req"] >= JQ_MAX_REQ:
+            _JQ["blocked"] = f"リクエスト上限{JQ_MAX_REQ}に到達"
+            break
+        p = dict(params)
+        if pk: p["pagination_key"] = pk
+        url = f"{JQ_BASE}{JQ_PATH}?" + urllib.parse.urlencode(p)
+        body = None
+        for att in range(JQ_RETRY):
+            try:
+                req = urllib.request.Request(
+                    url, headers={"x-api-key": JQ_KEY, "User-Agent": "jp-swing/1.0"})
+                _JQ["req"] += 1
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    body = json.loads(r.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    _JQ["n429"] += 1
+                    try: wait = float(e.headers.get("Retry-After"))
+                    except (TypeError, ValueError): wait = JQ_GAP_S * (2 ** att)
+                    time.sleep(min(wait, 60)); continue
+                if e.code in (401, 403):
+                    # ★本文は出さない。認証エラーの応答にリクエストが
+                    #   そのまま含まれることがあり、ログは公開されている。
+                    _JQ["blocked"] = f"HTTP {e.code}（キーかプラン範囲）"
+                    return None
+                k = f"HTTP {e.code}"
+                _JQ["err"][k] = _JQ["err"].get(k, 0) + 1
+                if e.code >= 500 and att < JQ_RETRY - 1:
+                    time.sleep(JQ_GAP_S * (2 ** att)); continue
+                return None
+            except Exception as e:
+                k = type(e).__name__
+                _JQ["err"][k] = _JQ["err"].get(k, 0) + 1
+                if att < JQ_RETRY - 1:
+                    time.sleep(JQ_GAP_S * (2 ** att)); continue
+                return None
+        if body is None: break
+        got, used = None, None
+        for key in ("summary", "statements", "fins_summary", "data"):
+            if isinstance(body.get(key), list): got, used = body[key], key; break
+        if got is None:
+            for key, v in body.items():
+                if isinstance(v, list): got, used = v, key; break
+        if got is None: got, used = [], "?"
+        if _JQ["key_used"] is None: _JQ["key_used"] = used
+        rows.extend(got)
+        pk = body.get("pagination_key")
+        time.sleep(JQ_GAP_S)
+        if not pk: break
+    return rows
+
+def jq_fetch(dates):
+    """開示日ごとに引く。code を付けず date 単独指定にすると、
+       その日に開示した全銘柄が返る（公式仕様）。"""
+    out, hit = [], 0
+    for d in dates:
+        r = _jq_get({"date": d})
+        if _JQ["blocked"]: break
+        if r:
+            out.extend(r); hit += 1
+    return out, hit
+
+# 同じ実行の中で、当日の断面と過去検証の両方が同じ開示を必要とする。
+# 2回取ると照会が倍になりレート制限にも近づくので、広い方を1度だけ取って使い回す。
+_JQ_ROWS = {"span": -1, "rows": [], "hit": 0, "asked": 0}
+
+def jq_rows(span_d):
+    """span_d 日ぶんの開示。既に同じか広い範囲を取っていればそれを返す。"""
+    if _JQ_ROWS["span"] >= span_d:
+        return _JQ_ROWS["rows"], _JQ_ROWS["hit"], _JQ_ROWS["asked"]
+    ds = jq_dates(JQ_LAG_D, span_d)
+    rows, hit = jq_fetch(ds)
+    if len(rows) >= len(_JQ_ROWS["rows"]):
+        _JQ_ROWS.update(span=span_d, rows=rows, hit=hit, asked=len(ds))
+    return rows, hit, len(ds)
+
+def jq_build(rows):
+    """開示の生値を、銘柄別・開示日昇順の履歴に組み直す。
+       生値はここから先、順位に変換されるまでメモリ上にしか存在しない。"""
+    hist = {}
+    for r in rows:
+        d, c = _jqv(r, "date"), _jqv(r, "code")
+        if not d or not c: continue
+        c = str(c).strip()
+        # J-Quantsは5桁（末尾に予備の1桁）で返す。4桁の証券コードに揃える。
+        if len(c) == 5 and c.endswith("0"): c = c[:4]
+        hist.setdefault(c, []).append({
+            "date": str(d)[:10], "doc": str(_jqv(r, "doc") or ""),
+            "per": str(_jqv(r, "per") or ""),
+            "fyend": str(_jqv(r, "fyend") or "")[:10],
+            "bps": _jqf(r, "bps"), "feps": _jqf(r, "feps"), "eps": _jqf(r, "eps"),
+            "sales": _jqf(r, "sales"), "op": _jqf(r, "op"), "ta": _jqf(r, "ta"),
+            "eqar": _jqf(r, "eqar"), "cfo": _jqf(r, "cfo"),
+            "fop": _jqf(r, "fop"), "fnp": _jqf(r, "fnp")})
+    for c in hist:
+        hist[c].sort(key=lambda x: x["date"])
+    return hist
+
+def jq_metrics(rows_upto):
+    """その時点までの開示列から、断面比較に使う素の指標を作る。
+       ★rows_upto には「その日より後の開示」を絶対に含めない。
+         含めれば未来を見たことになり、検証結果は意味を失う。"""
+    if not rows_upto: return None
+    fin = [r for r in rows_upto if "FinancialStatements" in r["doc"]]
+    if not fin: return None
+    last = fin[-1]
+    # 営業利益率: 同じ行の分子と分母なので、四半期でも通期でも比較できる
+    opms = []
+    for r in fin[-8:]:
+        s, o = r.get("sales"), r.get("op")
+        if s and s > 0 and o is not None: opms.append(o / s * 100)
+    opm = opms[-1] if opms else None
+    stab = None
+    if len(opms) >= 4:
+        mu = sum(opms) / len(opms)
+        sd = (sum((x - mu) ** 2 for x in opms) / len(opms)) ** 0.5
+        stab = -sd                      # ばらつきが小さいほど上位にしたいので符号を反転
+    # 業績修正方向: 同じ決算期(fyend)について会社予想がどう改定されたか。
+    #   通期決算(FY)の行は予想の対象年度が1つ先にずれるので、列から外す。
+    rev, cur = None, last.get("fyend")
+    if cur:
+        seq = [r for r in rows_upto
+               if r.get("fyend") == cur and r.get("per") != "FY"
+               and (r.get("fop") is not None or r.get("fnp") is not None)]
+        if len(seq) >= 2:
+            def _f(r): return r["fop"] if r.get("fop") is not None else r.get("fnp")
+            a, b = _f(seq[-2]), _f(seq[-1])
+            if a is not None and b is not None and a > 0:
+                rev = (b / a - 1) * 100
+    cfoa = None
+    if last.get("cfo") is not None and last.get("ta") and last["ta"] > 0:
+        cfoa = last["cfo"] / last["ta"] * 100
+    return {"bps": last.get("bps"), "feps": last.get("feps"), "eqar": last.get("eqar"),
+            "opm": opm, "opm_stab": stab, "rev": rev, "cfoa": cfoa,
+            "asof": last["date"]}
+
+def jq_pit_index(hist, cal):
+    """各銘柄について「カレンダーの各日までに何件開示されているか」を持つ。
+       検証の各日で hist[c][:k] を渡せば、未来の開示は構造的に入らない。"""
+    import numpy as np
+    cald = np.array([pd.Timestamp(t).normalize().value for t in cal])
+    out = {}
+    for c, rows in hist.items():
+        ds = np.array([pd.Timestamp(r["date"]).normalize().value for r in rows])
+        out[c] = np.searchsorted(ds, cald, side="right")
+    return out
+
+_JQ_MEMO = {}
+
+def jq_metrics_at(hist, pit, code, i):
+    """日 i 時点の指標。(銘柄, 開示件数) で覚えておく。
+       k は開示があった日にしか変わらないので、実際の計算回数は
+       銘柄あたり開示回数ぶんに収まる。"""
+    arr = pit.get(code)
+    if arr is None: return None
+    k = int(arr[i])
+    if k <= 0: return None
+    key = (code, k)
+    if key not in _JQ_MEMO:
+        _JQ_MEMO[key] = jq_metrics(hist[code][:k])
+    return _JQ_MEMO[key]
+
+# ── ファンダの4つの選び方 ─────────────────────────────────────────
+#   value    … 純資産倍率と予想利益の利回り。日本株で最も証拠が強い側。
+#   quality  … 予想ROE・営業利益率・自己資本比率。
+#   moat     … 営業利益率の水準とばらつきの小ささ。**競争優位の代理**。
+#   revision … 会社予想が上方に改定されたか。
+FUND_FACTORS = ("value", "quality", "moat", "revision")
+
+def _mean_pct(parts):
+    """使える成分だけで平均する。欠けている成分で全体を落とさない。"""
+    import numpy as np
+    acc = None; cnt = None
+    for s in parts:
+        v = s.to_numpy(float)
+        ok = ~np.isnan(v)
+        acc = np.where(ok, v, 0.0) if acc is None else acc + np.where(ok, v, 0.0)
+        cnt = ok.astype(float) if cnt is None else cnt + ok
+    out = np.where(cnt > 0, acc / np.maximum(cnt, 1), float("nan"))
+    return pd.Series(out, index=parts[0].index)
+
+def fund_scores(df, fmap):
+    """その日の母集団 df に、開示済みの素の指標を当てて断面順位に変える。
+       返すのは順位（0〜1）だけ。生値は返さない。"""
+    import numpy as np
+    n = len(df)
+    close = df["close"].to_numpy(float)
+    codes = [str(c).replace(".T", "") for c in df["code"].tolist()]
+
+    def col(fn):
+        a = np.full(n, float("nan"))
+        for k, c in enumerate(codes):
+            m = fmap.get(c)
+            if not m: continue
+            try: v = fn(m, close[k])
+            except Exception: v = None
+            if v is not None and v == v: a[k] = v
+        return pd.Series(a, index=df.index)
+
+    bp   = col(lambda m, p: m["bps"] / p if m.get("bps") and p > 0 else None)
+    ep   = col(lambda m, p: m["feps"] / p if m.get("feps") is not None and p > 0 else None)
+    froe = col(lambda m, p: m["feps"] / m["bps"] * 100
+               if m.get("feps") is not None and m.get("bps") and m["bps"] > 0 else None)
+    opm  = col(lambda m, p: m.get("opm"))
+    eqar = col(lambda m, p: m.get("eqar"))
+    stab = col(lambda m, p: m.get("opm_stab"))
+    rev  = col(lambda m, p: m.get("rev"))
+
+    def pr(s): return s.rank(pct=True)
+    out = {"value":    _mean_pct([pr(bp), pr(ep)]),
+           "quality":  _mean_pct([pr(froe), pr(opm), pr(eqar)]),
+           "moat":     _mean_pct([pr(opm), pr(stab)]),
+           "revision": pr(rev)}
+    # ファンダが引けた銘柄。ここに入らない銘柄は
+    # ファンダ側の母集団から外す（無作為の基準線も同じ母集団から取る）。
+    has = (~bp.isna()) | (~ep.isna())
+    return out, has
+
+def fund_coverage(out, has):
+    return {"has": int(has.sum()),
+            **{k: int((~v.isna()).sum()) for k, v in out.items()}}
+
+FUND_PATH = f"{OUT}/fund.json"
+FUND_MAX_AGE_D = 20      # これより古い順位はレポートで警告する
+
+def load_fund_prev():
+    """前回コミットした順位。順位は「分析結果」なので data/ に置いてあり、
+       そのまま再利用できる（生値は置いていないので再利用しても規約に触れない）。"""
+    try:
+        if os.path.exists(FUND_PATH):
+            pv = json.load(open(FUND_PATH, encoding="utf-8"))
+            if isinstance(pv.get("pct"), dict) and pv["pct"]:
+                return pv
+    except Exception as e:
+        meta["errors"].append(f"fund prev: {type(e).__name__}")
+    return None
+
+def fund_reuse(reason):
+    """取りに行かず、前回の順位を使う。
+       無料枠の財務はもともと12週間前のものなので、1日ぶん古いことによる
+       情報の劣化は無い。株価だけが新しく、会計の数字は前回と同じという状態。
+       前回分も無ければ空を返す（そのときは列が空になるだけで止まらない）。"""
+    pv = load_fund_prev()
+    if not pv:
+        meta["fund"] = {"skipped": reason, "reused": False}
+        print(f"[財務] {reason}。前回分も無いのでファンダ列は空になる")
+        return {}
+    # 経過は切り捨てなので、前夜の取得は「0日前」になる。
+    # レポートでは時間も見せて「0日前」が古いことのように読まれないようにする。
+    age, age_h, gen = None, None, pv.get("generated_at_jst")
+    try:
+        _d = NOW - dt.datetime.fromisoformat(gen)
+        age = _d.days
+        age_h = round(_d.total_seconds() / 3600, 1)
+    except Exception:
+        pass
+    meta["fund"] = {"reused": True, "reason": reason, "age_days": age,
+                    "age_hours": age_h, "fetched_at_jst": gen,
+                    "asof_latest_disclosure": pv.get("asof_latest_disclosure"),
+                    "pool": pv.get("pool"), "n_codes": len(pv["pct"]),
+                    "coverage": pv.get("coverage"), "span_days": pv.get("span_days")}
+    print(f"[財務] 前回の順位を再利用（{reason} / {len(pv['pct']):,}銘柄 / "
+          f"{age}日前 / 開示の最新 {pv.get('asof_latest_disclosure')}）")
+    if age is not None and age > FUND_MAX_AGE_D:
+        print(f"::warning::ファンダの順位が{age}日前のものです。"
+              "J-Quantsの取得が続けて失敗していないか data/meta.json を確認してください")
+    return pv["pct"]
+
+def fund_today(sc, refetch=True):
+    """今日の断面でファンダの順位を作り、data/fund.json に書き出す。
+
+       ★書き出すのはパーセンタイル（0〜100の整数）だけ。
+         PBR・ROE・BPS・売上・営業利益といった生値は一切書かない。
+         J-Quantsの利用条件が第三者の閲覧を禁じており、
+         このリポジトリは public だから。
+
+       ★この順位は当面「表示のみ」で、trend/revert のスコアには入れない。
+         効くかどうかは過去検証で確かめてからにする。
+         検証前に採点へ混ぜるのは、trend/revert を作ったときと同じ間違い。"""
+    if not JQ_KEY:
+        return fund_reuse("JQUANTS_API_KEY 未設定")
+    # ★取り直すのは大引け後の実行だけ。
+    #   財務は12週間遅れのデータなので、前場と後場で内容は変わらない。
+    #   毎回523回照会するのは無駄で、レート制限にも近づく。
+    #   11:35の実行は後場の発注に間に合わせたい回なので、ここを軽くする。
+    if not refetch:
+        return fund_reuse(f"場中（{NOW:%H:%M} JST）は取り直さない（大引け後の実行で更新）")
+    rows, hit, asked = jq_rows(JQ_RECENT_D)
+    hist = jq_build(rows)
+    jqinfo = {"dates_asked": asked, "dates_with_data": hit, "rows": len(rows),
+              "codes": len(hist), "req": _JQ["req"], "n429": _JQ["n429"],
+              "blocked": _JQ["blocked"], "resp_key": _JQ["key_used"],
+              "err": dict(_JQ["err"])}
+    if not hist:
+        # 取得に失敗した日に列を空にすると、前回分が使えるのに捨てることになる。
+        pct = fund_reuse("J-Quantsから開示が取れなかった")
+        meta["fund"]["jq"] = jqinfo
+        print("::warning::J-Quantsから財務情報が取れませんでした。"
+              "前回の順位で代替しています（data/meta.json の fund を確認）")
+        return pct
+    fmap = {}
+    for c, rs in hist.items():
+        m = jq_metrics(rs)
+        if m: fmap[c] = m
+    out, has = fund_scores(sc, fmap)
+    codes = [str(c).replace(".T", "") for c in sc["code"].tolist()]
+    pct = {}
+    for i, c in enumerate(codes):
+        if not bool(has.iloc[i]): continue
+        d = {}
+        for k, ser in out.items():
+            v = ser.iloc[i]
+            if v == v: d[k] = int(round(float(v) * 100))
+        if d: pct[c] = d
+    asof = max((m["asof"] for m in fmap.values() if m.get("asof")), default="")
+    payload = {
+        "generated_at_jst": NOW.isoformat(),
+        "asof_latest_disclosure": asof,
+        "pool": int(len(sc)), "n_codes": len(pct),
+        "span_days": JQ_RECENT_D,
+        "note": ("断面のパーセンタイル（0〜100、大きいほど上位）のみを収録する。"
+                 "母集団は当日スクリーニングを通過した銘柄。"
+                 "J-Quantsの生の財務数値は利用条件により公開できないため含まない。"),
+        "factors": {
+            "value":    "純資産倍率の逆数と予想利益利回りの合成（高いほど割安）",
+            "quality":  "予想ROE・営業利益率・自己資本比率の合成",
+            "moat":     "営業利益率の水準とばらつきの小ささ。競争優位の代理指標であって測定ではない",
+            "revision": "会社予想の改定方向（高いほど上方修正）"},
+        "coverage": fund_coverage(out, has),
+        "used_in_score": False,
+        "jq": jqinfo, "pct": pct}
+    json.dump(payload, open(FUND_PATH, "w"), ensure_ascii=False, indent=1)
+    meta["fund"] = {k: payload[k] for k in
+                    ("asof_latest_disclosure", "pool", "n_codes", "coverage", "jq")}
+    print(f"[財務] {len(pct):,}銘柄に順位を付与（開示の最新 {asof} / 照会{_JQ['req']}回）")
+    return pct
+
+# ── public リポジトリに出してはいけないものが混ざっていないかの検査 ──
+#   ① J-Quantsの生の財務数値（利用条件で第三者閲覧が禁止されている）
+#   ② APIキーそのもの
+#   見つけたら黙って公開せず、その場で削って大きく警告する。
+#   ジョブを落とすのではなく削るのは、その日のレポートまで失うのを避けるため。
+RAW_KEYS = {"bps", "feps", "eps", "sales", "op", "ta", "eq", "eqar",
+            "cfo", "fop", "fnp", "opm", "opm_stab", "roe", "cfoa"}
+
+def _walk_keys(o, found):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k in RAW_KEYS: found.add(k)
+            _walk_keys(v, found)
+    elif isinstance(o, list):
+        for v in o: _walk_keys(v, found)
+
+def commit_guard():
+    import glob
+    bad_files, key_files = {}, []
+    for fp in sorted(glob.glob(f"{OUT}/*.json")):
+        try:
+            txt = open(fp, encoding="utf-8").read()
+        except Exception:
+            continue
+        if JQ_KEY and len(JQ_KEY) >= 12 and JQ_KEY in txt:
+            key_files.append(fp)
+            open(fp, "w", encoding="utf-8").write(txt.replace(JQ_KEY, "[REDACTED]"))
+            txt = None
+        try:
+            o = json.loads(txt if txt is not None
+                           else open(fp, encoding="utf-8").read())
+        except Exception:
+            continue
+        found = set()
+        _walk_keys(o, found)
+        if found: bad_files[fp] = sorted(found)
+    res = {"raw_fields": bad_files, "api_key_found_in": key_files}
+    if key_files:
+        print(f"::error::APIキーが {', '.join(key_files)} に出ていたので伏せました。"
+              "コードの見直しが必要です")
+    if bad_files:
+        for fp, ks in bad_files.items():
+            print(f"::error::{fp} に生の財務項目 {ks} が含まれています。"
+                  "J-Quantsの利用条件に反するのでコミット前に取り除いてください")
+    meta["commit_guard"] = res
+    return res
+
 SCREEN_ENABLED   = True
 SCREEN_BUDGET_S  = 2700      # 取得に使ってよい秒数（超えたら打ち切って結果を出す）
                              # マスタ経由だと対象が約4,000銘柄になるため 30分→45分。
@@ -877,8 +1366,18 @@ def bt_features(ax, vol):
 #               自作スコアは逆に高ボラを加点していた（BAB/低ボラ研究と逆符号）。
 #  5通りを一度に比べるので、たまたま良く見えるものが出やすい。
 #  positiveと言うには t≥2.5 を要求する（名目t≥2では5通りで誤検出2割弱）。
-BT_FACTORS = ("trend", "revert", "mom12_2", "rev5", "lowvol")
-BT_T_THRESHOLD = 2.5
+#    value / quality / moat / revision … J-Quantsの財務情報から作るファンダ側。
+#               日本株はバリューが効きモメンタムが効かないとする研究があり、
+#               証拠の強い側を今まで作っていなかった。
+#               ★この4つは「財務が引けた銘柄」だけの母集団で戦うので、
+#                 比較の基準線も同じ母集団から取った random_f を使う。
+#                 全銘柄からの random と比べると、ETFを含む/含まないの
+#                 違いが優位性に見えてしまう。
+BT_FACTORS = ("trend", "revert", "mom12_2", "rev5", "lowvol") + FUND_FACTORS
+# 9通りを一度に比べるので、たまたま良く見えるものが出やすい。
+#   名目 t>=2.5（両側 p≈0.012）だと 1-(1-0.012)^9 ≈ 10% で誤検出が出る。
+#   t>=2.8（p≈0.005）なら ≈4.4% に下がる。因子を5→9に増やしたので線を上げる。
+BT_T_THRESHOLD = 2.8
 
 def bt_alt_scores(df):
     """自作スコア以外の選び方。順位そのものを値にする（大きいほど上位）。"""
@@ -944,6 +1443,32 @@ def run_backtest(codes, bench="1306.T"):
              for i in range(len(cal))}
     print(f"[検証] 基準カレンダー {len(cal)}営業日（{cal[0].date()}〜{cal[-1].date()}）")
 
+    # ② 財務情報（開示日ベース）。キーが無ければファンダ側は走らない。
+    #    Freeの提供範囲は「12週間前〜2年12週間前」なので、検証の5年のうち
+    #    ファンダが存在するのは直近2年ぶんだけになる。存在しない日は
+    #    ファンダ側の母集団が立たないので、その日は丸ごと見送る。
+    jhist, jpit = {}, {}
+    if JQ_KEY:
+        try:
+            _rows, _hit, _asked = jq_rows(JQ_HIST_D)
+            jhist = jq_build(_rows)
+            jpit  = jq_pit_index(jhist, cal) if jhist else {}
+            meta["jq_bt"] = {"dates_asked": _asked, "dates_with_data": _hit,
+                             "rows": len(_rows), "codes": len(jhist),
+                             "req": _JQ["req"], "n429": _JQ["n429"],
+                             "blocked": _JQ["blocked"], "resp_key": _JQ["key_used"],
+                             "err": dict(_JQ["err"])}
+            print(f"[検証] 財務情報 {len(jhist):,}銘柄 / 開示{len(_rows):,}件 "
+                  f"/ 照会{_JQ['req']}回 / 429:{_JQ['n429']}")
+            if not jhist:
+                print("::warning::J-Quantsから財務情報が取れなかったためファンダ側は検証しない")
+        except Exception as e:
+            meta["errors"].append(f"jq bt: {type(e).__name__}: {e}")
+            jhist, jpit = {}, {}
+    else:
+        meta["jq_bt"] = {"skipped": "JQUANTS_API_KEY 未設定"}
+        print("[検証] JQUANTS_API_KEY が無いのでファンダ側は検証しない")
+
     # ★コード順のまま取ると、時間切れで打ち切られたときに
     #   1300〜4000番台（ETF・REIT・食品・化学）に偏った標本になり、
     #   それを市場全体の結果として報告してしまう。
@@ -979,8 +1504,8 @@ def run_backtest(codes, bench="1306.T"):
         raise RuntimeError(f"検証に足る銘柄が集まらない: {len(feats)}")
 
     nbar = len(cal)
-    trades = {k: [] for k in BT_FACTORS + ("random",)}
-    n_dates = 0
+    trades = {k: [] for k in BT_FACTORS + ("random", "random_f")}
+    n_dates, n_dates_f = 0, 0
     for i in range(BT_WARMUP, nbar - max(BT_HOLDS) - 1, BT_STEP):
         pool = []
         for c, f in feats.items():
@@ -1005,8 +1530,30 @@ def run_backtest(codes, bench="1306.T"):
         for _ in range(BT_DRAWS):
             idx = rng.choice(len(df), size=min(BT_TOP, len(df)), replace=False)
             picks.setdefault("random", []).extend(df.iloc[k] for k in idx)
+        # ファンダ側。母集団は「その日までに財務が開示されている銘柄」だけ。
+        # 基準線(random_f)も必ず同じ母集団から取る。
+        if jpit:
+            fmap = {}
+            for c in df["code"].tolist():
+                cc = str(c).replace(".T", "")
+                m = jq_metrics_at(jhist, jpit, cc, i)
+                if m: fmap[cc] = m
+            fs, has = fund_scores(df, fmap)
+            hv = has.to_numpy()
+            sub = df[hv]
+            if len(sub) >= JQ_MIN_POOL:
+                n_dates_f += 1
+                for name, sc in fs.items():
+                    v = sc.to_numpy(float)[hv]
+                    ok = ~np.isnan(v)
+                    if ok.sum() < JQ_MIN_POOL: continue
+                    order = np.argsort(-np.where(ok, v, -np.inf))[:BT_TOP]
+                    picks[name] = [sub.iloc[k] for k in order if ok[k]]
+                for _ in range(BT_DRAWS):
+                    idx = rng.choice(len(sub), size=min(BT_TOP, len(sub)), replace=False)
+                    picks.setdefault("random_f", []).extend(sub.iloc[k] for k in idx)
         for kind, rows in picks.items():
-            w = 1.0/BT_DRAWS if kind == "random" else 1.0
+            w = 1.0/BT_DRAWS if kind.startswith("random") else 1.0
             for r in rows:
                 f = feats[r["code"]]
                 for hold in BT_HOLDS:
@@ -1014,12 +1561,14 @@ def run_backtest(codes, bench="1306.T"):
                     trades[kind].append({"i": i, "hold": hold, "R": R, "bars": bars,
                                          "how": how, "w": w, "up": above.get(i)})
     meta["backtest_dates"] = n_dates
+    meta["backtest_dates_fund"] = n_dates_f
     cov = round(asked/len(codes)*100, 1) if codes else 0
     meta["backtest_coverage"] = {"asked": asked, "universe": len(codes),
                                  "pct": cov, "usable": len(feats)}
     print(f"[検証] {len(feats)}銘柄（母集団{len(codes):,}中{asked:,}件に照会 = {cov}%）/ "
-          f"{n_dates}回の建て日 / 延べ {sum(len(v) for v in trades.values()):,}件")
-    return trades, n_dates, len(feats), str(cal[0].date()), str(cal[-1].date()), cov
+          f"{n_dates}回の建て日（うちファンダ{n_dates_f}回）/ "
+          f"延べ {sum(len(v) for v in trades.values()):,}件")
+    return trades, n_dates, len(feats), str(cal[0].date()), str(cal[-1].date()), cov, n_dates_f
 
 def bt_summary(trades, hold, regime=None):
     out = {}
@@ -1036,14 +1585,21 @@ def bt_summary(trades, hold, regime=None):
                      "target": round(sum(r["w"] for r in d if r["how"] == "target")/w*100, 1),
                      "stop": round(sum(r["w"] for r in d if r["how"] == "stop")/w*100, 1),
                      "timeout": round(sum(r["w"] for r in d if r["how"] == "timeout")/w*100, 1)}
-    # 無作為との差が、順位付けが生んでいる値
-    base = out.get("random", {}).get("avg_r")
+    # 無作為との差が、順位付けが生んでいる値。
+    # ★ファンダ側は「財務が引けた銘柄」だけの母集団で戦っているので、
+    #   全銘柄からの random と比べてはいけない。同じ母集団から取った
+    #   random_f と比べる。そうしないと、ETFが母集団から抜けた効果を
+    #   ファンダの優位性として報告してしまう。
     for k in BT_FACTORS:
-        if k in out and base is not None:
-            out[k]["vs_random"] = round(out[k]["avg_r"] - base, 4)
-            # 平均の差の粗い有意性（1件あたりのRの散らばりを1.0とみなす）
-            n = out[k]["n"]
-            out[k]["t_rough"] = round(out[k]["vs_random"] / (1.0/max(n, 1)**0.5), 2) if n else None
+        if k not in out: continue
+        bk = "random_f" if k in FUND_FACTORS else "random"
+        base = out.get(bk, {}).get("avg_r")
+        if base is None: continue
+        out[k]["base"] = bk
+        out[k]["vs_random"] = round(out[k]["avg_r"] - base, 4)
+        # 平均の差の粗い有意性（1件あたりのRの散らばりを1.0とみなす）
+        n = out[k]["n"]
+        out[k]["t_rough"] = round(out[k]["vs_random"] / (1.0/max(n, 1)**0.5), 2) if n else None
     return out
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1777,6 +2333,17 @@ try:
                               "named": bool(MASTER),
                               "source": meta.get("universe_source", "?")}
             if not sc.empty:
+                # ── ファンダの断面順位を列として足す（表示のみ・採点には入れない）
+                try:
+                    FUND_PCT = fund_today(sc, refetch=session_complete())
+                except Exception as e:
+                    FUND_PCT = {}
+                    meta["errors"].append(f"fund_today: {type(e).__name__}: {e}")
+                    meta["fund"] = {"error": str(e)[:120]}
+                if FUND_PCT:
+                    for _k in FUND_FACTORS:
+                        sc["f_" + _k] = [FUND_PCT.get(str(c).replace(".T", ""), {}).get(_k)
+                                         for c in sc["code"]]
                 trend, revert = rank_candidates(sc)
                 tr0, rv0 = trend.to_dict("records"), revert.to_dict("records")
                 # 決算日は順位が付いてから、載る銘柄だけ引く（全銘柄には引けない）
@@ -1817,28 +2384,42 @@ try:
             # ── 過去検証（月1回・大引け後だけ）────────────────────
             try:
                 _btp = f"{OUT}/backtest.json"
-                _age = 999
+                # 検証の前提が変わったかどうかの指紋。期間・因子・絞り込み・
+                # 執行ルールのどれかが変われば、古い結果は比較できない。
+                _cfg = {"period": BT_PERIOD, "step": BT_STEP, "top": BT_TOP,
+                        "holds": list(BT_HOLDS), "warmup": BT_WARMUP,
+                        "factors": list(BT_FACTORS), "draws": BT_DRAWS,
+                        "filters": [MIN_TURNOVER, MIN_PRICE, MIN_ATR_PCT, MAX_ATR_PCT]}
+                _age, _same_cfg = 999, False
                 if os.path.exists(_btp):
                     try:
+                        _old = json.load(open(_btp, encoding="utf-8"))
                         _age = (NOW - dt.datetime.fromisoformat(
-                            json.load(open(_btp, encoding="utf-8"))["generated_at_jst"])).days
+                            _old["generated_at_jst"])).days
+                        _same_cfg = (_old.get("config") == _cfg)
                     except Exception:
-                        _age = 999
+                        _age, _same_cfg = 999, False
                 if BT_ENABLED and not session_complete():
                     meta["backtest_skipped"] = f"場中（{NOW:%H:%M} JST）"
                     print(f"[検証] 場中（{NOW:%H:%M}）のため見送り。"
                           "大引け後・寄り付き前・土日の実行で走る")
-                elif BT_ENABLED and _age < BT_MAX_AGE_D:
-                    meta["backtest_skipped"] = f"前回から{_age}日（{BT_MAX_AGE_D}日ごと）"
-                if BT_ENABLED and session_complete() and _age >= BT_MAX_AGE_D:
+                elif BT_ENABLED and _same_cfg and _age < BT_MAX_AGE_D:
+                    meta["backtest_skipped"] = f"前回から{_age}日（{BT_MAX_AGE_D}日ごと）・設定変更なし"
+                elif BT_ENABLED and not _same_cfg:
+                    print("[検証] 検証の前提が変わっているため、日数に関係なく作り直す")
+                if BT_ENABLED and session_complete() and (_age >= BT_MAX_AGE_D or not _same_cfg):
                     print(f"[検証] 過去検証を実行（前回から{_age}日）")
-                    tk, nd, nf, d0, d1, cov = run_backtest(uni)
+                    tk, nd, nf, d0, d1, cov, ndf = run_backtest(uni)
                     bt = {"generated_at_jst": NOW.isoformat(),
-                          "from": d0, "to": d1, "tickers": nf, "entry_dates": nd, "coverage_pct": cov,
+                          "from": d0, "to": d1, "tickers": nf, "entry_dates": nd,
+                          "entry_dates_fund": ndf, "coverage_pct": cov,
+                          "fund_factors": list(FUND_FACTORS),
+                          "jq": meta.get("jq_bt", {}),
                           "step": BT_STEP, "top": BT_TOP, "holds": list(BT_HOLDS),
                           "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
                                       "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
-                          "factors": list(BT_FACTORS), "t_threshold": BT_T_THRESHOLD,
+                          "config": _cfg, "t_threshold": BT_T_THRESHOLD,
+                          "factors": list(BT_FACTORS),
                           "all": {str(h): bt_summary(tk, h) for h in BT_HOLDS},
                           "regime": {"above200": bt_summary(tk, 15, True),
                                      "below200": bt_summary(tk, 15, False)}}
@@ -2207,18 +2788,37 @@ try:
         L.append(f"比べた選び方は **{len(bt.get('factors', []))}通り**。"
                  f"一度に複数を比べるとたまたま良く見えるものが出るので、"
                  f"「効いている」と言うには **t≥{_thr}** を要求する。\n")
-        L.append("| 選び方 | 件数 | 勝率 | 平均R | 無作為との差 | 粗いt値 | 利確% | 損切% | 時間切れ% |")
-        L.append("|---|--:|--:|--:|--:|--:|--:|--:|--:|")
+        _ndf = bt.get("entry_dates_fund")
+        if _ndf:
+            L.append(f"財務を使う4つは、財務が引けた銘柄だけの母集団で戦うので、"
+                     f"基準線も同じ母集団から取った「無作為（財務あり）」と比べる。"
+                     f"財務が揃った建て日は **{_ndf}回**"
+                     f"（無料枠のデータが直近2年ぶんしか無いため、"
+                     f"技術指標側より少ない）。\n")
+        elif bt.get("jq", {}).get("skipped"):
+            L.append("> 財務情報は取得していない（"
+                     f"{bt['jq']['skipped']}）。下の表は技術指標だけの比較。\n")
+        # ★見出しと区切り行のセル数を必ず揃える。
+        #   過去に2回、見出しだけ増やして最後の列が黙って消えた。
+        L.append("| 選び方 | 件数 | 勝率 | 平均R | 基準 | 無作為との差 | 粗いt値 | 利確% | 損切% | 時間切れ% |")
+        L.append("|---|--:|--:|--:|:--|--:|--:|--:|--:|--:|")
         _labels = [("trend", "順張り（自作）"), ("revert", "逆張り（自作）"),
                    ("mom12_2", "12-2モメンタム"), ("rev5", "短期リバーサル(5日)"),
-                   ("lowvol", "低ボラティリティ"), ("random", "**無作為10（基準）**")]
-        for k, lbl in _labels:
+                   ("lowvol", "低ボラティリティ"),
+                   ("value", "バリュー（財務）"), ("quality", "クオリティ（財務）"),
+                   ("moat", "競争優位の代理（財務）"), ("revision", "業績修正方向（財務）")]
+        _bases = [("random", "**無作為10（基準・全銘柄）**"),
+                  ("random_f", "**無作為10（基準・財務あり）**")]
+        _bname = {"random": "全銘柄", "random_f": "財務あり"}
+        for k, lbl in _labels + _bases:
             v = m.get(k)
             if not v: continue
             vr = f"{v['vs_random']:+.4f}" if "vs_random" in v else "—"
             tv = f"{v['t_rough']:+.2f}" if v.get("t_rough") is not None else "—"
+            bn = _bname.get(v.get("base"), "—")
             L.append(f"| {lbl} | {v['n']:,.0f} | {v['win_pct']:.1f}% | {v['avg_r']:+.4f} | "
-                     f"{vr} | {tv} | {v['target']:.0f}% | {v['stop']:.0f}% | {v['timeout']:.0f}% |")
+                     f"{bn} | {vr} | {tv} | {v['target']:.0f}% | {v['stop']:.0f}% | "
+                     f"{v['timeout']:.0f}% |")
 
         def _verdict(k, lbl):
             v = m.get(k) or {}
@@ -2228,10 +2828,10 @@ try:
             if t <= -_thr:  return f"- **{lbl}: 無作為を下回っている（t={t:+.2f}）。使ってはいけない。**"
             return f"- {lbl}: 無作為との差は誤差の範囲（t={t:+.2f}）。**情報があるとは言えない。**"
         L.append("")
-        for k, lbl in _labels[:-1]:
+        for k, lbl in _labels:
             line = _verdict(k, lbl)
             if line: L.append(line)
-        _best = max(((m.get(k) or {}).get("t_rough") or -99, k) for k, _ in _labels[:-1])
+        _best = max(((m.get(k) or {}).get("t_rough") or -99, k) for k, _ in _labels)
         if _best[0] < _thr:
             L.append(f"\n> **どの選び方も無作為を有意に上回っていない（最良でも t={_best[0]:+.2f}）。**")
             L.append("> **この状態で新規の発注推奨を出してはいけない。** "
@@ -2245,7 +2845,8 @@ try:
             L.append("|---|---|--:|--:|--:|--:|")
             _small = []
             for key, lbl in [("above200", "200日線の上"), ("below200", "200日線の下")]:
-                for k, kl in _labels[:-1] + [("random", "無作為")]:
+                for k, kl in _labels + [("random", "無作為（全銘柄）"),
+                                        ("random_f", "無作為（財務あり）")]:
                     v = (rg.get(key) or {}).get(k)
                     if not v: continue
                     vr = f"{v['vs_random']:+.4f}" if "vs_random" in v else "—"
@@ -2362,6 +2963,15 @@ try:
             return {"unknown": "予定なし(要確認)", "error": "照会失敗(要確認)",
                     "timeout": "時間切れ(要確認)"}.get(st, "未照会(要確認)")
 
+        def _fund(r):
+            """ファンダの断面順位（パーセンタイル・大きいほど上位）。
+               ★生のPBRやROEは出せない。J-Quantsの利用条件が
+                 第三者の閲覧を禁じており、このリポジトリは public だから。
+               ★この列は採点に入っていない。過去検証が済むまでは参考表示。"""
+            vs = [r.get("f_" + k) for k in ("value", "quality", "moat", "revision")]
+            if all(v is None for v in vs): return "—"
+            return "/".join("—" if v is None else f"{int(v)}" for v in vs)
+
         L.append(f"\n## 新規候補（全銘柄スクリーニング）\n")
         _uni, _sc = cj.get("universe", 0), cj["scanned"]
         L.append(f"対象 {_uni:,}銘柄 → 走査 {_sc:,} → フィルタ通過 **{cj['passed']:,}銘柄**"
@@ -2396,21 +3006,21 @@ try:
             L.append("")
 
         L.append("\n### 順張り候補（移動平均の上・レンジ上方・20日が伸びている）\n")
-        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | 重複 | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 決算 | 当日の開示 |")
-        L.append("|--:|---|---|---|:-:|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
+        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | 重複 | スコア | 財務順位 | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 決算 | 当日の開示 |")
+        L.append("|--:|---|---|---|:-:|:-:|--:|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
         for i, r in enumerate(cj["trend"][:15]):
             L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
-                     f"{_ov(r)} | **{r['trend']:.1f}** | {r['close']:,.1f} | {r['rsi']:.0f} | "
+                     f"{_ov(r)} | **{r['trend']:.1f}** | {_fund(r)} | {r['close']:,.1f} | {r['rsi']:.0f} | "
                      f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
                      f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {r['vol_ratio']:.2f}x | {_earn(r)} | {_disc(r)} |")
 
         L.append("\n### 逆張り候補（長期は上向きだが短期で売られすぎ）\n")
-        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | 重複 | スコア | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 決算 | 当日の開示 |")
-        L.append("|--:|---|---|---|:-:|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
+        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | 重複 | スコア | 財務順位 | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 決算 | 当日の開示 |")
+        L.append("|--:|---|---|---|:-:|:-:|--:|:-:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
         for i, r in enumerate(cj["revert"][:15]):
             if r["revert"] <= 0: continue
             L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
-                     f"{_ov(r)} | **{r['revert']:.1f}** | {r['close']:,.1f} | {r['rsi']:.0f} | "
+                     f"{_ov(r)} | **{r['revert']:.1f}** | {_fund(r)} | {r['close']:,.1f} | {r['rsi']:.0f} | "
                      f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
                      f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {_earn(r)} | {_disc(r)} |")
 
@@ -2424,6 +3034,38 @@ try:
         L.append("- **「重複」が付いた銘柄は、既に持っている業種の上乗せ。** 1銘柄0.9%のつもりでも、"
                  "業種ショックでは同時に動く。採るなら片方だけにする。")
         L.append("- 順張りと逆張りは別の尺度なので**混ぜて比較しない**。")
+        _fd = meta.get("fund") or {}
+        if _fd.get("n_codes"):
+            L.append(f"- **「財務順位」列は `割安/質/競争優位の代理/修正方向` の4つの"
+                     f"断面パーセンタイル**（0〜100、大きいほど上位／母集団は当日の通過"
+                     f"{_fd.get('pool', 0):,}銘柄）。付与できたのは **{_fd['n_codes']:,}銘柄**"
+                     f"（財務の最新開示日 {_fd.get('asof_latest_disclosure', '?')}）。")
+        if _fd.get("reused"):
+            _age, _ah = _fd.get("age_days"), _fd.get("age_hours")
+            _when = (f"{_ah:.0f}時間前" if (_age == 0 and _ah is not None)
+                     else f"{_age}日前" if _age is not None else "取得時刻不明")
+            L.append(f"  - この列は**前回取得した順位の再利用**（{_when} / 理由: "
+                     f"{_fd.get('reason', '?')}）。無料枠の財務はもともと12週間前の"
+                     "数字なので、1日ぶん古いことによる劣化は無い。"
+                     "会計の数字が前回と同じで、株価だけが新しい状態。")
+            if _age is not None and _age > FUND_MAX_AGE_D:
+                L.append(f"  - > **注意: {_age}日前の順位を使っている。** "
+                         "J-Quantsの取得が続けて失敗している可能性がある。"
+                         "`data/meta.json` の `fund` を確認すること。")
+            L.append("  - **PBRやROEの生の数値は載せられない。** J-Quantsの利用条件が"
+                     "取得データを第三者が閲覧できる状態にすることを禁じており、"
+                     "このリポジトリは public だから。順位は「分析結果」なので公開できる。")
+            L.append("  - 無料枠の財務は**12週間前より過去のもの**。株価は当日、"
+                     "会計の数字は約3ヶ月前という組み合わせになる（先読みではない）。")
+            L.append("  - **「競争優位の代理」は営業利益率の水準とばらつきの小ささ**であって、"
+                     "シェアや参入障壁を測ったものではない。無料データにそれは無い。")
+            L.append("  - ★**この列はスコアに入っていない。** 効くかどうかは"
+                     "「過去検証」の表で確かめてから採点に入れる。"
+                     "検証前に混ぜるのは、trend/revertを作ったときと同じ間違いになる。")
+        elif _fd.get("skipped"):
+            L.append(f"- 「財務順位」列は空（{_fd['skipped']}）。")
+        elif _fd:
+            L.append("- 「財務順位」列は空（財務情報の取得に失敗）。data/meta.json の `fund` を確認すること。")
         L.append("- 「業種ETF」列は業種別ETF17本の表と突き合わせるための対応コード。**候補のBはこの列の業種の位置から機械的に付けられる。**")
         L.append("- 「当日の開示」は TDnet の直近4日分（新しい順）。**空欄(—)は「開示が無い」であって「材料が無い」ではない**（報道・需給・指数入替は載らない）。")
         ce = cj.get("cand_earnings") or {}
@@ -2490,6 +3132,12 @@ except Exception as e:
     meta["errors"].append(f"analysis: {type(e).__name__}: {e}")
     meta["analysis"] = "failed"
     print("[分析] 失敗:", e); traceback.print_exc()
+
+try:
+    _g = commit_guard()
+except Exception as e:
+    meta["errors"].append(f"commit_guard: {type(e).__name__}: {e}")
+    _g = {"error": str(e)[:120]}
 
 json.dump(meta, open(f"{OUT}/meta.json", "w"), ensure_ascii=False, indent=1)
 
