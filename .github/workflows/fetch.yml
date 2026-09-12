@@ -2,8 +2,8 @@ name: fetch-market-data
 
 on:
   schedule:
-    - cron: '35 2 * * 1-5'
-    - cron: '45 6 * * 1-5'
+    - cron: '35 2 * * 1-5'      # 11:35 JST（前場終了後）
+    - cron: '45 6 * * 1-5'      # 15:45 JST（大引け後）
   workflow_dispatch:
 
 permissions:
@@ -16,15 +16,64 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    # 全銘柄スクリーニング(45分)＋5年バックテスト＋J-Quantsの財務取得を
+    # 1回で走らせる余裕。Actionsの1ジョブ上限は360分。
+    timeout-minutes: 330
+    env:
+      # J-Quants のAPIキー。Secrets はリポジトリのコードでも git 履歴でもない
+      # 場所に保管され、fork からの pull_request には渡されない。
+      # ここで環境変数として渡すだけ。コードはヘッダーに載せるのみで、
+      # ログにも data/ にも書かない。
+      # 未設定でもジョブは通る（財務の段だけ飛ぶ）。
+      JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install --upgrade yfinance pandas requests curl_cffi
+          cache-dependency-path: requirements.txt
+
+      # 依存はファイル1箇所で管理する。ここに直接書くと
+      # requirements.txt を更新しても反映されず、実際に openpyxl が
+      # 入らないまま「入っているつもり」で走る事故になった。
+      - name: Install deps
+        run: pip install --upgrade -r requirements.txt
+
+      - name: Verify deps
+        run: |
+          python - <<'PY'
+          import importlib.util, sys
+          need = ["yfinance", "pandas", "requests", "curl_cffi"]
+          missing = [m for m in need if not importlib.util.find_spec(m)]
+          if missing:
+              print("::error::依存が入っていません:", missing); sys.exit(1)
+          print("依存の確認OK:", need)
+          PY
+
       - name: Fetch
         run: python fetch_market_data.py
+
+      # data/ に生の財務数値やAPIキーが混ざっていないかは
+      # スクリプト側の commit_guard() が検査し、見つけたら伏せて
+      # ::error:: を出す。ここではその結果を読んで見えるようにする。
+      - name: Show guard result
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          p = "data/meta.json"
+          if not os.path.exists(p):
+              print("meta.json が無い"); raise SystemExit(0)
+          m = json.load(open(p, encoding="utf-8"))
+          g = m.get("commit_guard") or {}
+          print("commit_guard:", json.dumps(g, ensure_ascii=False))
+          if g.get("raw_fields") or g.get("api_key_found_in"):
+              print("::error::公開してはいけない内容が data/ にありました。上を確認してください")
+          print("fund:", json.dumps(m.get("fund") or {}, ensure_ascii=False)[:800])
+          print("jq_bt:", json.dumps(m.get("jq_bt") or {}, ensure_ascii=False)[:600])
+          PY
+
       - name: Commit
         run: |
           git config user.name  "market-data-bot"
