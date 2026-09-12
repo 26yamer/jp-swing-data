@@ -1024,6 +1024,17 @@ def bt_summary(trades, hold, regime=None):
 #  実際の約定値・スリッページ・板の薄さは含まれない。そこは割り引いて読むこと。
 # ══════════════════════════════════════════════════════════════════════
 # ── 執行の前提（ここ以外に数字を散らさない）─────────────────────
+def session_complete():
+    """直近の日足が確定しているか。
+       平日 9:00〜15:40 は場中で当日足が未完成なので False。
+       土日・寄り付き前・大引け後は、直近の足が確定しているので True。
+       （時刻だけで「15時以降」と判定していたため、土曜の手動実行が
+         黙って台帳も過去検証も飛ばしていた。）"""
+    if NOW.weekday() >= 5:                  # 土日は直前の営業日の足
+        return True
+    t = NOW.hour*60 + NOW.minute
+    return not (9*60 <= t < 15*60 + 40)     # 大引け後のデータ確定を少し待つ
+
 LOT              = 100      # 日本株の売買単位。10株単位で丸めると発注できない
 RISK_PER_TRADE_P = 0.009    # 1トレードの許容損失（総額比）
 MAX_WEIGHT       = 0.15     # 1銘柄の上限（総額比）
@@ -1231,6 +1242,8 @@ def screen_all(codes, sig=None, open_map=None):
             done += 1
             try:
                 x = d[c].dropna(subset=["Close"])
+                if len(x) and not meta.get("screen_last_bar"):
+                    meta["screen_last_bar"] = str(pd.Timestamp(x.index[-1]).date())
 
                 # ── 台帳の決着（ここでやるのは、この銘柄の日足が今まさに手元にあるから）
                 if c in open_map and sig is not None and len(x):
@@ -1745,14 +1758,20 @@ try:
                 # ★台帳への追加は大引け後の実行だけ。
                 #   11:35の実行では当日足がまだ未完成で、それを「終値」として
                 #   建値に使うと、成績の前提（当日終値で建てた）が嘘になる。
-                _today = str(NOW.date())
-                if NOW.hour >= 15:
-                    SIG = append_signals(SIG, tr, "trend", _today)
-                    SIG = append_signals(SIG, rv, "revert", _today)
+                # 記録する日付は実行日ではなく**その足の日付**。
+                # 寄り付き前に走らせると、前営業日の終値を当日として
+                # 記録してしまい、建値と日付が食い違う。
+                _bar = meta.get("screen_last_bar") or str(NOW.date())
+                if session_complete():
+                    SIG = append_signals(SIG, tr, "trend", _bar)
+                    SIG = append_signals(SIG, rv, "revert", _bar)
                     meta["signals_appended"] = True
+                    meta["signals_bar"] = _bar
                 else:
                     meta["signals_appended"] = False
-                    print("[台帳] 場中の実行のため追加は見送り（大引け後の実行で記録する）")
+                    meta["skip_reason"] = f"場中（{NOW:%H:%M} JST）のため当日足が未確定"
+                    print(f"[台帳] 場中（{NOW:%H:%M}）のため追加は見送り。"
+                          "大引け後・寄り付き前・土日の実行で記録する")
             else:
                 tr, rv = [], []
             # ── 過去検証（月1回・大引け後だけ）────────────────────
@@ -1765,7 +1784,13 @@ try:
                             json.load(open(_btp, encoding="utf-8"))["generated_at_jst"])).days
                     except Exception:
                         _age = 999
-                if BT_ENABLED and NOW.hour >= 15 and _age >= BT_MAX_AGE_D:
+                if BT_ENABLED and not session_complete():
+                    meta["backtest_skipped"] = f"場中（{NOW:%H:%M} JST）"
+                    print(f"[検証] 場中（{NOW:%H:%M}）のため見送り。"
+                          "大引け後・寄り付き前・土日の実行で走る")
+                elif BT_ENABLED and _age < BT_MAX_AGE_D:
+                    meta["backtest_skipped"] = f"前回から{_age}日（{BT_MAX_AGE_D}日ごと）"
+                if BT_ENABLED and session_complete() and _age >= BT_MAX_AGE_D:
                     print(f"[検証] 過去検証を実行（前回から{_age}日）")
                     tk, nd, nf, d0, d1, cov = run_backtest(uni)
                     bt = {"generated_at_jst": NOW.isoformat(),
@@ -2190,7 +2215,16 @@ try:
         L.append("- 比較したのは**この4つだけ**（順張り/逆張り × 全期間/レジーム別）。"
                  "条件を変えて良い結果を探す作業はしていない。")
     except FileNotFoundError:
-        L.append("\n## 過去検証\n\n未実施。大引け後の実行で自動的に走る（月1回）。")
+        L.append("\n## 過去検証\n")
+        _sk = meta.get("backtest_skipped")
+        if _sk:
+            L.append(f"**未実施**（理由: {_sk}）。")
+        else:
+            L.append("**未実施。**")
+        L.append("過去検証は **大引け後・寄り付き前・土日** の実行で走る"
+                 "（場中は当日足が未確定なため）。前回から30日経つと自動で再実行する。")
+        L.append("\n> **検証が無いあいだは、新規の発注推奨を出さない。** "
+                 "順位付けに優位性が確認できていないため。")
     except Exception as e:
         L.append(f"\n## 過去検証\n\n生成に失敗: {e}")
 
