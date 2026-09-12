@@ -1,24 +1,39 @@
 {
- "generated_at_jst": "2026-09-11T23:51:35.336997+09:00",
+ "generated_at_jst": "2026-09-12T09:28:04.786784+09:00",
  "universe": 4247,
  "scanned": 4247,
- "passed": 1731,
+ "passed": 1723,
  "master_count": 4247,
  "universe_source": "jpx_master",
  "tdnet": {
-  "pages": 11,
-  "codes": 489,
-  "items": 832,
+  "pages": 10,
+  "codes": 426,
+  "items": 700,
   "errors": 0
  },
  "skipped": {},
  "cand_earnings": {
   "asked": 40,
-  "ok": 13,
+  "ok": 11,
   "from_jpx": 6,
-  "from_yf": 7,
-  "unknown": 27,
+  "from_yf": 5,
+  "recent": 11,
+  "estimate": 0,
+  "unknown": 18,
   "error": 0
+ },
+ "jpx_earnings": {
+  "files": [
+   "kessan08_0904.xlsx:420件",
+   "kessan07_0904.xlsx:236件"
+  ],
+  "codes": 656
+ },
+ "earnings_hist": {
+  "days_cached": 30,
+  "codes": 1009,
+  "fetched_now": 31,
+  "new_items": 1010
  },
  "filters": {
   "min_turnover": 50000000,
@@ -34,6 +49,7 @@
    "turnover": 108932040.0,
    "atr": 18.98,
    "atr_pct": 4.62,
+   "adjf": 1.0,
    "rsi": 75.1,
    "vs25": 15.38,
    "vs75": 23.22,
@@ -49,17 +65,23 @@
    "size": "",
    "sector_etf": "1621",
    "news": [],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_soon": false
+   "overlap": [],
+   "earn_status": "recent",
+   "earn_next": "2026-11-12",
+   "earn_days": 61,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-13",
+   "earn_since": 30,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "8362.T",
    "close": 7680.0,
    "turnover": 645843350.0,
-   "atr": 343.36,
+   "atr": 343.35,
    "atr_pct": 4.47,
+   "adjf": 1.0,
    "rsi": 66.8,
    "vs25": 11.47,
    "vs75": 27.44,
@@ -75,10 +97,17 @@
    "size": "TOPIX Small 2",
    "sector_etf": "1631",
    "news": [],
+   "overlap": [
+    "1615"
+   ],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "8387.T",
@@ -86,6 +115,7 @@
    "turnover": 609499425.0,
    "atr": 151.64,
    "atr_pct": 3.68,
+   "adjf": 1.0,
    "rsi": 75.4,
    "vs25": 14.84,
    "vs75": 27.38,
@@ -101,10 +131,17 @@
    "size": "TOPIX Small 2",
    "sector_etf": "1631",
    "news": [],
+   "overlap": [
+    "1615"
+   ],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "2038.T",
@@ -112,6 +149,7 @@
    "turnover": 254372293.0,
    "atr": 115.75,
    "atr_pct": 4.42,
+   "adjf": 1.0,
    "rsi": 67.6,
    "vs25": 15.82,
    "vs75": 17.09,
@@ -127,17 +165,23 @@
    "size": "",
    "sector_etf": "",
    "news": [],
+   "overlap": [],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "9507.T",
    "close": 2174.5,
    "turnover": 2306279202.5,
-   "atr": 68.47,
+   "atr": 68.46,
    "atr_pct": 3.15,
+   "adjf": 1.0,
    "rsi": 75.3,
    "vs25": 11.65,
    "vs75": 31.55,
@@ -159,10 +203,15 @@
      "title": "当社子会社の四国電力送配電(株)による託送供給等約款の変更届出について"
     }
    ],
+   "overlap": [],
    "earn_status": "ok",
    "earn_next": "2026-10-29",
-   "earn_days": 48,
-   "earn_soon": false
+   "earn_days": 47,
+   "earn_src": "yf",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "5033.T",
@@ -170,6 +219,7 @@
    "turnover": 91717130.0,
    "atr": 54.09,
    "atr_pct": 4.6,
+   "adjf": 1.0,
    "rsi": 73.0,
    "vs25": 21.27,
    "vs75": 33.7,
@@ -185,10 +235,18 @@
    "size": "",
    "sector_etf": "1626",
    "news": [],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_soon": false
+   "overlap": [
+    "4755",
+    "9432"
+   ],
+   "earn_status": "recent",
+   "earn_next": "2026-11-13",
+   "earn_days": 62,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-14",
+   "earn_since": 29,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "8551.T",
@@ -196,6 +254,7 @@
    "turnover": 397708700.0,
    "atr": 305.22,
    "atr_pct": 3.6,
+   "adjf": 1.0,
    "rsi": 73.3,
    "vs25": 11.03,
    "vs75": 32.06,
@@ -211,10 +270,17 @@
    "size": "TOPIX Small 2",
    "sector_etf": "1631",
    "news": [],
+   "overlap": [
+    "1615"
+   ],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "296A.T",
@@ -222,6 +288,7 @@
    "turnover": 136956590.0,
    "atr": 45.88,
    "atr_pct": 3.95,
+   "adjf": 1.0,
    "rsi": 68.5,
    "vs25": 10.66,
    "vs75": 32.45,
@@ -237,10 +304,18 @@
    "size": "",
    "sector_etf": "1626",
    "news": [],
+   "overlap": [
+    "4755",
+    "9432"
+   ],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "153A.T",
@@ -248,6 +323,7 @@
    "turnover": 143149675.0,
    "atr": 79.94,
    "atr_pct": 4.9,
+   "adjf": 1.0,
    "rsi": 70.5,
    "vs25": 14.43,
    "vs75": 20.71,
@@ -263,10 +339,18 @@
    "size": "",
    "sector_etf": "1626",
    "news": [],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_soon": false
+   "overlap": [
+    "4755",
+    "9432"
+   ],
+   "earn_status": "recent",
+   "earn_next": "2026-11-13",
+   "earn_days": 62,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-14",
+   "earn_since": 29,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "3692.T",
@@ -274,6 +358,7 @@
    "turnover": 919568450.0,
    "atr": 338.49,
    "atr_pct": 5.35,
+   "adjf": 1.0,
    "rsi": 66.3,
    "vs25": 16.44,
    "vs75": 21.39,
@@ -289,10 +374,18 @@
    "size": "",
    "sector_etf": "1626",
    "news": [],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_soon": false
+   "overlap": [
+    "4755",
+    "9432"
+   ],
+   "earn_status": "recent",
+   "earn_next": "2026-11-12",
+   "earn_days": 61,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-13",
+   "earn_since": 30,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "8344.T",
@@ -300,6 +393,7 @@
    "turnover": 707052650.0,
    "atr": 202.85,
    "atr_pct": 4.07,
+   "adjf": 1.0,
    "rsi": 67.6,
    "vs25": 10.05,
    "vs75": 27.74,
@@ -315,10 +409,17 @@
    "size": "TOPIX Small 2",
    "sector_etf": "1631",
    "news": [],
+   "overlap": [
+    "1615"
+   ],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "4180.T",
@@ -326,6 +427,7 @@
    "turnover": 3211440520.0,
    "atr": 71.38,
    "atr_pct": 5.03,
+   "adjf": 1.0,
    "rsi": 61.2,
    "vs25": 9.88,
    "vs75": 39.63,
@@ -341,10 +443,18 @@
    "size": "TOPIX Small 1",
    "sector_etf": "1626",
    "news": [],
-   "earn_status": "ok",
+   "overlap": [
+    "4755",
+    "9432"
+   ],
+   "earn_status": "recent",
    "earn_next": "2026-11-12",
-   "earn_days": 62,
-   "earn_soon": false
+   "earn_days": 61,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-13",
+   "earn_since": 30,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "431A.T",
@@ -352,6 +462,7 @@
    "turnover": 104991150.0,
    "atr": 126.28,
    "atr_pct": 4.75,
+   "adjf": 1.0,
    "rsi": 63.0,
    "vs25": 11.58,
    "vs75": 25.99,
@@ -367,25 +478,34 @@
    "size": "",
    "sector_etf": "1626",
    "news": [],
+   "overlap": [
+    "4755",
+    "9432"
+   ],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "2820.T",
    "close": 6700.0,
    "turnover": 136452600.0,
-   "atr": 264.61,
+   "atr": 264.57,
    "atr_pct": 3.95,
+   "adjf": 1.0,
    "rsi": 70.3,
    "vs25": 11.16,
-   "vs75": 28.96,
-   "pos60": 93.5,
+   "vs75": 29.28,
+   "pos60": 93.6,
    "r20": 13.56,
-   "r60": 42.86,
+   "r60": 44.27,
    "vol_ratio": 1.07,
-   "trend": 80.6,
+   "trend": 80.9,
    "revert": 29.7,
    "name": "やまみ",
    "s17": "食品",
@@ -393,10 +513,15 @@
    "size": "",
    "sector_etf": "1617",
    "news": [],
+   "overlap": [],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "3083.T",
@@ -404,6 +529,7 @@
    "turnover": 419050760.0,
    "atr": 60.11,
    "atr_pct": 4.83,
+   "adjf": 1.0,
    "rsi": 63.5,
    "vs25": 13.78,
    "vs75": 21.69,
@@ -423,17 +549,17 @@
      "date": "20260910",
      "time": "15:30",
      "title": "連結子会社の異動（株式譲渡）に関するお知らせ"
-    },
-    {
-     "date": "20260908",
-     "time": "13:00",
-     "title": "2027年２月期通期連結業績予想の修正（上方修正）に関するお知らせ"
     }
    ],
+   "overlap": [],
    "earn_status": "ok",
    "earn_next": "2026-10-14",
-   "earn_days": 33,
-   "earn_soon": false
+   "earn_days": 32,
+   "earn_src": "jpx",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "2612.T",
@@ -441,6 +567,7 @@
    "turnover": 71571905.0,
    "atr": 76.47,
    "atr_pct": 3.21,
+   "adjf": 1.0,
    "rsi": 77.0,
    "vs25": 22.34,
    "vs75": 32.97,
@@ -456,10 +583,15 @@
    "size": "",
    "sector_etf": "1617",
    "news": [],
+   "overlap": [],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "1671.T",
@@ -467,6 +599,7 @@
    "turnover": 1085905328.7,
    "atr": 168.99,
    "atr_pct": 2.78,
+   "adjf": 1.0,
    "rsi": 71.8,
    "vs25": 12.57,
    "vs75": 19.85,
@@ -498,10 +631,15 @@
      "title": "上場ＥＴＦ(管理会社：シンプレクス・アセット・マネジメント)に関する日々の開示事項"
     }
    ],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_soon": false
+   "overlap": [],
+   "earn_status": "recent",
+   "earn_next": "2026-11-19",
+   "earn_days": 68,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-20",
+   "earn_since": 23,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "2492.T",
@@ -509,12 +647,13 @@
    "turnover": 2365958920.0,
    "atr": 33.65,
    "atr_pct": 4.81,
+   "adjf": 1.0,
    "rsi": 64.7,
    "vs25": 10.8,
-   "vs75": 38.06,
+   "vs75": 38.34,
    "pos60": 93.3,
    "r20": 14.01,
-   "r60": 75.88,
+   "r60": 77.52,
    "vol_ratio": 0.79,
    "trend": 79.1,
    "revert": 30.0,
@@ -524,10 +663,18 @@
    "size": "TOPIX Small 1",
    "sector_etf": "1626",
    "news": [],
+   "overlap": [
+    "4755",
+    "9432"
+   ],
    "earn_status": "ok",
    "earn_next": "2026-10-30",
-   "earn_days": 49,
-   "earn_soon": false
+   "earn_days": 48,
+   "earn_src": "yf",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "2531.T",
@@ -535,6 +682,7 @@
    "turnover": 1163259980.0,
    "atr": 75.43,
    "atr_pct": 2.98,
+   "adjf": 1.0,
    "rsi": 76.2,
    "vs25": 14.77,
    "vs75": 16.29,
@@ -550,10 +698,15 @@
    "size": "TOPIX Mid400",
    "sector_etf": "1617",
    "news": [],
+   "overlap": [],
    "earn_status": "ok",
    "earn_next": "2026-09-18",
-   "earn_days": 7,
-   "earn_soon": true
+   "earn_days": 6,
+   "earn_src": "yf",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": true,
+   "earn_watch": false
   },
   {
    "code": "6191.T",
@@ -561,6 +714,7 @@
    "turnover": 102922495.0,
    "atr": 41.73,
    "atr_pct": 3.89,
+   "adjf": 1.0,
    "rsi": 77.4,
    "vs25": 26.44,
    "vs75": 28.65,
@@ -585,17 +739,20 @@
      "date": "20260910",
      "time": "08:50",
      "title": "2026年9月期 上場10周年記念 ３期間株主還元方針に関する説明資料"
-    },
-    {
-     "date": "20260908",
-     "time": "09:50",
-     "title": "自己株式立会外買付取引（ToSTNeT-３）による自己株式の取得結果および取得終了に関するお知らせ"
     }
    ],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_soon": false
+   "overlap": [
+    "4755",
+    "9432"
+   ],
+   "earn_status": "recent",
+   "earn_next": "2026-11-13",
+   "earn_days": 62,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-14",
+   "earn_since": 29,
+   "earn_soon": false,
+   "earn_watch": false
   }
  ],
  "revert": [
@@ -605,6 +762,7 @@
    "turnover": 336830690.0,
    "atr": 81.85,
    "atr_pct": 3.53,
+   "adjf": 1.0,
    "rsi": 37.1,
    "vs25": -10.85,
    "vs75": 11.84,
@@ -631,17 +789,23 @@
      "title": "自己株式立会外買付取引（ＴｏＳＴＮｅＴ－３）による自己株式の買付けに関するお知らせ"
     }
    ],
+   "overlap": [],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "9278.T",
    "close": 2659.0,
    "turnover": 357361370.0,
-   "atr": 114.19,
+   "atr": 114.18,
    "atr_pct": 4.29,
+   "adjf": 1.0,
    "rsi": 38.7,
    "vs25": -8.56,
    "vs75": 9.15,
@@ -657,10 +821,15 @@
    "size": "TOPIX Small 2",
    "sector_etf": "1630",
    "news": [],
+   "overlap": [],
    "earn_status": "ok",
    "earn_next": "2026-10-13",
-   "earn_days": 32,
-   "earn_soon": false
+   "earn_days": 31,
+   "earn_src": "jpx",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "6523.T",
@@ -668,6 +837,7 @@
    "turnover": 1148374275.0,
    "atr": 54.82,
    "atr_pct": 4.48,
+   "adjf": 1.0,
    "rsi": 35.3,
    "vs25": -14.02,
    "vs75": 3.18,
@@ -683,17 +853,23 @@
    "size": "TOPIX Small 1",
    "sector_etf": "1625",
    "news": [],
+   "overlap": [],
    "earn_status": "ok",
    "earn_next": "2026-11-11",
-   "earn_days": 61,
-   "earn_soon": false
+   "earn_days": 60,
+   "earn_src": "yf",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "7504.T",
    "close": 4395.0,
    "turnover": 384563400.0,
-   "atr": 199.0,
+   "atr": 198.99,
    "atr_pct": 4.53,
+   "adjf": 1.0,
    "rsi": 42.9,
    "vs25": -7.38,
    "vs75": 12.69,
@@ -709,25 +885,31 @@
    "size": "TOPIX Small 2",
    "sector_etf": "1629",
    "news": [],
+   "overlap": [],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "7272.T",
    "close": 1731.5,
    "turnover": 12437941740.0,
-   "atr": 63.85,
-   "atr_pct": 3.69,
+   "atr": 63.8,
+   "atr_pct": 3.68,
+   "adjf": 1.0,
    "rsi": 43.9,
    "vs25": -8.29,
-   "vs75": 16.24,
-   "pos60": 67.3,
+   "vs75": 16.81,
+   "pos60": 67.9,
    "r20": -11.16,
-   "r60": 40.89,
+   "r60": 43.74,
    "vol_ratio": 1.09,
-   "trend": 39.1,
+   "trend": 39.5,
    "revert": 54.2,
    "name": "ヤマハ発動機",
    "s17": "自動車・輸送機",
@@ -735,10 +917,15 @@
    "size": "TOPIX Mid400",
    "sector_etf": "1622",
    "news": [],
+   "overlap": [],
    "earn_status": "ok",
    "earn_next": "2026-11-05",
-   "earn_days": 55,
-   "earn_soon": false
+   "earn_days": 54,
+   "earn_src": "yf",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "7774.T",
@@ -746,6 +933,7 @@
    "turnover": 100020825.0,
    "atr": 41.67,
    "atr_pct": 5.27,
+   "adjf": 1.0,
    "rsi": 44.4,
    "vs25": -7.38,
    "vs75": 12.1,
@@ -761,10 +949,15 @@
    "size": "",
    "sector_etf": "1625",
    "news": [],
+   "overlap": [],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "3660.T",
@@ -772,51 +965,69 @@
    "turnover": 1042711585.0,
    "atr": 19.47,
    "atr_pct": 4.13,
+   "adjf": 1.0,
    "rsi": 42.8,
    "vs25": -7.25,
-   "vs75": 8.84,
-   "pos60": 53.1,
+   "vs75": 8.92,
+   "pos60": 53.3,
    "r20": -8.9,
-   "r60": 26.61,
+   "r60": 26.96,
    "vol_ratio": 0.49,
-   "trend": 28.4,
-   "revert": 53.1,
+   "trend": 28.5,
+   "revert": 53.2,
    "name": "アイスタイル",
    "s17": "情報通信・サービスその他",
    "kind": "株式",
    "size": "TOPIX Small 1",
    "sector_etf": "1626",
    "news": [],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_soon": false
+   "overlap": [
+    "4755",
+    "9432"
+   ],
+   "earn_status": "recent",
+   "earn_next": "2026-11-12",
+   "earn_days": 61,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-13",
+   "earn_since": 30,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "3697.T",
    "close": 834.5,
    "turnover": 4306984297.185059,
-   "atr": 42.99,
-   "atr_pct": 5.15,
-   "rsi": 42.5,
-   "vs25": -8.16,
-   "vs75": 6.54,
-   "pos60": 55.6,
-   "r20": -12.72,
-   "r60": 29.38,
+   "atr": 42.9,
+   "atr_pct": 5.14,
+   "adjf": 1.0,
+   "rsi": 42.7,
+   "vs25": -7.94,
+   "vs75": 6.91,
+   "pos60": 55.9,
+   "r20": -12.35,
+   "r60": 29.93,
    "vol_ratio": 0.87,
-   "trend": 30.7,
-   "revert": 52.3,
+   "trend": 31.0,
+   "revert": 52.5,
    "name": "ＳＨＩＦＴ",
    "s17": "情報通信・サービスその他",
    "kind": "株式",
    "size": "TOPIX Mid400",
    "sector_etf": "1626",
    "news": [],
+   "overlap": [
+    "4755",
+    "9432"
+   ],
    "earn_status": "ok",
    "earn_next": "2026-10-15",
-   "earn_days": 34,
-   "earn_soon": false
+   "earn_days": 33,
+   "earn_src": "jpx",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "4575.T",
@@ -824,6 +1035,7 @@
    "turnover": 205408180.0,
    "atr": 38.43,
    "atr_pct": 5.24,
+   "adjf": 1.0,
    "rsi": 40.4,
    "vs25": -7.84,
    "vs75": 5.49,
@@ -839,10 +1051,15 @@
    "size": "",
    "sector_etf": "1621",
    "news": [],
+   "overlap": [],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "4674.T",
@@ -850,6 +1067,7 @@
    "turnover": 471641945.0,
    "atr": 55.0,
    "atr_pct": 3.16,
+   "adjf": 1.0,
    "rsi": 35.1,
    "vs25": -9.87,
    "vs75": 4.89,
@@ -865,10 +1083,18 @@
    "size": "TOPIX Small 2",
    "sector_etf": "1626",
    "news": [],
+   "overlap": [
+    "4755",
+    "9432"
+   ],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "4480.T",
@@ -876,6 +1102,7 @@
    "turnover": 1178796025.0,
    "atr": 111.46,
    "atr_pct": 4.73,
+   "adjf": 1.0,
    "rsi": 42.2,
    "vs25": -8.47,
    "vs75": 5.57,
@@ -891,10 +1118,18 @@
    "size": "TOPIX Small 1",
    "sector_etf": "1626",
    "news": [],
-   "earn_status": "ok",
+   "overlap": [
+    "4755",
+    "9432"
+   ],
+   "earn_status": "recent",
    "earn_next": "2026-11-12",
-   "earn_days": 62,
-   "earn_soon": false
+   "earn_days": 61,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-13",
+   "earn_since": 30,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "1447.T",
@@ -902,6 +1137,7 @@
    "turnover": 79861170.0,
    "atr": 18.43,
    "atr_pct": 5.16,
+   "adjf": 1.0,
    "rsi": 37.8,
    "vs25": -9.19,
    "vs75": 2.5,
@@ -926,17 +1162,17 @@
      "date": "20260909",
      "time": "09:40",
      "title": "（差替）「大規模買付等に関する対応策（買収への対応方針）に関する共同協調行為の追加認定について」のファイル差替について"
-    },
-    {
-     "date": "20260908",
-     "time": "15:30",
-     "title": "大規模買付等に関する対応策（買収への対応方針）に関する 共同協調行為の追加認定について"
     }
    ],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_soon": false
+   "overlap": [],
+   "earn_status": "recent",
+   "earn_next": "2026-11-12",
+   "earn_days": 61,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-13",
+   "earn_since": 30,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "4165.T",
@@ -944,6 +1180,7 @@
    "turnover": 352872755.0,
    "atr": 33.53,
    "atr_pct": 5.33,
+   "adjf": 1.0,
    "rsi": 43.8,
    "vs25": -7.76,
    "vs75": 6.79,
@@ -965,10 +1202,18 @@
      "title": "自己株式の取得状況及び取得終了に関するお知らせ"
     }
    ],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_soon": false
+   "overlap": [
+    "4755",
+    "9432"
+   ],
+   "earn_status": "recent",
+   "earn_next": "2026-11-12",
+   "earn_days": 61,
+   "earn_src": "tdnet",
+   "earn_last": "2026-08-13",
+   "earn_since": 30,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "3753.T",
@@ -976,6 +1221,7 @@
    "turnover": 60792200.0,
    "atr": 12.55,
    "atr_pct": 5.78,
+   "adjf": 1.0,
    "rsi": 46.7,
    "vs25": -6.47,
    "vs75": 13.76,
@@ -997,36 +1243,18 @@
      "title": "大口受注に関するお知らせ"
     }
    ],
+   "overlap": [
+    "4755",
+    "9432"
+   ],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
-  },
-  {
-   "code": "7581.T",
-   "close": 6740.0,
-   "turnover": 2759630650.0,
-   "atr": 250.35,
-   "atr_pct": 3.71,
-   "rsi": 39.1,
-   "vs25": -7.54,
-   "vs75": 4.22,
-   "pos60": 49.7,
-   "r20": -10.13,
-   "r60": 28.87,
-   "vol_ratio": 1.16,
-   "trend": 28.5,
-   "revert": 49.1,
-   "name": "サイゼリヤ",
-   "s17": "小売",
-   "kind": "株式",
-   "size": "TOPIX Small 1",
-   "sector_etf": "1630",
-   "news": [],
-   "earn_status": "ok",
-   "earn_next": "2026-10-14",
-   "earn_days": 33,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "3034.T",
@@ -1034,6 +1262,7 @@
    "turnover": 316497710.0,
    "atr": 78.18,
    "atr_pct": 3.56,
+   "adjf": 1.0,
    "rsi": 39.8,
    "vs25": -8.91,
    "vs75": 4.1,
@@ -1049,10 +1278,47 @@
    "size": "TOPIX Small 1",
    "sector_etf": "1630",
    "news": [],
+   "overlap": [],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
+  },
+  {
+   "code": "7581.T",
+   "close": 6740.0,
+   "turnover": 2759630650.0,
+   "atr": 249.86,
+   "atr_pct": 3.71,
+   "adjf": 1.0,
+   "rsi": 39.6,
+   "vs25": -7.28,
+   "vs75": 4.64,
+   "pos60": 50.7,
+   "r20": -9.7,
+   "r60": 29.5,
+   "vol_ratio": 1.16,
+   "trend": 29.0,
+   "revert": 48.4,
+   "name": "サイゼリヤ",
+   "s17": "小売",
+   "kind": "株式",
+   "size": "TOPIX Small 1",
+   "sector_etf": "1630",
+   "news": [],
+   "overlap": [],
+   "earn_status": "ok",
+   "earn_next": "2026-10-14",
+   "earn_days": 32,
+   "earn_src": "jpx",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "4125.T",
@@ -1060,6 +1326,7 @@
    "turnover": 51218725.0,
    "atr": 156.09,
    "atr_pct": 4.45,
+   "adjf": 1.0,
    "rsi": 42.9,
    "vs25": -7.12,
    "vs75": 5.82,
@@ -1075,17 +1342,23 @@
    "size": "",
    "sector_etf": "1620",
    "news": [],
+   "overlap": [],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "4443.T",
    "close": 1961.0,
    "turnover": 2732886985.0,
-   "atr": 95.71,
+   "atr": 95.7,
    "atr_pct": 4.88,
+   "adjf": 1.0,
    "rsi": 44.0,
    "vs25": -6.47,
    "vs75": 7.82,
@@ -1101,10 +1374,18 @@
    "size": "TOPIX Small 1",
    "sector_etf": "1626",
    "news": [],
+   "overlap": [
+    "4755",
+    "9432"
+   ],
    "earn_status": "ok",
    "earn_next": "2026-10-09",
-   "earn_days": 28,
-   "earn_soon": false
+   "earn_days": 27,
+   "earn_src": "jpx",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
    "code": "3374.T",
@@ -1112,6 +1393,7 @@
    "turnover": 147088775.0,
    "atr": 179.36,
    "atr_pct": 4.6,
+   "adjf": 1.0,
    "rsi": 47.6,
    "vs25": -5.55,
    "vs75": 10.4,
@@ -1127,36 +1409,50 @@
    "size": "",
    "sector_etf": "1629",
    "news": [],
+   "overlap": [],
    "earn_status": "unknown",
    "earn_next": "",
    "earn_days": null,
-   "earn_soon": false
+   "earn_src": "",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   },
   {
-   "code": "6814.T",
-   "close": 7100.0,
-   "turnover": 2021044000.0,
-   "atr": 300.28,
-   "atr_pct": 4.23,
-   "rsi": 40.6,
-   "vs25": -7.46,
-   "vs75": 2.89,
-   "pos60": 59.5,
-   "r20": -9.9,
-   "r60": 18.33,
-   "vol_ratio": 0.89,
-   "trend": 29.5,
-   "revert": 47.0,
-   "name": "古野電気",
-   "s17": "電機・精密",
+   "code": "6083.T",
+   "close": 1518.0,
+   "turnover": 60718585.0,
+   "atr": 42.28,
+   "atr_pct": 2.79,
+   "adjf": 1.0,
+   "rsi": 33.5,
+   "vs25": -8.4,
+   "vs75": 1.68,
+   "pos60": 43.6,
+   "r20": -13.01,
+   "r60": 13.96,
+   "vol_ratio": 0.84,
+   "trend": 17.5,
+   "revert": 46.8,
+   "name": "ＥＲＩホールディングス",
+   "s17": "情報通信・サービスその他",
    "kind": "株式",
-   "size": "TOPIX Small 1",
-   "sector_etf": "1625",
+   "size": "",
+   "sector_etf": "1626",
    "news": [],
+   "overlap": [
+    "4755",
+    "9432"
+   ],
    "earn_status": "ok",
-   "earn_next": "2026-10-09",
-   "earn_days": 28,
-   "earn_soon": false
+   "earn_next": "2026-09-30",
+   "earn_days": 18,
+   "earn_src": "jpx",
+   "earn_last": "",
+   "earn_since": null,
+   "earn_soon": false,
+   "earn_watch": false
   }
  ]
 }

@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-11T23:51:35.336997+09:00",
+ "fetched_at_jst": "2026-09-12T09:28:04.786784+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -98,10 +98,10 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 37,
+ "news_ok": 43,
  "jgb": {
   "date": "2026-09-10",
-  "age_days": 1,
+  "age_days": 2,
   "y2": 1.823,
   "y10": 2.92,
   "y30": 3.995
@@ -114,9 +114,9 @@
   "cached": true
  },
  "tdnet": {
-  "pages": 11,
-  "codes": 489,
-  "items": 832,
+  "pages": 10,
+  "codes": 426,
+  "items": 700,
   "errors": 0
  },
  "universe_source": "jpx_master",
@@ -124,9 +124,15 @@
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1731,
+  "passed": 1723,
   "named": true,
   "source": "jpx_master"
+ },
+ "earnings_hist": {
+  "days_cached": 30,
+  "codes": 1009,
+  "fetched_now": 31,
+  "new_items": 1010
  },
  "jpx_earnings": {
   "files": [
@@ -137,15 +143,27 @@
  },
  "cand_earnings": {
   "asked": 40,
-  "ok": 13,
+  "ok": 11,
   "from_jpx": 6,
-  "from_yf": 7,
-  "unknown": 27,
+  "from_yf": 5,
+  "recent": 11,
+  "estimate": 0,
+  "unknown": 18,
   "error": 0
  },
+ "signals_appended": false,
  "signals": {
   "closed": 0,
   "open": 20
+ },
+ "regime": {
+  "px": 419.7000122070313,
+  "vs200": 8.06,
+  "vs25": -1.89,
+  "above200": true,
+  "breadth": "7/17",
+  "breadth_pct": 41.0,
+  "b_suggest": 0.7
  },
  "analysis": "ok"
 }
