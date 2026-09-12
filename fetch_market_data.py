@@ -796,13 +796,14 @@ MAX_ATR_PCT      = 6.0          # これを超えるものは一過性の材料�
 #    ・税を引いていない。
 # ══════════════════════════════════════════════════════════════════════
 BT_ENABLED   = True
-BT_PERIOD    = "2y"
+BT_PERIOD    = "5y"     # 2年では200日線を割る局面がほぼ無く（実測n=10）
+                        # レジームの検証ができなかった。5年に延ばす。
 BT_STEP      = 5        # 何営業日ごとに建てるか
 BT_TOP       = 10       # 各サイドの採用数
 BT_HOLDS     = (10, 15, 25)
-BT_WARMUP    = 80       # 指標が立ち上がるのに要る本数
+BT_WARMUP    = 280      # 12-2モメンタム（252日）に必要な本数
 BT_MAX_AGE_D = 30       # これより新しい結果があれば作り直さない
-BT_BUDGET_S  = 1500
+BT_BUDGET_S  = 2400
 BT_CHUNK     = 180
 BT_DRAWS     = 5        # 無作為抽出の試行回数（ばらつきを均す）
 BT_SEED      = 20260911
@@ -855,6 +856,37 @@ def bt_features(ax, vol):
     }
     r20 = np.full(len(cl), np.nan); r20[21:] = cl[21:]/cl[:-21] - 1
     out["r20"] = r20*100
+    r5 = np.full(len(cl), np.nan); r5[6:] = cl[6:]/cl[:-6] - 1
+    out["r5"] = r5*100
+    # 12-2モメンタム: t-252 から t-21 まで（直近1ヶ月を除く）
+    m = np.full(len(cl), np.nan)
+    if len(cl) > 253:
+        m[253:] = cl[232:-21]/cl[1:-252] - 1
+    out["mom12_2"] = m*100
+    return out
+
+# ══════════════════════════════════════════════════════════════
+#  比べる選び方（先に決めて、全部報告する。良いものだけ拾わない）
+#    trend / revert … 自作。実測で無作為との差 t=+0.08 / +0.06 だった
+#    mom12_2 … 12ヶ月モメンタム（直近1ヶ月を除く）。Jegadeesh-Titman。
+#               直近1ヶ月を除くのは、そこが反転する領域だから。
+#               ただし日本株はモメンタムが効かないとする研究が複数ある。
+#    rev5    … 短期リバーサル。直近5日の下落が大きいほど上位。
+#               断面の異常として比較的頑健とされる。
+#    lowvol  … 低ボラティリティ。ATR%が**小さい**ほど上位。
+#               自作スコアは逆に高ボラを加点していた（BAB/低ボラ研究と逆符号）。
+#  5通りを一度に比べるので、たまたま良く見えるものが出やすい。
+#  positiveと言うには t≥2.5 を要求する（名目t≥2では5通りで誤検出2割弱）。
+BT_FACTORS = ("trend", "revert", "mom12_2", "rev5", "lowvol")
+BT_T_THRESHOLD = 2.5
+
+def bt_alt_scores(df):
+    """自作スコア以外の選び方。順位そのものを値にする（大きいほど上位）。"""
+    import numpy as np
+    out = {}
+    out["mom12_2"] = df["mom12_2"].rank(pct=True).to_numpy()
+    out["rev5"]    = (-df["r5"]).rank(pct=True).to_numpy()
+    out["lowvol"]  = (-df["atr_pct"]).rank(pct=True).to_numpy()
     return out
 
 def bt_score_at(f, i):
@@ -867,9 +899,12 @@ def bt_score_at(f, i):
     m25, m75 = f["ma25"][i], f["ma75"][i]
     if not (m25 > 0) or not (m75 > 0): return None
     atr_pct = a/c*100
+    mm = f["mom12_2"][i]
+    if not (mm == mm): return None          # 12-2が出ない銘柄は全因子から外す
     return dict(close=c, atr=a, atr_pct=atr_pct, rsi=f["rsi"][i],
                 vs25=(c/m25-1)*100, vs75=(c/m75-1)*100,
                 pos60=(c-f["lo60"][i])/rng*100, r20=f["r20"][i],
+                r5=f["r5"][i], mom12_2=mm,
                 volr=f["volr"][i] if f["volr"][i] == f["volr"][i] else 1.0,
                 turn=f["turn"][i])
 
@@ -944,7 +979,7 @@ def run_backtest(codes, bench="1306.T"):
         raise RuntimeError(f"検証に足る銘柄が集まらない: {len(feats)}")
 
     nbar = len(cal)
-    trades = {k: [] for k in ("trend", "revert", "random")}
+    trades = {k: [] for k in BT_FACTORS + ("random",)}
     n_dates = 0
     for i in range(BT_WARMUP, nbar - max(BT_HOLDS) - 1, BT_STEP):
         pool = []
@@ -961,6 +996,11 @@ def run_backtest(codes, bench="1306.T"):
         tr, rv = rank_candidates(df)
         picks = {"trend": [r for _, r in tr.head(BT_TOP).iterrows() if r["trend"] > 0],
                  "revert": [r for _, r in rv.head(BT_TOP).iterrows() if r["revert"] > 0]}
+        # 文献由来の因子も同じ母集団・同じ執行ルールで
+        alt = bt_alt_scores(df)
+        for name, sc in alt.items():
+            order = np.argsort(-sc)[:BT_TOP]
+            picks[name] = [df.iloc[k] for k in order]
         # 無作為は同じ母集団から。これが比較の基準線
         for _ in range(BT_DRAWS):
             idx = rng.choice(len(df), size=min(BT_TOP, len(df)), replace=False)
@@ -998,7 +1038,7 @@ def bt_summary(trades, hold, regime=None):
                      "timeout": round(sum(r["w"] for r in d if r["how"] == "timeout")/w*100, 1)}
     # 無作為との差が、順位付けが生んでいる値
     base = out.get("random", {}).get("avg_r")
-    for k in ("trend", "revert"):
+    for k in BT_FACTORS:
         if k in out and base is not None:
             out[k]["vs_random"] = round(out[k]["avg_r"] - base, 4)
             # 平均の差の粗い有意性（1件あたりのRの散らばりを1.0とみなす）
@@ -1798,6 +1838,7 @@ try:
                           "step": BT_STEP, "top": BT_TOP, "holds": list(BT_HOLDS),
                           "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
                                       "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
+                          "factors": list(BT_FACTORS), "t_threshold": BT_T_THRESHOLD,
                           "all": {str(h): bt_summary(tk, h) for h in BT_HOLDS},
                           "regime": {"above200": bt_summary(tk, 15, True),
                                      "below200": bt_summary(tk, 15, False)}}
@@ -2162,10 +2203,16 @@ try:
                      "無作為に混ぜてから取っているので業種の偏りは無いが、"
                      "標本が小さいぶん差の検出力は落ちる。\n")
         L.append("**問い: この順位付けは、同じ母集団から無作為に選ぶより良いのか。**\n")
+        _thr = bt.get("t_threshold", 2.5)
+        L.append(f"比べた選び方は **{len(bt.get('factors', []))}通り**。"
+                 f"一度に複数を比べるとたまたま良く見えるものが出るので、"
+                 f"「効いている」と言うには **t≥{_thr}** を要求する。\n")
         L.append("| 選び方 | 件数 | 勝率 | 平均R | 無作為との差 | 粗いt値 | 利確% | 損切% | 時間切れ% |")
         L.append("|---|--:|--:|--:|--:|--:|--:|--:|--:|")
-        for k, lbl in [("trend", "順張り上位10"), ("revert", "逆張り上位10"),
-                       ("random", "**無作為10（基準）**")]:
+        _labels = [("trend", "順張り（自作）"), ("revert", "逆張り（自作）"),
+                   ("mom12_2", "12-2モメンタム"), ("rev5", "短期リバーサル(5日)"),
+                   ("lowvol", "低ボラティリティ"), ("random", "**無作為10（基準）**")]
+        for k, lbl in _labels:
             v = m.get(k)
             if not v: continue
             vr = f"{v['vs_random']:+.4f}" if "vs_random" in v else "—"
@@ -2177,26 +2224,39 @@ try:
             v = m.get(k) or {}
             t = v.get("t_rough")
             if t is None: return None
-            if t >= 2.0:  return f"- **{lbl}: 無作為を上回っている（t={t:+.2f}）。** 使う根拠がある。"
-            if t <= -2.0: return f"- **{lbl}: 無作為を下回っている（t={t:+.2f}）。使うのをやめること。**"
-            return (f"- **{lbl}: 無作為との差は誤差の範囲（t={t:+.2f}）。** "
-                    "順位付けに情報があるとは言えない。**この順位を根拠に建てる意味は無い。**")
+            if t >= _thr:   return f"- **{lbl}: 無作為を上回っている（t={t:+.2f} ≥ {_thr}）。使う根拠がある。**"
+            if t <= -_thr:  return f"- **{lbl}: 無作為を下回っている（t={t:+.2f}）。使ってはいけない。**"
+            return f"- {lbl}: 無作為との差は誤差の範囲（t={t:+.2f}）。**情報があるとは言えない。**"
         L.append("")
-        for line in filter(None, [_verdict("trend", "順張り"), _verdict("revert", "逆張り")]):
-            L.append(line)
+        for k, lbl in _labels[:-1]:
+            line = _verdict(k, lbl)
+            if line: L.append(line)
+        _best = max(((m.get(k) or {}).get("t_rough") or -99, k) for k, _ in _labels[:-1])
+        if _best[0] < _thr:
+            L.append(f"\n> **どの選び方も無作為を有意に上回っていない（最良でも t={_best[0]:+.2f}）。**")
+            L.append("> **この状態で新規の発注推奨を出してはいけない。** "
+                     "順位付けに情報が無いなら、建てるほど手数料・スリッページ・税の分だけ負ける。")
+            L.append("> 保有の管理（損切り・決算跨ぎ・開示対応）は通常どおり続ける。")
 
         rg = bt.get("regime", {})
         if rg.get("above200") and rg.get("below200"):
             L.append("\n**TOPIXが200日線の上か下かで分けたとき（保有15日）**\n")
             L.append("| 局面 | 選び方 | 件数 | 勝率 | 平均R | 無作為との差 |")
             L.append("|---|---|--:|--:|--:|--:|")
+            _small = []
             for key, lbl in [("above200", "200日線の上"), ("below200", "200日線の下")]:
-                for k, kl in [("trend", "順張り"), ("revert", "逆張り"), ("random", "無作為")]:
+                for k, kl in _labels[:-1] + [("random", "無作為")]:
                     v = (rg.get(key) or {}).get(k)
                     if not v: continue
                     vr = f"{v['vs_random']:+.4f}" if "vs_random" in v else "—"
                     L.append(f"| {lbl} | {kl} | {v['n']:,.0f} | {v['win_pct']:.1f}% | "
                              f"{v['avg_r']:+.4f} | {vr} |")
+                n_cell = ((rg.get(key) or {}).get("random") or {}).get("n", 0)
+                if n_cell and n_cell < 100: _small.append(f"{lbl}（{n_cell:,.0f}件）")
+            if _small:
+                L.append(f"\n> **{'、'.join(_small)} は件数が少なく、数字を根拠にできない。** "
+                         "1〜2件の損益で平均が動く水準。"
+                         "**この欄の差を理由に建て方を変えないこと。**")
 
         L.append("\n**保有期間を変えたとき（頑健性の確認。良い数字を選ぶためではない）**\n")
         L.append("| 保有 | 順張り平均R | 逆張り平均R | 無作為平均R |")
