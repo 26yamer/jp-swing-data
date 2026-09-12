@@ -1,5 +1,5 @@
 {
- "generated_at_jst": "2026-09-12T09:28:04.786784+09:00",
+ "generated_at_jst": "2026-09-12T10:54:23.026413+09:00",
  "universe": 4247,
  "scanned": 4247,
  "passed": 1723,
@@ -32,8 +32,8 @@
  "earnings_hist": {
   "days_cached": 30,
   "codes": 1009,
-  "fetched_now": 31,
-  "new_items": 1010
+  "fetched_now": 1,
+  "new_items": 0
  },
  "filters": {
   "min_turnover": 50000000,

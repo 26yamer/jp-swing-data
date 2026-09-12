@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-12T09:28:04.786784+09:00",
+ "fetched_at_jst": "2026-09-12T10:54:23.026413+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -120,6 +120,7 @@
   "errors": 0
  },
  "universe_source": "jpx_master",
+ "screen_last_bar": "2026-09-11",
  "signals_settled": 0,
  "screen": {
   "universe": 4247,
@@ -131,8 +132,8 @@
  "earnings_hist": {
   "days_cached": 30,
   "codes": 1009,
-  "fetched_now": 31,
-  "new_items": 1010
+  "fetched_now": 1,
+  "new_items": 0
  },
  "jpx_earnings": {
   "files": [
@@ -151,7 +152,49 @@
   "unknown": 18,
   "error": 0
  },
- "signals_appended": false,
+ "signals_appended": true,
+ "signals_bar": "2026-09-11",
+ "backtest_dates": 77,
+ "backtest_coverage": {
+  "asked": 4247,
+  "universe": 4247,
+  "pct": 100.0,
+  "usable": 3972
+ },
+ "backtest": {
+  "tickers": 3972,
+  "dates": 77,
+  "main": {
+   "trend": {
+    "n": 770.0,
+    "avg_r": 0.1574,
+    "win_pct": 49.0,
+    "target": 35.3,
+    "stop": 41.7,
+    "timeout": 23.0,
+    "vs_random": 0.0029,
+    "t_rough": 0.08
+   },
+   "revert": {
+    "n": 770.0,
+    "avg_r": 0.1565,
+    "win_pct": 51.4,
+    "target": 24.9,
+    "stop": 31.0,
+    "timeout": 44.0,
+    "vs_random": 0.002,
+    "t_rough": 0.06
+   },
+   "random": {
+    "n": 770.0,
+    "avg_r": 0.1545,
+    "win_pct": 51.8,
+    "target": 28.3,
+    "stop": 35.8,
+    "timeout": 35.9
+   }
+  }
+ },
  "signals": {
   "closed": 0,
   "open": 20
