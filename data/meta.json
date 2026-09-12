@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-12T10:54:23.026413+09:00",
+ "fetched_at_jst": "2026-09-12T14:18:58.919564+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -98,7 +98,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 43,
+ "news_ok": 46,
  "jgb": {
   "date": "2026-09-10",
   "age_days": 2,
@@ -154,47 +154,7 @@
  },
  "signals_appended": true,
  "signals_bar": "2026-09-11",
- "backtest_dates": 77,
- "backtest_coverage": {
-  "asked": 4247,
-  "universe": 4247,
-  "pct": 100.0,
-  "usable": 3972
- },
- "backtest": {
-  "tickers": 3972,
-  "dates": 77,
-  "main": {
-   "trend": {
-    "n": 770.0,
-    "avg_r": 0.1574,
-    "win_pct": 49.0,
-    "target": 35.3,
-    "stop": 41.7,
-    "timeout": 23.0,
-    "vs_random": 0.0029,
-    "t_rough": 0.08
-   },
-   "revert": {
-    "n": 770.0,
-    "avg_r": 0.1565,
-    "win_pct": 51.4,
-    "target": 24.9,
-    "stop": 31.0,
-    "timeout": 44.0,
-    "vs_random": 0.002,
-    "t_rough": 0.06
-   },
-   "random": {
-    "n": 770.0,
-    "avg_r": 0.1545,
-    "win_pct": 51.8,
-    "target": 28.3,
-    "stop": 35.8,
-    "timeout": 35.9
-   }
-  }
- },
+ "backtest_skipped": "前回から0日（30日ごと）",
  "signals": {
   "closed": 0,
   "open": 20
