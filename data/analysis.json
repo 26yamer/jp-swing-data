@@ -1,5 +1,5 @@
 {
- "generated_at_jst": "2026-09-13T16:57:30.188284+09:00",
+ "generated_at_jst": "2026-09-13T18:58:50.062899+09:00",
  "total": 3363757.0,
  "cash": 1144125.0,
  "benchmark": "1306.T",
@@ -48,12 +48,12 @@
    "D": 23.2,
    "ACD": 72.9,
    "swingable": true,
-   "add_shares": 2600,
+   "add_shares": 1300,
    "stop": 169.3,
    "tp3": 185.3,
    "tp4": 188.5,
-   "add_cost": 456820,
-   "binding": "現金"
+   "add_cost": 228410,
+   "binding": "15%上限"
   },
   {
    "code": "1615.T",
@@ -87,11 +87,11 @@
    "D": 11.4,
    "ACD": 55.1,
    "swingable": true,
-   "add_shares": 400,
+   "add_shares": 100,
    "stop": 731.8,
    "tp3": 828.0,
    "tp4": 847.3,
-   "add_cost": 308120,
+   "add_cost": 77030,
    "binding": "15%上限"
   },
   {
@@ -126,11 +126,11 @@
    "D": 16.0,
    "ACD": 47.5,
    "swingable": true,
-   "add_shares": 600,
+   "add_shares": 200,
    "stop": 672.9,
    "tp3": 781.4,
    "tp4": 803.1,
-   "add_cost": 429780,
+   "add_cost": 143260,
    "binding": "15%上限"
   },
   {
@@ -243,11 +243,11 @@
    "D": 7.3,
    "ACD": 25.7,
    "swingable": false,
-   "add_shares": 100,
+   "add_shares": 0,
    "stop": 396.6,
    "tp3": 411.0,
    "tp4": 413.9,
-   "add_cost": 40240,
+   "add_cost": 0,
    "binding": "15%上限"
   }
  ]
