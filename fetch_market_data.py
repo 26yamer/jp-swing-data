@@ -1128,6 +1128,24 @@ def fund_reuse(reason):
               "J-Quantsの取得が続けて失敗していないか data/meta.json を確認してください")
     return pv["pct"]
 
+def fund_pool(sc, snapshot, holdings):
+    """順位を付ける断面。通過銘柄＋保有銘柄。
+
+       ★保有銘柄を入れないと、持っている銘柄のファンダが分からない。
+         スクリーニングのフィルタ（売買代金・ATR）は「新規で建てる候補」の
+         条件なので、保有銘柄はそこを通らないことがある（実測で4755が抜けた）。
+         残すか売るかの判断にこそファンダが要るので、断面に足す。
+         数銘柄増えてもパーセンタイルはほとんど動かない。"""
+    have = {str(c).replace(".T", "") for c in sc["code"]} if len(sc) else set()
+    add = []
+    for t in holdings:
+        c = str(t).replace(".T", "")
+        if c in have: continue
+        px = (snapshot.get(t) or {}).get("close")
+        if px and px > 0: add.append({"code": t, "close": float(px)})
+    if not add: return sc, 0
+    return pd.concat([sc, pd.DataFrame(add)], ignore_index=True), len(add)
+
 def fund_today(sc, refetch=True):
     """今日の断面でファンダの順位を作り、data/fund.json に書き出す。
 
@@ -1204,6 +1222,16 @@ def fund_today(sc, refetch=True):
 #   ジョブを落とすのではなく削るのは、その日のレポートまで失うのを避けるため。
 RAW_KEYS = {"bps", "feps", "eps", "sales", "op", "ta", "eq", "eqar",
             "cfo", "fop", "fnp", "opm", "opm_stab", "roe", "cfoa"}
+
+def json_safe(o):
+    """NaN / Inf を null に直す。json.dump は既定で `NaN` という
+       JSONとして不正な字を書き、読み手によっては解析に失敗する。
+       実測で candidates.json に29個の NaN が出ていた。"""
+    if isinstance(o, dict): return {k: json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)): return [json_safe(v) for v in o]
+    if isinstance(o, float) and (o != o or o in (float("inf"), float("-inf"))):
+        return None
+    return o
 
 def _walk_keys(o, found):
     if isinstance(o, dict):
@@ -1569,6 +1597,58 @@ def run_backtest(codes, bench="1306.T"):
           f"{n_dates}回の建て日（うちファンダ{n_dates_f}回）/ "
           f"延べ {sum(len(v) for v in trades.values()):,}件")
     return trades, n_dates, len(feats), str(cal[0].date()), str(cal[-1].date()), cov, n_dates_f
+
+def bt_clustered(trades, hold, regime=None):
+    """建て日ごとに束ねてから差を検定する。
+
+       なぜ要るか:
+         t_rough は1件ごとのRが独立だと仮定している。実際は
+           ① 同じ日に建てた10件は同じ市場の動きを共有している
+           ② 5営業日ごとに建てて10〜25日持つので、期間が重なっている
+         この2つで t_rough は有意性を**大きく過大評価する**。
+         実効的な標本数は「建てた件数」ではなく「建てた日数」に近い。
+         この値を根拠に発注するかどうかを決めるので、ここは直さないといけない。
+
+       やること:
+         各建て日について「その因子の平均R − **同じ日の**無作為の平均R」を出し、
+         その日次の差を検定する。同じ日で引き算するので、市場全体の動き
+         （分散の大半を占める）が消える。
+         さらに保有期間ぶん間隔を空けた部分標本でも出し、期間の重なりも消す。
+         採否の判断にはこの厳しい方（t_nonoverlap）を使う。"""
+    import numpy as np
+    per = {}
+    for kind, rows in trades.items():
+        for r in rows:
+            if r["hold"] != hold: continue
+            if regime is not None and r["up"] != regime: continue
+            per.setdefault(r["i"], {}).setdefault(kind, []).append(r["R"])
+    gap = max(1, -(-hold // BT_STEP))      # 期間が重ならない間隔（切り上げ）
+    def _t(xs):
+        n = len(xs)
+        if n < 8: return None, n
+        mu = float(np.mean(xs)); sd = float(np.std(xs, ddof=1))
+        # ★sd > 0 だけでは足りない。全日の差が同じ値のとき、浮動小数点の
+        #   残差（1e-17程度）で sd が「0より大きい」と判定され、
+        #   t値が 8.4e15 のような無意味な数になった（実測で発覚）。
+        #   平均に対して無視できる大きさのばらつきは 0 として扱う。
+        if not (sd > max(1e-12, abs(mu) * 1e-9)):
+            return None, n
+        return round(mu / (sd / n ** 0.5), 2), n
+    out = {}
+    for k in BT_FACTORS:
+        bk = "random_f" if k in FUND_FACTORS else "random"
+        ds = []
+        for i in sorted(per):
+            a, b = per[i].get(k), per[i].get(bk)
+            if not a or not b: continue
+            ds.append(float(np.mean(a)) - float(np.mean(b)))
+        if len(ds) < 8: continue
+        t_all, n_all = _t(ds)
+        t_ind, n_ind = _t(ds[::gap])
+        out[k] = {"base": bk, "mean_diff": round(float(np.mean(ds)), 4),
+                  "t_dates": t_all, "n_dates": n_all,
+                  "t_nonoverlap": t_ind, "n_nonoverlap": n_ind, "gap": gap}
+    return out
 
 def bt_summary(trades, hold, regime=None):
     out = {}
@@ -2335,15 +2415,22 @@ try:
             if not sc.empty:
                 # ── ファンダの断面順位を列として足す（表示のみ・採点には入れない）
                 try:
-                    FUND_PCT = fund_today(sc, refetch=session_complete())
+                    _scf, _nadd = fund_pool(sc, snap, HOLDINGS)
+                    FUND_PCT = fund_today(_scf, refetch=session_complete())
+                    meta.setdefault("fund", {})["holdings_added"] = _nadd
                 except Exception as e:
                     FUND_PCT = {}
                     meta["errors"].append(f"fund_today: {type(e).__name__}: {e}")
                     meta["fund"] = {"error": str(e)[:120]}
                 if FUND_PCT:
+                    # ★dtype="object" が要る。整数とNoneの列を素で作ると
+                    #   pandasが float64 に寄せて None を NaN にする。
+                    #   NaN は `v is None` をすり抜けて int(NaN) で例外になり、
+                    #   実測でレポートの候補表が丸ごと生成失敗した。
                     for _k in FUND_FACTORS:
-                        sc["f_" + _k] = [FUND_PCT.get(str(c).replace(".T", ""), {}).get(_k)
-                                         for c in sc["code"]]
+                        sc["f_" + _k] = pd.Series(
+                            [FUND_PCT.get(str(c).replace(".T", ""), {}).get(_k)
+                             for c in sc["code"]], index=sc.index, dtype="object")
                 trend, revert = rank_candidates(sc)
                 tr0, rv0 = trend.to_dict("records"), revert.to_dict("records")
                 # 決算日は順位が付いてから、載る銘柄だけ引く（全銘柄には引けない）
@@ -2389,6 +2476,7 @@ try:
                 _cfg = {"period": BT_PERIOD, "step": BT_STEP, "top": BT_TOP,
                         "holds": list(BT_HOLDS), "warmup": BT_WARMUP,
                         "factors": list(BT_FACTORS), "draws": BT_DRAWS,
+                        "stat": "clustered-v1",
                         "filters": [MIN_TURNOVER, MIN_PRICE, MIN_ATR_PCT, MAX_ATR_PCT]}
                 _age, _same_cfg = 999, False
                 if os.path.exists(_btp):
@@ -2421,6 +2509,7 @@ try:
                           "config": _cfg, "t_threshold": BT_T_THRESHOLD,
                           "factors": list(BT_FACTORS),
                           "all": {str(h): bt_summary(tk, h) for h in BT_HOLDS},
+                          "clustered": {str(h): bt_clustered(tk, h) for h in BT_HOLDS},
                           "regime": {"above200": bt_summary(tk, 15, True),
                                      "below200": bt_summary(tk, 15, False)}}
                     json.dump(bt, open(_btp, "w"), ensure_ascii=False, indent=1)
@@ -2441,7 +2530,7 @@ try:
                 meta["errors"].append(f"signals write: {type(e).__name__}: {e}")
             # 通過0件でも必ず書く。書かないと report 側が「未実行」と表示してしまい、
             # 「走らせたが0件だった」という事故が「まだ動かしていない」に見える。
-            json.dump({"generated_at_jst": NOW.isoformat(),
+            json.dump(json_safe({"generated_at_jst": NOW.isoformat(),
                        "universe": len(uni), "scanned": scanned, "passed": len(sc),
                        "master_count": len(MASTER),
                        "universe_source": meta.get("universe_source", "?"),
@@ -2453,7 +2542,7 @@ try:
                        "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
                                    "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
                        "s17_unmapped": meta.get("s17_unmapped", {}),
-                       "trend": tr, "revert": rv},
+                       "trend": tr, "revert": rv}),
                       open(f"{OUT}/candidates.json", "w"), ensure_ascii=False,
                       indent=1, default=str)
             named = sum(1 for r in tr + rv if r["name"])
@@ -2820,18 +2909,48 @@ try:
                      f"{bn} | {vr} | {tv} | {v['target']:.0f}% | {v['stop']:.0f}% | "
                      f"{v['timeout']:.0f}% |")
 
+        # ── 建て日で束ねた検定（採否はこちらで決める）──────────────
+        _cl = (bt.get("clustered") or {}).get(str(15)) or {}
+        if _cl:
+            L.append("\n**建て日で束ねた検定（こちらが本番）**\n")
+            L.append("上の「粗いt値」は1件ごとのRが独立だと仮定していて、"
+                     "**有意性を大きく過大評価する**。同じ日に建てた10件は同じ市場の"
+                     "動きを共有し、5営業日ごとに建てて15日持つので期間も重なっている。"
+                     "そこで建て日ごとに「その因子の平均R − 同じ日の無作為の平均R」を出し、"
+                     "その日次の差を検定する。同じ日で引くので市場全体の動きが消える。"
+                     "さらに保有期間ぶん間隔を空けた部分標本でも出す。\n")
+            L.append("| 選び方 | 基準 | 日次の差の平均 | t（全日） | 日数 | t（重なりなし） | 日数 |")
+            L.append("|---|:--|--:|--:|--:|--:|--:|")
+            for k, lbl in _labels:
+                c = _cl.get(k)
+                if not c: continue
+                f1 = f"{c['t_dates']:+.2f}" if c.get("t_dates") is not None else "—"
+                f2 = f"{c['t_nonoverlap']:+.2f}" if c.get("t_nonoverlap") is not None else "—"
+                L.append(f"| {lbl} | {_bname.get(c['base'], '—')} | {c['mean_diff']:+.4f} | "
+                         f"{f1} | {c['n_dates']} | {f2} | {c['n_nonoverlap']} |")
+            L.append("")
+
+        def _ct(k):
+            """採否に使うt値。建て日で束ねた厳しい方を使い、
+               無ければ日次、最後の手段として粗い値。どれを使ったかも返す。"""
+            c = _cl.get(k) or {}
+            for key, nm in (("t_nonoverlap", "重なりなし"), ("t_dates", "日次")):
+                if c.get(key) is not None: return c[key], nm
+            t = (m.get(k) or {}).get("t_rough")
+            return (t, "粗い（過大評価）") if t is not None else (None, None)
+
         def _verdict(k, lbl):
-            v = m.get(k) or {}
-            t = v.get("t_rough")
+            t, nm = _ct(k)
             if t is None: return None
-            if t >= _thr:   return f"- **{lbl}: 無作為を上回っている（t={t:+.2f} ≥ {_thr}）。使う根拠がある。**"
-            if t <= -_thr:  return f"- **{lbl}: 無作為を下回っている（t={t:+.2f}）。使ってはいけない。**"
-            return f"- {lbl}: 無作為との差は誤差の範囲（t={t:+.2f}）。**情報があるとは言えない。**"
+            tag = f"t={t:+.2f}（{nm}）"
+            if t >= _thr:   return f"- **{lbl}: 無作為を上回っている（{tag} ≥ {_thr}）。使う根拠がある。**"
+            if t <= -_thr:  return f"- **{lbl}: 無作為を下回っている（{tag}）。使ってはいけない。**"
+            return f"- {lbl}: 無作為との差は誤差の範囲（{tag}）。**情報があるとは言えない。**"
         L.append("")
         for k, lbl in _labels:
             line = _verdict(k, lbl)
             if line: L.append(line)
-        _best = max(((m.get(k) or {}).get("t_rough") or -99, k) for k, _ in _labels)
+        _best = max(((_ct(k)[0] if _ct(k)[0] is not None else -99), k) for k, _ in _labels)
         if _best[0] < _thr:
             L.append(f"\n> **どの選び方も無作為を有意に上回っていない（最良でも t={_best[0]:+.2f}）。**")
             L.append("> **この状態で新規の発注推奨を出してはいけない。** "
@@ -2967,10 +3086,20 @@ try:
             """ファンダの断面順位（パーセンタイル・大きいほど上位）。
                ★生のPBRやROEは出せない。J-Quantsの利用条件が
                  第三者の閲覧を禁じており、このリポジトリは public だから。
-               ★この列は採点に入っていない。過去検証が済むまでは参考表示。"""
-            vs = [r.get("f_" + k) for k in ("value", "quality", "moat", "revision")]
-            if all(v is None for v in vs): return "—"
-            return "/".join("—" if v is None else f"{int(v)}" for v in vs)
+               ★この列は採点に入っていない。過去検証が済むまでは参考表示。
+               ★None だけでなく NaN も受ける。以前 int(NaN) で例外になり、
+                 候補表が丸ごと「生成に失敗」になった（実測）。
+                 1列の表示のために表全体を失うのは割に合わない。"""
+            def one(k):
+                v = r.get("f_" + k)
+                if v is None: return "—"
+                try:
+                    f = float(v)
+                except (TypeError, ValueError): return "—"
+                if f != f: return "—"                 # NaN
+                return f"{int(round(f))}"
+            vs = [one(k) for k in ("value", "quality", "moat", "revision")]
+            return "—" if all(x == "—" for x in vs) else "/".join(vs)
 
         L.append(f"\n## 新規候補（全銘柄スクリーニング）\n")
         _uni, _sc = cj.get("universe", 0), cj["scanned"]
@@ -3038,20 +3167,21 @@ try:
         if _fd.get("n_codes"):
             L.append(f"- **「財務順位」列は `割安/質/競争優位の代理/修正方向` の4つの"
                      f"断面パーセンタイル**（0〜100、大きいほど上位／母集団は当日の通過"
-                     f"{_fd.get('pool', 0):,}銘柄）。付与できたのは **{_fd['n_codes']:,}銘柄**"
+                     f"{_fd.get('pool', 0):,}銘柄＋保有銘柄）。付与できたのは "
+                     f"**{_fd['n_codes']:,}銘柄**"
                      f"（財務の最新開示日 {_fd.get('asof_latest_disclosure', '?')}）。")
-        if _fd.get("reused"):
-            _age, _ah = _fd.get("age_days"), _fd.get("age_hours")
-            _when = (f"{_ah:.0f}時間前" if (_age == 0 and _ah is not None)
-                     else f"{_age}日前" if _age is not None else "取得時刻不明")
-            L.append(f"  - この列は**前回取得した順位の再利用**（{_when} / 理由: "
-                     f"{_fd.get('reason', '?')}）。無料枠の財務はもともと12週間前の"
-                     "数字なので、1日ぶん古いことによる劣化は無い。"
-                     "会計の数字が前回と同じで、株価だけが新しい状態。")
-            if _age is not None and _age > FUND_MAX_AGE_D:
-                L.append(f"  - > **注意: {_age}日前の順位を使っている。** "
-                         "J-Quantsの取得が続けて失敗している可能性がある。"
-                         "`data/meta.json` の `fund` を確認すること。")
+            if _fd.get("reused"):
+                _age, _ah = _fd.get("age_days"), _fd.get("age_hours")
+                _when = (f"{_ah:.0f}時間前" if (_age == 0 and _ah is not None)
+                         else f"{_age}日前" if _age is not None else "取得時刻不明")
+                L.append(f"  - この列は**前回取得した順位の再利用**（{_when} / 理由: "
+                         f"{_fd.get('reason', '?')}）。無料枠の財務はもともと12週間前の"
+                         "数字なので、1日ぶん古いことによる劣化は無い。"
+                         "会計の数字が前回と同じで、株価だけが新しい状態。")
+                if _age is not None and _age > FUND_MAX_AGE_D:
+                    L.append(f"  - > **注意: {_age}日前の順位を使っている。** "
+                             "J-Quantsの取得が続けて失敗している可能性がある。"
+                             "`data/meta.json` の `fund` を確認すること。")
             L.append("  - **PBRやROEの生の数値は載せられない。** J-Quantsの利用条件が"
                      "取得データを第三者が閲覧できる状態にすることを禁じており、"
                      "このリポジトリは public だから。順位は「分析結果」なので公開できる。")
@@ -3059,13 +3189,16 @@ try:
                      "会計の数字は約3ヶ月前という組み合わせになる（先読みではない）。")
             L.append("  - **「競争優位の代理」は営業利益率の水準とばらつきの小ささ**であって、"
                      "シェアや参入障壁を測ったものではない。無料データにそれは無い。")
+            L.append("  - **ETFとREITには付かない**（財務諸表が無いため）。"
+                     "「—」は「財務が悪い」ではなく「対象外」。")
             L.append("  - ★**この列はスコアに入っていない。** 効くかどうかは"
                      "「過去検証」の表で確かめてから採点に入れる。"
                      "検証前に混ぜるのは、trend/revertを作ったときと同じ間違いになる。")
         elif _fd.get("skipped"):
             L.append(f"- 「財務順位」列は空（{_fd['skipped']}）。")
         elif _fd:
-            L.append("- 「財務順位」列は空（財務情報の取得に失敗）。data/meta.json の `fund` を確認すること。")
+            L.append("- 「財務順位」列は空（財務情報の取得に失敗）。"
+                     "data/meta.json の `fund` を確認すること。")
         L.append("- 「業種ETF」列は業種別ETF17本の表と突き合わせるための対応コード。**候補のBはこの列の業種の位置から機械的に付けられる。**")
         L.append("- 「当日の開示」は TDnet の直近4日分（新しい順）。**空欄(—)は「開示が無い」であって「材料が無い」ではない**（報道・需給・指数入替は載らない）。")
         ce = cj.get("cand_earnings") or {}
