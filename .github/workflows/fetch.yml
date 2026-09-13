@@ -16,15 +16,14 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    # 全銘柄スクリーニング(45分)＋5年バックテスト＋J-Quantsの財務取得を
-    # 1回で走らせる余裕。Actionsの1ジョブ上限は360分。
+    # 全銘柄スクリーニング＋5年バックテスト＋J-Quantsの財務取得を1回で走らせる余裕。
+    # Actionsの1ジョブ上限は360分。
     timeout-minutes: 330
     env:
       # J-Quants のAPIキー。Secrets はリポジトリのコードでも git 履歴でもない
       # 場所に保管され、fork からの pull_request には渡されない。
       # ここで環境変数として渡すだけ。コードはヘッダーに載せるのみで、
-      # ログにも data/ にも書かない。
-      # 未設定でもジョブは通る（財務の段だけ飛ぶ）。
+      # ログにも data/ にも書かない。未設定でもジョブは通る（財務の段だけ飛ぶ）。
       JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -34,9 +33,9 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      # 依存はファイル1箇所で管理する。ここに直接書くと
-      # requirements.txt を更新しても反映されず、実際に openpyxl が
-      # 入らないまま「入っているつもり」で走る事故になった。
+      # 依存はファイル1箇所で管理する。ここに直接書くと requirements.txt を
+      # 更新しても反映されず、実際に openpyxl が入らないまま
+      # 「入っているつもり」で走る事故になった。
       - name: Install deps
         run: pip install --upgrade -r requirements.txt
 
@@ -70,14 +69,40 @@ jobs:
           print("commit_guard:", json.dumps(g, ensure_ascii=False))
           if g.get("raw_fields") or g.get("api_key_found_in"):
               print("::error::公開してはいけない内容が data/ にありました。上を確認してください")
-          print("fund:", json.dumps(m.get("fund") or {}, ensure_ascii=False)[:800])
-          print("jq_bt:", json.dumps(m.get("jq_bt") or {}, ensure_ascii=False)[:600])
+          for k in ("fund", "fund_raw", "kiyohara", "netcash"):
+              print(k, ":", json.dumps(m.get(k) or {}, ensure_ascii=False)[:600])
           PY
 
+      # ★push は落ちる。GitHub側の一時的な 500（Internal Server Error）で
+      #   [remote rejected] になり、18分かけた取得結果が丸ごと捨てられた
+      #   （2026-09-13 18:00 の実行）。1回の一時障害で全部やり直しになる
+      #   設計だったのが問題なので、待って何度か試す。
+      #   間に pull --rebase を入れるのは、本当に他のコミットが入っていた
+      #   場合にも進めるため（--autostash で作業中の変更を退避する）。
       - name: Commit
         run: |
+          set -u
           git config user.name  "market-data-bot"
           git config user.email "bot@users.noreply.github.com"
           git add -A data
-          git diff --staged --quiet || git commit -m "data: $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST')"
-          git push
+          if git diff --staged --quiet; then
+            echo "変更なし。commit も push もしない"
+            exit 0
+          fi
+          git commit -m "data: $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST')"
+          for i in 1 2 3 4 5 6; do
+            if git push; then
+              echo "push 成功（${i}回目）"
+              exit 0
+            fi
+            if [ "$i" -eq 6 ]; then break; fi
+            WAIT=$((i * i * 15))
+            echo "::warning::push が失敗（${i}回目）。${WAIT}秒待って再試行する。"
+            echo "GitHub側の一時的な障害（Internal Server Error）で落ちることがある。"
+            sleep "$WAIT"
+            git pull --rebase --autostash origin main || true
+          done
+          echo "::error::push が6回失敗しました。取得したデータはこの実行と一緒に失われます。"
+          echo "::error::GitHub Status（https://www.githubstatus.com/）を確認し、"
+          echo "::error::落ち着いてから workflow_dispatch で再実行してください。"
+          exit 1
