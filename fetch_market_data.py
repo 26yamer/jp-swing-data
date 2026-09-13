@@ -803,29 +803,35 @@ JQ_GAP_S     = 0.5       # 公式サンプルが推奨する間隔
 JQ_MAX_REQ   = 1400      # 事故で叩き続けないための上限（730日＝約520営業日）
 JQ_RETRY     = 3
 JQ_MIN_POOL  = 50        # 断面の順位付けに要る最低銘柄数
+JQ_BACKFILL_ROWS = 6     # 項目ごとに値を遡って探す開示の回数（約1年半）
 
 _JQ = {"req": 0, "n429": 0, "err": {}, "blocked": None, "key_used": None}
 
 # V2の短い項目名を主に、V1の長い名前を予備に見る。
 # 名前が変わっても静かに全欠損にならないようにするため。
+# ★非連結で開示する会社は、連結の項目（BPS, FEPS など）が空で
+#   非連結の項目（NCBPS, FNCEPS など）だけが埋まる。
+#   連結名だけを見ていたため、実測で予想EPSが1,604銘柄中428件しか
+#   付かなかった（27%）。非連結の会社は小型株に多く、まさに清原枠の
+#   母集団を systematically に落としていた。連結を主に、非連結を予備に見る。
 JQ_F = {
     "date":  ("DiscDate", "DisclosedDate"),
     "code":  ("Code", "LocalCode"),
     "doc":   ("DocType", "TypeOfDocument"),
     "per":   ("CurPerType", "TypeOfCurrentPeriod"),
     "fyend": ("CurFYEn", "CurrentFiscalYearEndDate"),
-    "sales": ("Sales", "NetSales"),
-    "op":    ("OP", "OperatingProfit"),
-    "eps":   ("EPS", "EarningsPerShare"),
-    "bps":   ("BPS", "BookValuePerShare"),
-    "ta":    ("TA", "TotalAssets"),
-    "eqar":  ("EqAR", "EquityToAssetRatio"),
+    "sales": ("Sales", "NCSales", "NetSales"),
+    "op":    ("OP", "NCOP", "OperatingProfit"),
+    "eps":   ("EPS", "NCEPS", "EarningsPerShare"),
+    "bps":   ("BPS", "NCBPS", "BookValuePerShare"),
+    "ta":    ("TA", "NCTA", "TotalAssets"),
+    "eqar":  ("EqAR", "NCEqAR", "EquityToAssetRatio"),
     "cfo":   ("CFO", "CashFlowsFromOperatingActivities"),
     "cash":  ("CashEq", "CashAndEquivalents"),
-    "eq":    ("Eq", "Equity"),
-    "feps":  ("FEPS", "ForecastEarningsPerShare"),
-    "fop":   ("FOP", "ForecastOperatingProfit"),
-    "fnp":   ("FNP", "ForecastProfit"),
+    "eq":    ("Eq", "NCEq", "ShEq", "NCShEq", "Equity"),
+    "feps":  ("FEPS", "FNCEPS", "ForecastEarningsPerShare"),
+    "fop":   ("FOP", "FNCOP", "ForecastOperatingProfit"),
+    "fnp":   ("FNP", "FNCNP", "ForecastProfit"),
     # 時価総額を出すのに要る。期末発行済株式数（自己株を含む）と期末自己株式数。
     "shout": ("ShOutFY", "NumberOfIssuedAndOutstandingSharesAtTheEndOfFiscalYearIncludingTreasuryStock"),
     "trsh":  ("TrShFY", "NumberOfTreasuryStockAtTheEndOfFiscalYear"),
@@ -979,6 +985,19 @@ def jq_metrics(rows_upto):
     fin = [r for r in rows_upto if "FinancialStatements" in r["doc"]]
     if not fin: return None
     last = fin[-1]
+
+    # ★最新の1行に全項目が入っている前提が間違っていた。
+    #   四半期短信では予想EPSが空だったり、会社によって埋まる項目が違う。
+    #   最新行だけを見ると、他の四半期に載っていた値を捨てることになる。
+    #   項目ごとに「直近で値が入っている行」を遡って探す。
+    #   ★遡るのは rows_upto の範囲内だけなので、未来は絶対に混ざらない。
+    #   ★古すぎる値を使わないため、遡りは直近6回の開示までに限る。
+    _win = fin[-JQ_BACKFILL_ROWS:]
+    def L(key):
+        for r in reversed(_win):
+            v = r.get(key)
+            if v is not None: return v
+        return None
     # 営業利益率: 同じ行の分子と分母なので、四半期でも通期でも比較できる
     opms = []
     for r in fin[-8:]:
@@ -1003,42 +1022,42 @@ def jq_metrics(rows_upto):
             if a is not None and b is not None and a > 0:
                 rev = (b / a - 1) * 100
     cfoa = None
-    if last.get("cfo") is not None and last.get("ta") and last["ta"] > 0:
-        cfoa = last["cfo"] / last["ta"] * 100
+    _cfo, _ta = L("cfo"), L("ta")
+    if _cfo is not None and _ta and _ta > 0:
+        cfoa = _cfo / _ta * 100
     sh = None
-    if last.get("shout"):
-        sh = last["shout"] - (last.get("trsh") or 0.0)
+    _shout, _trsh = L("shout"), L("trsh")
+    if _shout:
+        sh = _shout - (_trsh or 0.0)
         if not (sh > 0): sh = None
 
     # ── 株主還元（清原氏が「最終的なカタリスト」とする部分）─────────
     #   ① 増配の方向 … 今期の会社予想年間配当 ÷ 直近の実績年間配当
     #   ② 自己株買いの実行 … 期末自己株式数が前の開示から増えているか
     #   ③ 配当の水準 … 予想（無ければ実績）年間配当。株価は呼び出し側で割る
-    div_now = last.get("fdivann")
-    if div_now is None: div_now = last.get("divann")
+    div_now = L("fdivann")
+    if div_now is None: div_now = L("divann")
     div_up = None
     _base = None
-    for r in reversed(fin[:-1]):
+    for r in reversed(_win[:-1]):
         if r.get("divann") is not None and r["divann"] > 0:
             _base = r["divann"]; break
     if _base and div_now is not None:
         div_up = (div_now / _base - 1) * 100
     buyback = None
     _prev_tr = None
-    for r in reversed(fin[:-1]):
+    for r in reversed(_win[:-1]):
         if r.get("trsh") is not None:
             _prev_tr = r["trsh"]; break
-    if (_prev_tr is not None and last.get("trsh") is not None
-            and last.get("shout") and last["shout"] > 0):
-        buyback = (last["trsh"] - _prev_tr) / last["shout"] * 100
-    no_div = (div_now is not None and div_now <= 0
-              and (last.get("divann") or 0) <= 0)
-    return {"bps": last.get("bps"), "feps": last.get("feps"), "eqar": last.get("eqar"),
+    if (_prev_tr is not None and _trsh is not None and _shout and _shout > 0):
+        buyback = (_trsh - _prev_tr) / _shout * 100
+    no_div = (div_now is not None and div_now <= 0 and (L("divann") or 0) <= 0)
+    return {"bps": L("bps"), "feps": L("feps"), "eqar": L("eqar"),
             "opm": opm, "opm_stab": stab, "rev": rev, "cfoa": cfoa,
             # ネットキャッシュ比率の上下限を出すのに使う素の値
-            "cash": last.get("cash_eq"),
-            "ta": last.get("ta"), "eq": last.get("eq"), "sh": sh,
-            "op": last.get("op"), "per": last.get("per"),
+            "cash": L("cash_eq"),
+            "ta": _ta, "eq": L("eq"), "sh": sh,
+            "op": L("op"), "per": last.get("per"),
             "div": div_now, "div_up": div_up, "buyback": buyback, "no_div": no_div,
             "asof": last["date"]}
 
@@ -1184,8 +1203,254 @@ def fund_coverage(out, has):
     return {"has": int(has.sum()),
             **{k: int((~v.isna()).sum()) for k, v in out.items()}}
 
+# ══════════════════════════════════════════════════════════════════════
+#  清原枠のスクリーニング（2026-09-13に指定された条件）
+#
+#  指定:
+#    ・予想PER 8倍以下         … 本人が「一番重視するのはPER」
+#    ・PBR 0.8倍以下
+#    ・時価総額 500億円以下     … 「小型株」
+#    ・流動資産のほうが負債より大きい
+#    ・ネットキャッシュ比率が1以上、または1に近いもの
+#    そのうえで、読み取った考え（株主還元・バリュートラップ）で有望なものを絞る
+#
+#  条件同士が噛み合っている:
+#    PBR ≤ 0.8 ⟺ 純資産÷時価総額 ≥ 1.25 ⟺ ネットキャッシュ比率の**上限** ≥ 1.25
+#    つまりPBRの条件を通った銘柄は、必ず「比率が1以上になりうる」側に入る。
+#    「対象外（上限で1未満）」は構造的に出ない。
+#
+#  無料データで作れないもの（流動資産・投資有価証券）は不等式で挟む:
+#    流動資産 > 負債合計 は
+#      確実   … 現金同等物 > 負債合計（現金だけで負債を超えている）
+#      要確認 … それ以外（売掛金・棚卸資産を入れれば超える可能性がある）
+#    ネットキャッシュ比率 ≥ 1 は
+#      確実   … 下限 ≥ 1
+#      有力   … 下限 ≥ KY_NC_NEAR（「1に近い」側）
+#      要確認 … それ未満（上限は1.25以上あるので可能性は残る）
+#
+#  この節が出すのは**候補**であって推奨ではない。
+#  清原氏は「小型株は経営者が9割」としており、経営者の意志・言動の一致・
+#  中期経営計画の具体性は無料データに無い。そこは機械では判定できない。
+# ══════════════════════════════════════════════════════════════════════
+KY_PATH         = f"{OUT}/kiyohara.json"
+KY_MAX_PER      = 8.0            # 予想PER の上限
+KY_MAX_PBR      = 0.8            # PBR の上限
+KY_MAX_MCAP     = 50_000_000_000  # 時価総額 500億円
+KY_NC_NEAR      = 0.8            # ネットキャッシュ比率が「1に近い」の下限（下限版）
+KY_MIN_TURNOVER = 10_000_000     # 売買代金20日平均の下限。1銘柄30万円なら
+                                 # 日商1,000万円の3%で、執行はできる水準
+KY_NAMES        = 8              # 清原枠で持つ銘柄数の想定。
+                                 # 総額600万円なら清原枠300万円、1銘柄37.5万円。
+                                 # 単元100株なので株価3,750円以下まで買える。
+                                 # 清原氏は20銘柄を勧めているが、20だと15万円
+                                 # ＝株価1,500円以下しか買えず候補が狭すぎる。
+KY_TOP          = 40             # 出す候補の上限
+KY_EXCLUDE      = ("銀行", "金融（除く銀行）")   # 流動資産と負債の意味が違う
+
+def ky_metrics(m, price):
+    """清原枠の判定に使う数字。作れないものは None のまま返す（推測しない）。"""
+    if not m or not price or price <= 0: return None
+    ta, eq, cash, sh = m.get("ta"), m.get("eq"), m.get("cash"), m.get("sh")
+    feps, op = m.get("feps"), m.get("op")
+    if ta is None or eq is None or sh is None: return None
+    if not (ta > 0) or not (sh > 0) or not (eq > 0): return None
+    mcap = price * sh
+    if not (mcap > 0): return None
+    debt = ta - eq
+    return {"mcap": mcap, "debt": debt,
+            "per": (price / feps) if (feps is not None and feps > 0) else None,
+            "pbr": mcap / eq,
+            "nc_lo": ((cash - debt) / mcap) if cash is not None else None,
+            "nc_hi": eq / mcap,
+            "cash_gt_debt": (cash is not None and cash > debt),
+            "op": op, "no_div": m.get("no_div"),
+            "div": m.get("div"), "div_up": m.get("div_up"),
+            "buyback": m.get("buyback"), "opm": m.get("opm"),
+            "asof": m.get("asof")}
+
+def ky_pass(k):
+    """指定された条件を満たすか。落ちたときは理由の分類を返す。
+       黙って落とすと「条件が厳しすぎて0件」と「不具合で0件」が区別できない。"""
+    if not k:                                return False, "財務が引けない"
+    if k["per"] is None:                     return False, "予想PERが出ない(赤字予想)"
+    if k["per"] > KY_MAX_PER:                return False, f"PER>{KY_MAX_PER:.0f}倍"
+    if k["pbr"] > KY_MAX_PBR:                return False, f"PBR>{KY_MAX_PBR}倍"
+    if k["mcap"] > KY_MAX_MCAP:              return False, f"時価総額>{KY_MAX_MCAP/1e8:.0f}億円"
+    if k["op"] is not None and k["op"] <= 0: return False, "本業が赤字"
+    return True, "通過"
+
+def ky_state(k):
+    lo = k.get("nc_lo")
+    if lo is not None and lo >= 1.0:        return "確実(下限で1以上)"
+    if lo is not None and lo >= KY_NC_NEAR: return "有力(下限が1に近い)"
+    if k.get("cash_gt_debt"):               return "要確認(現金>負債)"
+    return "要確認(流動資産次第)"
+
+def ky_return_tag(k):
+    """株主還元。清原氏が「最終的なカタリスト」とするもの＝罠の見分け。"""
+    if k.get("no_div"): return "無配"
+    t = []
+    if (k.get("div_up") or 0) > 0: t.append("増配")
+    if (k.get("buyback") or 0) > 0.1: t.append("自己株買い")
+    return "／".join(t) if t else "配当のみ"
+
+def kiyohara_screen(sc_all, fmap, names=None, s17=None):
+    """清原枠の候補。指定条件で絞り、読み取った考えで並べる。
+
+       ★書き出すのは分類・順位・タグと、条件の通過状況だけ。
+         PER・PBR・時価総額・比率の**数値は書かない**。
+         純資産や総資産が逆算でき、J-Quantsの生の財務数値を
+         公開したことになるため（利用条件）。
+         正確な値はバフェット・コードで各自が確認する。"""
+    import numpy as np
+    names, s17 = names or {}, s17 or {}
+    if sc_all is None or len(sc_all) == 0:
+        meta["kiyohara"] = {"error": "価格の枠が空"}
+        return []
+    reasons, rows = {}, []
+    for i in range(len(sc_all)):
+        c = str(sc_all["code"].iloc[i]); cc = c.replace(".T", "")
+        if float(sc_all["turnover"].iloc[i]) < KY_MIN_TURNOVER:
+            reasons["売買代金が薄い"] = reasons.get("売買代金が薄い", 0) + 1; continue
+        if s17.get(cc) in KY_EXCLUDE:
+            reasons["銀行・金融（式が成立しない）"] = reasons.get("銀行・金融（式が成立しない）", 0) + 1
+            continue
+        k = ky_metrics(fmap.get(cc), float(sc_all["close"].iloc[i]))
+        ok, why = ky_pass(k)
+        if not ok:
+            reasons[why] = reasons.get(why, 0) + 1
+            continue
+        rows.append({"code": cc, "name": names.get(cc, ""), "s17": s17.get(cc, ""),
+                     "state": ky_state(k), "ret": ky_return_tag(k),
+                     "_ep": (1.0 / k["per"]) if k["per"] else 0.0,
+                     "_nc": k["nc_lo"] if k["nc_lo"] is not None else -9e9,
+                     "_po": (0.0 if k.get("no_div") else
+                             1.0 + max(k.get("div_up") or 0, 0) / 100
+                             + max(k.get("buyback") or 0, 0) / 10)})
+    # 並べ方: 読み取った考えをそのまま使う。
+    #   PERを一番重視し、ネットキャッシュ比率を加え、株主還元で罠を外す。
+    #   断面の順位に直してから足す（単位の違う数字を直接足さない）。
+    if rows:
+        def prank(key):
+            vals = sorted(range(len(rows)), key=lambda i: rows[i][key])
+            r = [0.0] * len(rows)
+            for pos, i in enumerate(vals): r[i] = (pos + 1) / len(rows)
+            return r
+        pe, pn, pp = prank("_ep"), prank("_nc"), prank("_po")
+        for i, r in enumerate(rows):
+            # PER 2 : ネットキャッシュ 1 : 株主還元 1
+            r["rank_score"] = round((2 * pe[i] + pn[i] + pp[i]) / 4 * 100, 1)
+        rows.sort(key=lambda r: -r["rank_score"])
+        for n, r in enumerate(rows[:KY_TOP], start=1):
+            r["rank"] = n
+            for k2 in ("_ep", "_nc", "_po"): r.pop(k2, None)
+    out = rows[:KY_TOP]
+    payload = {"generated_at_jst": NOW.isoformat(),
+               "screen": {"max_per": KY_MAX_PER, "max_pbr": KY_MAX_PBR,
+                          "max_mcap_oku": KY_MAX_MCAP / 1e8,
+                          "nc_near": KY_NC_NEAR,
+                          "min_turnover": KY_MIN_TURNOVER,
+                          "excluded_sectors": list(KY_EXCLUDE)},
+               "formula": "ネットキャッシュ＝流動資産＋投資有価証券×70%−負債合計／比率＝÷時価総額",
+               "universe": int(len(sc_all)), "passed": len(rows), "shown": len(out),
+               "sure": sum(1 for r in out if r["state"].startswith("確実")),
+               "likely": sum(1 for r in out if r["state"].startswith("有力")),
+               "no_div": sum(1 for r in out if r["ret"] == "無配"),
+               "dropped": reasons,
+               "rank_weights": "PER2 : ネットキャッシュ1 : 株主還元1（この重みは指定に無い私の置き方）",
+               "note": ("条件は本人指定（予想PER8倍以下・PBR0.8倍以下・時価総額500億円以下・"
+                        "流動資産>負債・ネットキャッシュ比率1以上または1に近い）。"
+                        "流動資産と投資有価証券は無料データに無いため不等式で挟んでいる。"
+                        "PER・PBR・時価総額・比率の数値は利用条件により載せない。"),
+               "rows": out}
+    json.dump(payload, open(KY_PATH, "w"), ensure_ascii=False, indent=1)
+    meta["kiyohara"] = {k: payload[k] for k in
+                        ("universe", "passed", "shown", "sure", "likely", "no_div", "dropped")}
+    print(f"[清原枠] 母集団{len(sc_all):,} → 条件通過{len(rows)}件"
+          f"（確実{payload['sure']} / 有力{payload['likely']} / 無配{payload['no_div']}）")
+    return out
+
+NC_PATH      = f"{OUT}/netcash.json"
+NC_EXCLUDE   = ("銀行", "金融（除く銀行）")   # 式が成立しない業種
+NC_SHORTLIST = 60      # 手で確かめる候補の上限件数
+
+def netcash_bounds(code, m, price):
+    """1銘柄のネットキャッシュ比率の下限・上限。作れなければ None。
+       近似はしない。挟めるところまでしか言わない。"""
+    if not m or not price or price <= 0: return None
+    ta, eq, cash, sh = m.get("ta"), m.get("eq"), m.get("cash"), m.get("sh")
+    if ta is None or eq is None or sh is None: return None
+    if not (ta > 0) or not (sh > 0): return None
+    debt = ta - eq                       # 負債合計＝総資産−純資産
+    mcap = price * sh
+    if not (mcap > 0): return None
+    lo = (cash - debt) / mcap if cash is not None else None
+    hi = eq / mcap                       # ＝1/PBR
+    return {"lo": lo, "hi": hi, "op": m.get("op"), "asof": m.get("asof")}
+
+def netcash_state(b):
+    """3分類。手で確かめる必要があるのはどれかを決める。"""
+    if not b: return "不明"
+    if b["op"] is not None and b["op"] <= 0: return "除外(本業赤字)"
+    if b["hi"] is None or b["hi"] < 1.0:     return "対象外(上限で1未満)"
+    if b["lo"] is not None and b["lo"] >= 1.0: return "確実(下限で1以上)"
+    return "要確認"
+
+def netcash_shortlist(sc, fmap, names=None, s17=None):
+    """手で確かめる価値のある銘柄だけを、確からしい順に並べて書き出す。
+
+       ★書き出すのはコード・銘柄名・分類・順位だけ。
+         比率の数値そのものは書かない。純資産や総資産が逆算できてしまい、
+         J-Quantsの生の財務数値を公開したことになるため。
+         正確な比率は、本人がバフェット・コードから取った値で計算する。"""
+    names, s17 = names or {}, s17 or {}
+    rows = []
+    for i, c in enumerate(sc["code"].tolist()):
+        cc = str(c).replace(".T", "")
+        b = netcash_bounds(cc, fmap.get(cc), float(sc["close"].iloc[i]))
+        st = netcash_state(b)
+        if st in ("不明", "対象外(上限で1未満)", "除外(本業赤字)"): continue
+        if s17.get(cc) in NC_EXCLUDE: continue
+        m = fmap.get(cc) or {}
+        # 株主還元の印。清原氏は「最終的なカタリストは株主還元」としている。
+        # ネットキャッシュが厚いのに株主に返さない会社は、割安なまま放置される。
+        if m.get("no_div"):
+            ret = "無配"
+        else:
+            _u, _b = m.get("div_up"), m.get("buyback")
+            _t = []
+            if _u is not None and _u > 0: _t.append("増配")
+            if _b is not None and _b > 0.1: _t.append("自己株買い")
+            ret = "／".join(_t) if _t else "配当のみ"
+        rows.append({"code": cc, "name": names.get(cc, ""), "s17": s17.get(cc, ""),
+                     "state": st, "ret": ret,
+                     "_lo": (b["lo"] if b["lo"] is not None else -9e9)})
+    # 下限が大きいほど「1以上」が確からしい
+    rows.sort(key=lambda r: -r["_lo"])
+    for n, r in enumerate(rows[:NC_SHORTLIST], start=1):
+        r["rank"] = n; r.pop("_lo", None)
+    out = rows[:NC_SHORTLIST]
+    n_sure = sum(1 for r in out if r["state"].startswith("確実"))
+    payload = {"generated_at_jst": NOW.isoformat(),
+               "formula": "ネットキャッシュ＝流動資産＋投資有価証券×70%−負債合計／比率＝÷時価総額",
+               "pool": int(len(sc)), "shortlist": len(out), "sure": n_sure,
+               "excluded_sectors": list(NC_EXCLUDE),
+               "note": ("上限（＝純資産÷時価総額＝1/PBR）が1未満の銘柄は清原式でも"
+                        "1以上になりえないので除いてある。本業赤字も除いてある。"
+                        "比率の数値は載せない（J-Quantsの生の財務数値が逆算できるため）。"
+                        "正確な値はバフェット・コードの 流動資産・投資有価証券・負債合計・"
+                        "時価総額 で計算すること。"),
+               "rows": out}
+    json.dump(payload, open(NC_PATH, "w"), ensure_ascii=False, indent=1)
+    meta["netcash"] = {k: payload[k] for k in ("pool", "shortlist", "sure")}
+    print(f"[ネットキャッシュ] 手で確かめる候補 {len(out)}件"
+          f"（うち下限で既に1以上 {n_sure}件）")
+    return out
+
 FUND_PATH = f"{OUT}/fund.json"
-FUND_MAX_AGE_D = 20      # これより古い順位はレポートで警告する
+FUND_MAX_AGE_D = 20     # これより古い順位はレポートで警告する
+# 清原枠に渡す「ATRで落とす前の全銘柄の枠」。呼び出し側で入れる。
+FUND_ALL = None
 
 def load_fund_prev():
     """前回コミットした順位。順位は「分析結果」なので data/ に置いてあり、
@@ -1292,6 +1557,18 @@ def fund_today(sc, refetch=True):
     except Exception as e:
         meta["errors"].append(f"netcash: {type(e).__name__}: {e}")
         meta["netcash"] = {"error": str(e)[:120]}
+    # 清原枠は母集団が違う（ATR帯や売買代金の条件がスイングと別）。
+    # ATRで落とす前の全銘柄の枠を使う。
+    try:
+        kiyohara_screen(FUND_ALL if FUND_ALL is not None else sc, fmap, _nm, _s7)
+    except Exception as e:
+        meta["errors"].append(f"kiyohara: {type(e).__name__}: {e}")
+        meta["kiyohara"] = {"error": str(e)[:120]}
+    # 素の項目がどれだけ埋まったか。欠けている場所を次回すぐ特定できるように残す。
+    _keys = ("bps", "feps", "eq", "ta", "cash", "sh", "op", "div")
+    meta["fund_raw"] = {k: sum(1 for m in fmap.values() if m.get(k) is not None)
+                        for k in _keys}
+    meta["fund_raw"]["codes"] = len(fmap)
     out, has = fund_scores(sc, fmap)
     codes = [str(c).replace(".T", "") for c in sc["code"].tolist()]
     pct = {}
@@ -1363,83 +1640,6 @@ def fund_today(sc, refetch=True):
 #    本業が赤字（営業利益 ≤ 0）の会社も外す。現金が減っていく側なので、
 #    現金の多さを割安と読むと逆になる。
 # ══════════════════════════════════════════════════════════════════════
-NC_PATH      = f"{OUT}/netcash.json"
-NC_EXCLUDE   = ("銀行", "金融（除く銀行）")   # 式が成立しない業種
-NC_SHORTLIST = 60      # 手で確かめる候補の上限件数
-
-def netcash_bounds(code, m, price):
-    """1銘柄のネットキャッシュ比率の下限・上限。作れなければ None。
-       近似はしない。挟めるところまでしか言わない。"""
-    if not m or not price or price <= 0: return None
-    ta, eq, cash, sh = m.get("ta"), m.get("eq"), m.get("cash"), m.get("sh")
-    if ta is None or eq is None or sh is None: return None
-    if not (ta > 0) or not (sh > 0): return None
-    debt = ta - eq                       # 負債合計＝総資産−純資産
-    mcap = price * sh
-    if not (mcap > 0): return None
-    lo = (cash - debt) / mcap if cash is not None else None
-    hi = eq / mcap                       # ＝1/PBR
-    return {"lo": lo, "hi": hi, "op": m.get("op"), "asof": m.get("asof")}
-
-def netcash_state(b):
-    """3分類。手で確かめる必要があるのはどれかを決める。"""
-    if not b: return "不明"
-    if b["op"] is not None and b["op"] <= 0: return "除外(本業赤字)"
-    if b["hi"] is None or b["hi"] < 1.0:     return "対象外(上限で1未満)"
-    if b["lo"] is not None and b["lo"] >= 1.0: return "確実(下限で1以上)"
-    return "要確認"
-
-def netcash_shortlist(sc, fmap, names=None, s17=None):
-    """手で確かめる価値のある銘柄だけを、確からしい順に並べて書き出す。
-
-       ★書き出すのはコード・銘柄名・分類・順位だけ。
-         比率の数値そのものは書かない。純資産や総資産が逆算できてしまい、
-         J-Quantsの生の財務数値を公開したことになるため。
-         正確な比率は、本人がバフェット・コードから取った値で計算する。"""
-    names, s17 = names or {}, s17 or {}
-    rows = []
-    for i, c in enumerate(sc["code"].tolist()):
-        cc = str(c).replace(".T", "")
-        b = netcash_bounds(cc, fmap.get(cc), float(sc["close"].iloc[i]))
-        st = netcash_state(b)
-        if st in ("不明", "対象外(上限で1未満)", "除外(本業赤字)"): continue
-        if s17.get(cc) in NC_EXCLUDE: continue
-        m = fmap.get(cc) or {}
-        # 株主還元の印。清原氏は「最終的なカタリストは株主還元」としている。
-        # ネットキャッシュが厚いのに株主に返さない会社は、割安なまま放置される。
-        if m.get("no_div"):
-            ret = "無配"
-        else:
-            _u, _b = m.get("div_up"), m.get("buyback")
-            _t = []
-            if _u is not None and _u > 0: _t.append("増配")
-            if _b is not None and _b > 0.1: _t.append("自己株買い")
-            ret = "／".join(_t) if _t else "配当のみ"
-        rows.append({"code": cc, "name": names.get(cc, ""), "s17": s17.get(cc, ""),
-                     "state": st, "ret": ret,
-                     "_lo": (b["lo"] if b["lo"] is not None else -9e9)})
-    # 下限が大きいほど「1以上」が確からしい
-    rows.sort(key=lambda r: -r["_lo"])
-    for n, r in enumerate(rows[:NC_SHORTLIST], start=1):
-        r["rank"] = n; r.pop("_lo", None)
-    out = rows[:NC_SHORTLIST]
-    n_sure = sum(1 for r in out if r["state"].startswith("確実"))
-    payload = {"generated_at_jst": NOW.isoformat(),
-               "formula": "ネットキャッシュ＝流動資産＋投資有価証券×70%−負債合計／比率＝÷時価総額",
-               "pool": int(len(sc)), "shortlist": len(out), "sure": n_sure,
-               "excluded_sectors": list(NC_EXCLUDE),
-               "note": ("上限（＝純資産÷時価総額＝1/PBR）が1未満の銘柄は清原式でも"
-                        "1以上になりえないので除いてある。本業赤字も除いてある。"
-                        "比率の数値は載せない（J-Quantsの生の財務数値が逆算できるため）。"
-                        "正確な値はバフェット・コードの 流動資産・投資有価証券・負債合計・"
-                        "時価総額 で計算すること。"),
-               "rows": out}
-    json.dump(payload, open(NC_PATH, "w"), ensure_ascii=False, indent=1)
-    meta["netcash"] = {k: payload[k] for k in ("pool", "shortlist", "sure")}
-    print(f"[ネットキャッシュ] 手で確かめる候補 {len(out)}件"
-          f"（うち下限で既に1以上 {n_sure}件）")
-    return out
-
 # ── public リポジトリに出してはいけないものが混ざっていないかの検査 ──
 #   ① J-Quantsの生の財務数値（利用条件で第三者閲覧が禁止されている）
 #   ② APIキーそのもの
@@ -2030,9 +2230,20 @@ def session_complete():
     return not (9*60 <= t < 15*60 + 40)     # 大引け後のデータ確定を少し待つ
 
 LOT              = 100      # 日本株の売買単位。10株単位で丸めると発注できない
-RISK_PER_TRADE_P = 0.009    # 1トレードの許容損失（総額比）
-MAX_WEIGHT       = 0.15     # 1銘柄の上限（総額比）
-MIN_CASH_RATIO   = 0.20     # 現金比率の下限。これを割る発注はしない
+# ── ポートフォリオを2つの枠に分ける（2026-09-13の決定）──────────────
+#   半分をスイングトレード、半分を清原式（割安小型成長株・長期）に充てる。
+#   理由: 検証でエッジが出たのはバリューだけで、そのバリューは保有期間が
+#   長いほど効いていた。一方スイングの枠組み（3ATR利確・15〜25日）は
+#   清原式の「最低2倍を狙う・3年持つ」と両立しない。混ぜると両方の
+#   根拠を失うので、枠を分けて別の規則で動かす。
+SLEEVE_SWING     = 0.50     # スイング枠（総額比）
+SLEEVE_KIYOHARA  = 0.50     # 清原枠（総額比）
+# ★許容損失と1銘柄上限は「総額比」ではなく「その枠に対する比」で見る。
+#   総額比のままだと、枠を半分にしたのに1件のリスクが変わらず、
+#   スイング枠の中では実質2倍のリスクを取ることになる。
+RISK_PER_TRADE_P = 0.009    # 1トレードの許容損失（スイング枠に対する比）
+MAX_WEIGHT       = 0.15     # 1銘柄の上限（スイング枠に対する比）
+MIN_CASH_RATIO   = 0.20     # 現金比率の下限（総額比）。これを割る発注はしない
 
 SIG_PATH      = f"{OUT}/signals.csv"
 SIG_TOP_N     = 10       # 各サイドの上位何件を台帳に載せるか
@@ -2220,7 +2431,7 @@ def load_universe(master=None):
 def screen_all(codes, sig=None, open_map=None):
     """全銘柄の直近データを取得し、流動性と値幅で絞ってから指標を付ける。"""
     import yfinance as yf
-    rows, t0 = [], time.time()
+    rows, allrows, t0 = [], [], time.time()
     done = 0
     skipped, skip_msg = {}, {}
     settled = 0
@@ -2260,6 +2471,10 @@ def screen_all(codes, sig=None, open_map=None):
                 cl = x["Close"]; last = float(cl.iloc[-1])
                 if last < MIN_PRICE: continue
                 turnover = float((cl * x["Volume"]).tail(20).mean())
+                # ★清原枠はスイングとは別のふるいを使う（ATR帯や売買代金の
+                #   条件が違う）。ATRで落とす前に、全銘柄の価格と売買代金を
+                #   取っておく。ここで取らないと小型株が先に消えてしまう。
+                allrows.append({"code": c, "close": last, "turnover": turnover})
                 if turnover < MIN_TURNOVER: continue
 
                 # ★指標は調整済み、発注価格は実際の価格。
@@ -2310,7 +2525,7 @@ def screen_all(codes, sig=None, open_map=None):
     if settled:
         print(f"[台帳] 未決着シグナルのうち {settled}件が決着")
     meta["signals_settled"] = settled
-    return pd.DataFrame(rows), done
+    return pd.DataFrame(rows), done, pd.DataFrame(allrows)
 
 CAND_TOP_N = 20
 
@@ -2709,13 +2924,15 @@ try:
         uni = load_universe(MASTER)
         if uni:
             SIG = load_signals()
-            sc, scanned = screen_all(uni, SIG, open_signal_map(SIG))
+            sc, scanned, sc_all = screen_all(uni, SIG, open_signal_map(SIG))
             meta["screen"] = {"universe": len(uni), "scanned": scanned, "passed": len(sc),
                               "named": bool(MASTER),
                               "source": meta.get("universe_source", "?")}
             if not sc.empty:
                 # ── ファンダの断面順位を列として足す（表示のみ・採点には入れない）
                 try:
+                    FUND_ALL = fund_pool(sc_all, snap, HOLDINGS)[0] \
+                        if len(sc_all) else None
                     _scf, _nadd = fund_pool(sc, snap, HOLDINGS)
                     FUND_PCT = fund_today(_scf, refetch=session_complete())
                     meta.setdefault("fund", {})["holdings_added"] = _nadd
@@ -2939,7 +3156,9 @@ try:
                                 if x >= str(today)), "")))
     t = pd.DataFrame(rows)
     TOT = float(t["mkt"].sum() + CASH)
-    RISK_PER_TRADE = TOT * RISK_PER_TRADE_P
+    SW_BUDGET = TOT * SLEEVE_SWING          # スイング枠の予算
+    KY_BUDGET = TOT * SLEEVE_KIYOHARA       # 清原枠の予算
+    RISK_PER_TRADE = SW_BUDGET * RISK_PER_TRADE_P
 
     R = pd.DataFrame(rets).dropna(how="any").tail(120)
     C = R.corr()
@@ -2966,7 +3185,7 @@ try:
         # 許容損失は RISK_PER_TRADE 一本。以前は表が総額1.0%、運用ルールが0.9%で
         # 食い違い、表どおりに建てると常に11%オーバーサイズになっていた。
         n_atr = int(RISK_PER_TRADE // stop_w) if stop_w > 0 else 0
-        n_cap = int(max(TOT*MAX_WEIGHT - r["mkt"], 0) // r["close"]) if r["close"] > 0 else 0
+        n_cap = int(max(SW_BUDGET*MAX_WEIGHT - r["mkt"], 0) // r["close"]) if r["close"] > 0 else 0
         # 現金で買えない株数を出しても意味がない。現金比率の下限も守る。
         buyable = max(CASH - TOT*MIN_CASH_RATIO, 0)
         n_cash = int(buyable // r["close"]) if r["close"] > 0 else 0
@@ -3049,9 +3268,22 @@ try:
     if rep_log:
         L.append("補正した系列: " + " / ".join(f"{k}: {'; '.join(v)}" for k, v in rep_log.items()) + "\n")
     L.append(f"\n総額 **¥{TOT:,.0f}**（保有 ¥{t['mkt'].sum():,.0f} + 現金 ¥{CASH:,.0f} = 現金比率 {CASH/TOT*100:.1f}%）")
-    L.append(f"／ 1トレード許容損失({RISK_PER_TRADE/TOT:.2%}) ¥{RISK_PER_TRADE:,.0f}"
-             f"／ 発注可能現金 ¥{max(CASH - TOT*MIN_CASH_RATIO, 0):,.0f}"
+    L.append(f"／ 発注可能現金 ¥{max(CASH - TOT*MIN_CASH_RATIO, 0):,.0f}"
              f"（現金 ¥{CASH:,.0f} − 下限 {MIN_CASH_RATIO:.0%}）\n")
+    L.append(f"**枠の配分**: スイング枠 ¥{SW_BUDGET:,.0f}（{SLEEVE_SWING:.0%}）"
+             f"／ 清原枠 ¥{KY_BUDGET:,.0f}（{SLEEVE_KIYOHARA:.0%}）\n")
+    L.append(f"- スイング枠: 1トレード許容損失 ¥{RISK_PER_TRADE:,.0f}"
+             f"（枠の{RISK_PER_TRADE_P:.2%}／総額の{RISK_PER_TRADE/TOT:.2%}）"
+             f"、1銘柄上限 ¥{SW_BUDGET*MAX_WEIGHT:,.0f}（枠の{MAX_WEIGHT:.0%}）。"
+             "2ATR損切り・3ATR利確・期限で手仕舞い。")
+    L.append(f"- 清原枠: **ATRの損切りは使わない**。最低2倍を狙い、"
+             "投資仮説が崩れたときに降りる。等ウェイトで分散する。"
+             f"1銘柄あたり目安 ¥{KY_BUDGET/KY_NAMES:,.0f}（{KY_NAMES}銘柄想定）。")
+    _lot_note = int(KY_BUDGET / KY_NAMES / 100)
+    L.append(f"  - 単元100株なので、1銘柄 ¥{KY_BUDGET/KY_NAMES:,.0f} だと"
+             f"**株価 {_lot_note:,}円以下の銘柄しか単元で買えない**。"
+             "清原氏は20銘柄を勧めているが、この口座規模では"
+             f"{KY_NAMES}銘柄程度が上限になる。分散は本来より薄い。\n")
 
     L.append("\n## テクニカル（ベンチマーク=TOPIX/1306）\n")
     L.append("| コード | 銘柄 | 終値 | 損益% | RSI | MACD | 25日 | 75日 | 200日 | 60日位置 | ATR% | 対TOPIX 1d/5d/20d | 出来高 |")
@@ -3591,6 +3823,77 @@ try:
         L.append("\n## 新規候補\n\nスクリーニング未実行。")
     except Exception as e:
         L.append(f"\n## 新規候補\n\n生成に失敗: {e}")
+    # ── 清原枠の候補 ──────────────────────────────────────
+    try:
+        ky = json.load(open(f"{OUT}/kiyohara.json", encoding="utf-8"))
+        sch = ky.get("screen", {})
+        L.append("\n## 清原枠の候補（総額の半分・長期）\n")
+        L.append(f"**ふるい**: 予想PER {sch.get('max_per')}倍以下／"
+                 f"PBR {sch.get('max_pbr')}倍以下／"
+                 f"時価総額 {sch.get('max_mcap_oku'):.0f}億円以下／"
+                 f"流動資産＞負債／ネットキャッシュ比率が1以上または1に近い"
+                 f"（売買代金20日平均 {sch.get('min_turnover', 0)/1e8:.2f}億円以上、"
+                 f"本業黒字、{'・'.join(sch.get('excluded_sectors', []))}を除外）\n")
+        L.append(f"母集団 {ky.get('universe', 0):,}銘柄 → **条件通過 {ky.get('passed', 0)}件**"
+                 f"（下限で既に比率1以上 **{ky.get('sure', 0)}件** / "
+                 f"下限が1に近い **{ky.get('likely', 0)}件** / "
+                 f"無配 {ky.get('no_div', 0)}件）\n")
+        _dr = ky.get("dropped") or {}
+        if _dr:
+            L.append("落ちた内訳: "
+                     + " / ".join(f"{k} {v:,}" for k, v in
+                                  sorted(_dr.items(), key=lambda x: -x[1])[:6]) + "\n")
+        L.append("> **PBR 0.8倍以下 ⟺ 純資産÷時価総額 ≥ 1.25** なので、"
+                 "この表に出た銘柄は全部「ネットキャッシュ比率が1以上になりうる」側。"
+                 "流動資産と投資有価証券を足せば1を超える可能性が残っている。"
+                 "「確実」は現金だけで既に超えているもの。\n")
+        _kr = ky.get("rows") or []
+        if _kr:
+            L.append("| 順 | コード | 銘柄名 | 17業種 | 比率の確からしさ | 株主還元 | 総合 |")
+            L.append("|--:|---|---|---|:-:|:-:|--:|")
+            for r in _kr[:25]:
+                L.append(f"| {r.get('rank', '')} | {r['code']} | "
+                         f"{(r.get('name') or '—')[:14]} | {r.get('s17') or '—'} | "
+                         f"{r.get('state', '')} | {r.get('ret', '—')} | "
+                         f"{r.get('rank_score', 0):.0f} |")
+            L.append(f"\n並べ方は **{ky.get('rank_weights', '')}**。"
+                     "PERを一番重視し、ネットキャッシュ比率を加え、"
+                     "株主還元でバリュートラップを外す、という読み取りをそのまま使っている。\n")
+            L.append("**ここから先は機械では決められない。**")
+            L.append("- **「無配」は外す方向で見る。** 現金が厚いのに株主に返さない会社は"
+                     "割安なまま何年も放置されうる。清原氏の言う「最終的なカタリストは"
+                     "株主還元」の裏返し。")
+            L.append("- **正確なネットキャッシュ比率**は、バフェット・コードで"
+                     "**流動資産**と**投資有価証券**を見て "
+                     "`(流動資産＋投資有価証券×70%−負債合計)÷時価総額` を計算する。"
+                     "負債合計と時価総額はそちらにも出ているので突き合わせに使える。")
+            L.append("- **「小型株は経営者が9割」**（清原氏）。経営者に成長させる意志があるか、"
+                     "言動が一致しているか、中期経営計画が具体的か、競合に潰されないか。"
+                     "**無料データに無いので、この仕組みでは判定できない。** "
+                     "決算説明資料と中期経営計画を見る作業が残る。")
+            L.append("- **PER・PBR・時価総額・比率の数値はこの表に載せていない。** "
+                     "載せると純資産や総資産が逆算でき、J-Quantsの生の財務数値を"
+                     "公開したことになるため（利用条件）。")
+            L.append("")
+            L.append("**清原枠の建て方（スイング枠とは別の規則）**")
+            L.append(f"- 等ウェイトで **{KY_NAMES}銘柄程度**に分散する。ATRの損切りは使わない。")
+            L.append("- **最低2倍を狙う。3割上昇での売却はしない**（清原氏）。"
+                     "降りるのは投資仮説が崩れたとき（本業の悪化・株主還元の後退・"
+                     "経営者の言動の不一致）。")
+            L.append("- **決算は当然またぐ。** スイング枠の「決算をまたぐ建玉は作らない」は"
+                     "**この枠には適用しない**。3年持つ前提の手法で決算を避けることはできない。")
+            L.append("- 清原氏は20銘柄を勧めているが、この口座規模では単元100株の制約で"
+                     f"{KY_NAMES}銘柄程度が上限。**分散は本来より薄いことを承知で運用する。**")
+        else:
+            L.append("**本日の条件通過は0件。** 落ちた内訳を見て、"
+                     "条件が厳しすぎるのか取得側の問題なのかを切り分けること。"
+                     "PER8倍以下かつPBR0.8倍以下は、相場が上がった局面では"
+                     "ほとんど残らないことがある。")
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        L.append(f"\n## 清原枠の候補\n\n生成に失敗: {e}")
+
     # ── ネットキャッシュ比率（清原式）の手作業候補 ──────────────
     try:
         nc = json.load(open(f"{OUT}/netcash.json", encoding="utf-8"))
