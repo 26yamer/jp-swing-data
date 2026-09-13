@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-13T10:41:31.598713+09:00",
+ "fetched_at_jst": "2026-09-13T15:14:28.011549+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -98,7 +98,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 42,
+ "news_ok": 43,
  "jgb": {
   "date": "2026-09-10",
   "age_days": 3,
@@ -131,7 +131,7 @@
  },
  "fund": {
   "asof_latest_disclosure": "2026-06-18",
-  "pool": 1722,
+  "pool": 1727,
   "n_codes": 1604,
   "coverage": {
    "has": 1604,
@@ -152,12 +152,13 @@
    "err": {
     "HTTP 400": 3
    }
-  }
+  },
+  "holdings_added": 5
  },
  "earnings_hist": {
   "days_cached": 31,
   "codes": 1009,
-  "fetched_now": 2,
+  "fetched_now": 1,
   "new_items": 0
  },
  "jpx_earnings": {
@@ -179,7 +180,148 @@
  },
  "signals_appended": true,
  "signals_bar": "2026-09-11",
- "backtest_skipped": "前回から0日（30日ごと）・設定変更なし",
+ "jq_bt": {
+  "dates_asked": 523,
+  "dates_with_data": 484,
+  "rows": 37664,
+  "codes": 4131,
+  "req": 523,
+  "n429": 0,
+  "blocked": null,
+  "resp_key": "data",
+  "err": {
+   "HTTP 400": 3
+  }
+ },
+ "backtest_dates": 184,
+ "backtest_dates_fund": 102,
+ "backtest_coverage": {
+  "asked": 4247,
+  "universe": 4247,
+  "pct": 100.0,
+  "usable": 3556
+ },
+ "backtest": {
+  "tickers": 3556,
+  "dates": 184,
+  "main": {
+   "trend": {
+    "n": 1840.0,
+    "avg_r": 0.0883,
+    "win_pct": 47.1,
+    "target": 30.5,
+    "stop": 42.0,
+    "timeout": 27.5,
+    "base": "random",
+    "vs_random": -0.0393,
+    "t_rough": -1.69
+   },
+   "revert": {
+    "n": 1840.0,
+    "avg_r": 0.0948,
+    "win_pct": 48.6,
+    "target": 22.4,
+    "stop": 31.5,
+    "timeout": 46.0,
+    "base": "random",
+    "vs_random": -0.0328,
+    "t_rough": -1.41
+   },
+   "mom12_2": {
+    "n": 1840.0,
+    "avg_r": 0.0679,
+    "win_pct": 46.7,
+    "target": 29.0,
+    "stop": 40.5,
+    "timeout": 30.4,
+    "base": "random",
+    "vs_random": -0.0597,
+    "t_rough": -2.56
+   },
+   "rev5": {
+    "n": 1840.0,
+    "avg_r": 0.0448,
+    "win_pct": 47.7,
+    "target": 17.1,
+    "stop": 26.8,
+    "timeout": 56.1,
+    "base": "random",
+    "vs_random": -0.0828,
+    "t_rough": -3.55
+   },
+   "lowvol": {
+    "n": 1840.0,
+    "avg_r": 0.2342,
+    "win_pct": 53.8,
+    "target": 33.4,
+    "stop": 36.6,
+    "timeout": 29.9,
+    "base": "random",
+    "vs_random": 0.1066,
+    "t_rough": 4.57
+   },
+   "value": {
+    "n": 1020.0,
+    "avg_r": 0.3432,
+    "win_pct": 59.2,
+    "target": 35.6,
+    "stop": 29.4,
+    "timeout": 35.0,
+    "base": "random_f",
+    "vs_random": 0.2292,
+    "t_rough": 7.32
+   },
+   "quality": {
+    "n": 1020.0,
+    "avg_r": 0.082,
+    "win_pct": 47.7,
+    "target": 27.1,
+    "stop": 39.5,
+    "timeout": 33.4,
+    "base": "random_f",
+    "vs_random": -0.032,
+    "t_rough": -1.02
+   },
+   "moat": {
+    "n": 1020.0,
+    "avg_r": 0.0819,
+    "win_pct": 48.8,
+    "target": 25.5,
+    "stop": 39.2,
+    "timeout": 35.3,
+    "base": "random_f",
+    "vs_random": -0.0321,
+    "t_rough": -1.03
+   },
+   "revision": {
+    "n": 970.0,
+    "avg_r": 0.1127,
+    "win_pct": 48.0,
+    "target": 27.5,
+    "stop": 35.5,
+    "timeout": 37.0,
+    "base": "random_f",
+    "vs_random": -0.0013,
+    "t_rough": -0.04
+   },
+   "random": {
+    "n": 1840.0,
+    "avg_r": 0.1276,
+    "win_pct": 49.9,
+    "target": 28.4,
+    "stop": 36.8,
+    "timeout": 34.8
+   },
+   "random_f": {
+    "n": 1020.0,
+    "avg_r": 0.114,
+    "win_pct": 49.8,
+    "target": 27.3,
+    "stop": 37.0,
+    "timeout": 35.7
+   }
+  }
+ },
  "signals": {
   "closed": 0,
   "open": 20
