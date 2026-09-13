@@ -1246,7 +1246,10 @@ ED_DOC_TYPES  = ("120", "160")   # 120=有価証券報告書 160=半期報告書
 ED_LIST_DAYS  = 10               # 毎回見る「新しい側」の日数
 ED_BACKFILL_D = 500             # 初回に遡る範囲（1年半。有報1回は必ず入る）
 ED_MAX_LIST   = 45               # 1回の実行で引く一覧の日数
-ED_MAX_DOCS   = 90               # 1回の実行で落とす書類数（積み上げる）
+ED_MAX_DOCS   = 220              # 1回の実行で落とす書類数（積み上げる）
+                                 # 実測: 未取得780件に対して90件/回では
+                                 # 全部埋まるまで9回かかる。1件1秒空けても
+                                 # 220件で約5分、ジョブの330分枠に収まる。
 ED_GAP_S      = 1.0              # 大量アクセス禁止なので1秒空ける
 ED_RETRY      = 3
 ED_ATTRIB     = ("出典：EDINET閲覧（提出）サイト"
@@ -1254,15 +1257,25 @@ ED_ATTRIB     = ("出典：EDINET閲覧（提出）サイト"
 ED_INV_HAIRCUT = 0.70            # 投資有価証券の掛け目（売却時の税約30%を引く）
 
 # 拾う要素。連結が空なら個別を見る（非連結の会社がある）。
+# jppfs_cor は日本基準、jpigp_cor はIFRS。IFRS採用会社は日本基準の
+# 要素IDを一切出さないので、別名を並べておく。
+# ★IFRSの「投資有価証券」に一対一で対応する要素は無い。取れなければ
+#   None＝0として扱うので、比率は**低めに出る**（見落としはあっても
+#   過大評価はしない）。
 ED_ELEM = {
-    "ca":   ("jppfs_cor:CurrentAssets",),
+    "ca":   ("jppfs_cor:CurrentAssets", "jpigp_cor:CurrentAssetsIFRS"),
     "inv":  ("jppfs_cor:InvestmentSecurities",),
-    "liab": ("jppfs_cor:Liabilities",),
-    "ta":   ("jppfs_cor:Assets",),
-    "na":   ("jppfs_cor:NetAssets",),
+    "liab": ("jppfs_cor:Liabilities", "jpigp_cor:LiabilitiesIFRS"),
+    "ta":   ("jppfs_cor:Assets", "jpigp_cor:AssetsIFRS"),
+    "na":   ("jppfs_cor:NetAssets", "jpigp_cor:EquityIFRS"),
 }
 _ED = {"req": 0, "n429": 0, "err": {}, "blocked": None,
-       "enc": None, "sep": None, "cols": None, "docs": 0, "parsed": 0}
+       "enc": None, "sep": None, "cols": None, "docs": 0, "parsed": 0,
+       # ★読めなかった書類の理由と、そのとき実際に入っていた要素ID／
+       #   コンテキストID。実測で90件落として55件しか読めず、しかも
+       #   読めたのは全部 有報(120)、半期報告書(160)は0件だった。
+       #   「なぜ読めないか」を次の実行が自分で教えるようにする。
+       "nomatch": {}, "probe": []}
 
 def _ed_url(path, params):
     """URLを作る。★この文字列は絶対にログへ出さない（鍵が入っている）。"""
@@ -1344,12 +1357,73 @@ def _ed_decode(raw):
             return t, enc, sep
     return None, None, None
 
-def ed_parse_csv(zip_bytes):
+# 使ってよい「連結・個別の別」を表す接尾辞。これ以外の Member は
+# セグメントや子会社など**全体ではない数字**なので、絶対に使わない。
+ED_CTX_TAIL_OK = ("", "NonConsolidatedMember")
+
+def _ed_ctx_rank(cx):
+    """コンテキストIDの優先順位。小さいほうを採る。
+       (順位, 個別か) を返す。使ってはいけないものは None。
+
+       ★前期(Prior)は絶対に使わない。
+       ★★接尾辞の Member を必ず見る。ここが今回の不具合だった。
+         実測: 3645 で 流動資産 36.0億 > 資産合計 30.3億、
+               1401 で 資産合計 11.4億 < 純資産 38.8億 と、
+               貸借が成立しない行が4件出た。
+         原因は `CurrentYearInstant_ReportableSegmentsMember...` の
+         ようなセグメント別の数字を、全体の合計として拾っていたこと。
+         「CurrentYear で始まり Instant を含む」だけで通していたため。
+         いまは接尾辞が空（全体）か NonConsolidatedMember（個別）の
+         ときだけ通す。
+       ★半期報告書は `InterimInstant`（当中間期末日時点）を使う。
+         金融庁「報告書インスタンス作成ガイドライン」新旧対照表
+         （2024-11-12、四半期報告書廃止に伴う改正）で、相対期間の値は
+           当年度 CurrentYear / 中間期 Interim /
+           前年度 Prior1Year / 前中間期 Prior1Interim /
+           提出日 FilingDate / 議決権行使基準日 RecordDate /
+           最近日 RecentDate / 予定日 FutureDate
+         と定められている。
+         以前は CurrentYear 決め打ちだったため、半期報告書は
+         **実測で0件**だった（有報55件に対し160は0件）。
+         前中間期は Prior1Interim… なので "Prior" の除外でそのまま弾ける。
+         中間貸借対照表の比較欄（前年度末）も Prior1YearInstant で弾ける。"""
+    if not cx or "Instant" not in cx: return None
+    if "Prior" in cx: return None
+    if cx.startswith("FilingDate"): return None   # 提出日時点＝株式数など別物
+    head, _sep, tail = cx.partition("_")
+    if tail not in ED_CTX_TAIL_OK: return None    # セグメント・子会社などは使わない
+    solo = (tail == "NonConsolidatedMember")
+    if head.startswith("CurrentYear"): return (0, solo)
+    if head.startswith("Interim"):     return (1, solo)   # 半期報告書
+    if head.startswith("Current"):     return (1, solo)   # 念のため
+    if head.startswith(("RecordDate", "RecentDate", "FutureDate")):
+        return None            # 議決権行使基準日・最近日・予定日は貸借ではない
+    return (2, solo)
+
+def ed_bs_ok(v, tol=0.005):
+    """貸借対照表として成立しているか。
+         資産合計 ＝ 負債合計 ＋ 純資産合計
+         流動資産 ≤ 資産合計
+       確かめられない（項目が欠けている）ときは None を返す。
+
+       ★既に保存済みのキャッシュにも読み込み時にこれを当てる。
+         印が無い古い行も、ここで弾けるようにしておく
+         （作り直しを待たずに、間違った比率が出るのを止める）。"""
+    ca, liab, ta, na = v.get("ca"), v.get("liab"), v.get("ta"), v.get("na")
+    if ca is not None and ta is not None and ta > 0 and ca > ta * (1 + tol):
+        return False
+    if None in (ta, liab, na): return None
+    if not (ta > 0): return False
+    return abs(ta - (liab + na)) <= max(abs(ta) * tol, 1e6)
+
+def ed_parse_csv(zip_bytes, dtype=None):
     """ZIPの中のCSVから、貸借対照表の必要項目を取り出す。
 
-       ★当期・時点（Instant）の値だけを使う。前期や期間の値を混ぜない。
+       ★当期の時点（Instant）の値だけを使う。前期の値は混ぜない。
        ★連結を優先し、無ければ個別を使う（非連結の会社がある）。
-       取れなかった項目は None のまま返す（0で埋めない）。"""
+       取れなかった項目は None のまま返す（0で埋めない）。
+       読めなかったときは、実際に入っていた要素IDとコンテキストIDを
+       _ED["probe"] に少しだけ残す（次の実行で原因が分かるように）。"""
     import zipfile, io
     try:
         z = zipfile.ZipFile(io.BytesIO(zip_bytes))
@@ -1366,6 +1440,9 @@ def ed_parse_csv(zip_bytes):
     pref = [n for n in names if "XBRL_TO_CSV" in n.upper()] or names
     want = {e: k for k, es in ED_ELEM.items() for e in es}
     got = {}
+    # 読めなかったときの手掛かり。要素IDは見えているのにコンテキストで
+    # 落としているのか、要素IDそのものが違うのかを切り分ける。
+    seen_bs, seen_ctx, n_rows = set(), set(), 0
     for n in pref:
         try:
             raw = z.read(n)
@@ -1390,25 +1467,62 @@ def ed_parse_csv(zip_bytes):
         for ln in lines[1:]:
             f = [x.strip().strip('"') for x in ln.split(sep)]
             if len(f) <= max(i_el, i_cx, i_vl): continue
+            n_rows += 1
             el = f[i_el]
-            if el not in want: continue
+            if el not in want:
+                # 貸借対照表の合計らしい要素IDだけ手掛かりに取っておく
+                if len(seen_bs) < 24 and el.endswith(
+                        ("CurrentAssets", "Liabilities", "Assets", "NetAssets",
+                         "CurrentAssetsIFRS", "LiabilitiesIFRS", "AssetsIFRS",
+                         "EquityIFRS")):
+                    seen_bs.add(el)
+                continue
             cx = f[i_cx]
-            # 当期の時点の値だけ。前期(Prior)や期間(Duration)は使わない
-            if not cx.startswith("CurrentYear") or "Instant" not in cx: continue
-            solo = ("NonConsolidated" in cx) or \
-                   (i_cs is not None and len(f) > i_cs and f[i_cs] == "個別")
+            if len(seen_ctx) < 12: seen_ctx.add(cx)
+            rk = _ed_ctx_rank(cx)
+            if rk is None: continue        # 前期・提出日時点・セグメントは使わない
+            crank, solo = rk
+            if i_cs is not None and len(f) > i_cs and f[i_cs] == "個別":
+                solo = True
             try:
                 v = float(f[i_vl].replace(",", ""))
             except (ValueError, AttributeError):
                 continue
             k = want[el]
-            # 連結を優先。既に連結が入っていれば個別で上書きしない
-            if k in got and got[k][1] is False and solo: continue
-            got[k] = (v, solo)
-    if not got: return None
+            # 優先順位: 当期本体 > 当期その他、連結 > 個別。
+            # 良いものが既に入っていれば上書きしない。
+            if k in got and (crank, solo) >= (got[k][2], got[k][1]): continue
+            got[k] = (v, solo, crank)
+    if not got:
+        # ★黙って捨てない。何が入っていたかを残す。
+        why = ("行が読めない" if n_rows == 0 else
+               "要素IDが一致しない" if not seen_ctx else
+               "コンテキストが当期の時点でない")
+        key = f"{dtype or '?'}:{why}"
+        _ED["nomatch"][key] = _ED["nomatch"].get(key, 0) + 1
+        if len(_ED["probe"]) < 6:
+            _ED["probe"].append({"dtype": dtype, "why": why, "rows": n_rows,
+                                 "elems": sorted(seen_bs)[:8],
+                                 "ctx": sorted(seen_ctx)[:8]})
+        return None
+    out = {k: v for k, (v, _s, _c) in got.items()}
+    out["solo"] = all(s for _v, s, _c in got.values())
+    # どのコンテキストから取れたか（当期本体以外なら印を残す）
+    out["ctx_alt"] = any(c > 0 for _v, _s, c in got.values())
+    # ★連結と個別が混ざっていないか。混ざった数字で比率を作ると意味が無い。
+    out["mixed"] = len({s for _v, s, _c in got.values()}) > 1
+    # ★貸借が成立しているか（資産合計＝負債合計＋純資産合計）。
+    #   成立しなければ「全体でない数字」を拾っている。実測で4件出た。
+    out["bs_ok"] = ed_bs_ok(out)
+    if out["mixed"] or out["bs_ok"] is False:
+        k2 = f"{dtype or '?'}:{'連結と個別が混在' if out['mixed'] else '貸借が成立しない'}"
+        _ED["nomatch"][k2] = _ED["nomatch"].get(k2, 0) + 1
+        if len(_ED["probe"]) < 6:
+            _ED["probe"].append({"dtype": dtype, "why": k2.split(":")[1],
+                                 "ctx": sorted(seen_ctx)[:8],
+                                 "vals": {k: out.get(k)
+                                          for k in ("ca", "liab", "ta", "na")}})
     _ED["parsed"] += 1
-    out = {k: v for k, (v, _s) in got.items()}
-    out["solo"] = all(s for _v, s in got.values())
     return out
 
 def ed_load():
@@ -1436,9 +1550,23 @@ def ed_dates_to_scan(seen):
     # 新しい側は必ず見る。古い側は残り枠だけ
     return fresh + back[:max(ED_MAX_LIST - len(fresh), 0)]
 
-def ed_update():
+def _neg_date(s):
+    """ISOの日付を「新しいほど小さい」数に直す。sort の第2キー用。
+       文字列の降順を使うために reverse を分けると、第1キー（優先）の
+       向きまで反転してしまう。"""
+    try:
+        return -int(str(s).replace("-", "")[:8] or 0)
+    except (ValueError, TypeError):
+        return 0
+
+def ed_update(priority=None):
     """一覧を引いて、まだ持っていない書類を落として貸借を取り出す。
-       1回の実行で落とす数に上限を置き、日々積み上げる。"""
+       1回の実行で落とす数に上限を置き、日々積み上げる。
+
+       priority … 先に落としたい証券コードの集合。
+         ★これが無いと、実測が要る銘柄に当たるまで何日もかかる。
+           実測: 未取得780件に対し40件の表のうち実測が入ったのは2件だけ。
+           清原枠の条件を通った銘柄を先に落とせば、表は1〜2回で埋まる。"""
     cache = ed_load()
     if not ED_KEY:
         meta["edinet"] = {"skipped": "EDINET_API_KEY 未設定",
@@ -1460,23 +1588,34 @@ def ed_update():
     todo = []
     for f in found:
         cur = rows.get(f["code"])
-        if cur and cur.get("docid") == f["docid"]: continue
-        if cur and (cur.get("submit") or "") > f["submit"]: continue   # 古い方は不要
+        # ★検算に落ちている行は、同じ書類でも取り直す。
+        #   読み方（コンテキストの解釈）を直したので結果が変わる。
+        _bad = bool(cur) and (cur.get("mixed") is True or ed_bs_ok(cur) is False)
+        if cur and cur.get("docid") == f["docid"] and not _bad: continue
+        if cur and (cur.get("submit") or "") > f["submit"] and not _bad:
+            continue                                   # 古い方は不要
         todo.append(f)
-    todo.sort(key=lambda x: x["submit"], reverse=True)      # 新しい開示を先に
+    # 清原枠の候補を先に、そのあとは新しい開示から。
+    # 提出日は ISO なので文字列の降順＝新しい順。
+    _pri = set(str(c) for c in (priority or ()))
+    todo.sort(key=lambda x: (0 if x["code"] in _pri else 1,
+                             _neg_date(x["submit"])))
+    _npri = sum(1 for x in todo if x["code"] in _pri)
     for f in todo[:ED_MAX_DOCS]:
         if _ED["blocked"]: break
         b = _ed_get(f"/documents/{f['docid']}", {"type": 5}, binary=True)
         _ED["docs"] += 1
         if not b: continue
-        v = ed_parse_csv(b)
+        v = ed_parse_csv(b, f.get("dtype"))
         if not v: continue
         got_docs += 1
         rows[f["code"]] = {"docid": f["docid"], "submit": f["submit"],
                            "period": f["period"], "dtype": f["dtype"],
                            "ca": v.get("ca"), "inv": v.get("inv"),
                            "liab": v.get("liab"), "ta": v.get("ta"),
-                           "na": v.get("na"), "solo": v.get("solo")}
+                           "na": v.get("na"), "solo": v.get("solo"),
+                           "ctx_alt": v.get("ctx_alt"),
+                           "mixed": v.get("mixed"), "bs_ok": v.get("bs_ok")}
     cache["rows"] = rows
     cache["seen_dates"] = sorted(seen)[-1200:]
     cache["attribution"] = ED_ATTRIB
@@ -1486,20 +1625,34 @@ def ed_update():
                      "取り出したもの。" + ED_ATTRIB)
     cache["with_ca"] = sum(1 for v in rows.values() if v.get("ca") is not None)
     cache["with_inv"] = sum(1 for v in rows.values() if v.get("inv") is not None)
+    # ★検算を通って比率に使える行が何件か。with_ca より小さくなる。
+    cache["usable"] = sum(1 for v in rows.values()
+                          if v.get("ca") is not None and v.get("liab") is not None
+                          and v.get("mixed") is not True
+                          and ed_bs_ok(v) is not False)
+    cache["bs_bad"] = sum(1 for v in rows.values() if ed_bs_ok(v) is False)
     try:
         json.dump(cache, open(ED_PATH, "w"), ensure_ascii=False, indent=1)
     except Exception as e:
         meta["errors"].append(f"edinet write: {type(e).__name__}")
     meta["edinet"] = {"codes": len(rows), "with_ca": cache["with_ca"],
+                      "usable": cache["usable"], "bs_bad": cache["bs_bad"],
                       "with_inv": cache["with_inv"], "listed_days": listed,
-                      "todo": len(todo), "downloaded": _ED["docs"],
+                      "todo": len(todo), "todo_priority": _npri,
+                      "priority_given": len(_pri), "downloaded": _ED["docs"],
                       "parsed": got_docs, "req": _ED["req"], "n429": _ED["n429"],
                       "blocked": _ED["blocked"], "enc": _ED["enc"],
                       "sep": _ED["sep"], "cols": _ED["cols"],
+                      "dtypes": {d: sum(1 for v in rows.values()
+                                        if v.get("dtype") == d)
+                                 for d in ED_DOC_TYPES},
+                      "nomatch": dict(_ED["nomatch"]),
+                      "probe": _ED["probe"],
                       "err": dict(_ED["err"])}
-    print(f"[EDINET] 一覧{listed}日 / 未取得{len(todo)}件のうち{_ED['docs']}件を取得 / "
+    print(f"[EDINET] 一覧{listed}日 / 未取得{len(todo)}件"
+          f"（うち清原枠の候補{_npri}件を優先）のうち{_ED['docs']}件を取得 / "
           f"解釈成功{got_docs}件 / 累計{len(rows):,}銘柄"
-          f"（流動資産あり{cache['with_ca']:,}）")
+          f"（比率に使える{cache['usable']:,} / 検算に落ちた{cache['bs_bad']:,}）")
     if _ED["blocked"]:
         print(f"::warning::EDINETが止まりました（{_ED['blocked']}）。"
               "キーとプランを確認してください")
@@ -1516,6 +1669,11 @@ def ed_netcash(ed_rows, code, price, shares):
     if not r or not price or not shares: return None
     ca, liab = r.get("ca"), r.get("liab")
     if ca is None or liab is None: return None
+    # ★検算に落ちる行からは比率を作らない（推定に戻す）。
+    #   「全体でない数字」や連結・個別の混在で作った比率は、
+    #   推定より悪い。実測を名乗る以上、合っていることを確かめる。
+    if r.get("mixed") is True: return None
+    if ed_bs_ok(r) is False: return None
     mcap = price * shares
     if not (mcap > 0): return None
     inv = r.get("inv") or 0.0        # 投資有価証券が無い会社は0で正しい
@@ -2011,9 +2169,22 @@ def fund_today(sc, refetch=True):
     # ATRで落とす前の全銘柄の枠を使う。
     # EDINETの貸借対照表（本物のネットキャッシュ比率に要る）。
     # キーが無くても手元のキャッシュは使う。
+    # 先に落とすべき銘柄＝EDINET抜きで清原枠の条件を通るもの。
+    # （PER・PBR・時価総額・売買代金・業種・本業黒字だけで絞る）
+    _pri = []
+    try:
+        _pool = FUND_ALL if FUND_ALL is not None else sc
+        for _i in range(len(_pool)):
+            _c = str(_pool["code"].iloc[_i]).replace(".T", "")
+            if float(_pool["turnover"].iloc[_i]) < KY_MIN_TURNOVER: continue
+            if _s7.get(_c) in KY_EXCLUDE: continue
+            _k = ky_metrics(fmap.get(_c), float(_pool["close"].iloc[_i]))
+            if ky_pass(_k)[0]: _pri.append(_c)
+    except Exception as e:
+        meta["errors"].append(f"edinet priority: {type(e).__name__}")
     _ed = {"rows": {}}
     try:
-        _ed = ed_update()
+        _ed = ed_update(_pri)
     except Exception as e:
         # ★str(e) は使わない。EDINETは鍵をURLのクエリに載せる仕様なので、
         #   例外文をそのまま残すと public リポジトリに鍵が出る。
@@ -2029,9 +2200,13 @@ def fund_today(sc, refetch=True):
         meta["kiyohara"] = {"error": str(e)[:120]}
     # 素の項目がどれだけ埋まったか。欠けている場所を次回すぐ特定できるように残す。
     _keys = ("bps", "feps", "eq", "ta", "cash", "sh", "op", "div")
-    meta["fund_raw"] = {k: sum(1 for m in fmap.values() if m.get(k) is not None)
+    # ★鍵に "n_" を付ける。中身は件数だけだが、鍵の名前が生の項目名と
+    #   同じだと commit_guard が毎回 ::error:: を出し（実測でそうなった）、
+    #   本当の混入を見落とすようになる。検査は緩めず、名前をずらす。
+    meta["fund_raw"] = {"n_" + k: sum(1 for m in fmap.values()
+                                      if m.get(k) is not None)
                         for k in _keys}
-    meta["fund_raw"]["codes"] = len(fmap)
+    meta["fund_raw"]["n_codes"] = len(fmap)
     out, has = fund_scores(sc, fmap)
     codes = [str(c).replace(".T", "") for c in sc["code"].tolist()]
     pct = {}
@@ -4294,11 +4469,17 @@ try:
         L.append("- 順張りと逆張りは別の尺度なので**混ぜて比較しない**。")
         _fd = meta.get("fund") or {}
         if _fd.get("n_codes"):
-            L.append(f"- **「PER/NC/還元」列は `予想PERの割安さ/ネットキャッシュ比率/株主還元` の"
+            L.append(f"- **「PER/NC/還元」列は `予想PERの割安さ/ネットキャッシュ比率の"
+                     f"下限版/株主還元` の"
                      f"3つの断面パーセンタイル**（0〜100、大きいほど上位／母集団は"
                      f"当日の通過{_fd.get('pool', 0):,}銘柄＋保有銘柄）。付与できたのは "
                      f"**{_fd['n_codes']:,}銘柄**"
                      f"（財務の最新開示日 {_fd.get('asof_latest_disclosure', '?')}）。")
+            L.append("  - ★**NC列は清原氏の指標そのものではない。** "
+                     "`(現金同等物−負債合計)÷時価総額` という**下限値**で、"
+                     "流動資産と投資有価証券を含んでいない（この列の母集団は"
+                     "J-Quantsの財務なのでEDINETの実測は入らない）。"
+                     "**清原氏の指標は清原枠の表の「比率(実測)」列**を見ること。")
             L.append(f"  - **この3つは清原達郎氏が挙げている順位付け**。"
                      "「一番重視するのはPER」「さらにネットキャッシュ比率も加える」"
                      "「PBRは見るけど重視はしない」「最終的なカタリストは株主還元」。"
@@ -4490,10 +4671,41 @@ try:
         _rw = _ej.get("rows") or {}
         _ca = sum(1 for v in _rw.values() if v.get("ca") is not None)
         _iv = sum(1 for v in _rw.values() if v.get("inv") is not None)
+        _us = _ej.get("usable")
+        _bb = _ej.get("bs_bad")
         L.append("\n## EDINET 貸借対照表の取得状況\n")
         L.append(f"累計 **{len(_rw):,}銘柄**"
                  f"（流動資産合計あり {_ca:,} / 投資有価証券あり {_iv:,}）"
                  f"／一覧を見た日 {len(_ej.get('seen_dates') or []):,}日分\n")
+        if _us is not None:
+            L.append(f"- **比率に使えるのは {_us:,}銘柄**。"
+                     f"貸借の検算（`資産合計 ＝ 負債合計 ＋ 純資産合計` と "
+                     f"`流動資産 ≤ 資産合計`）に落ちた **{_bb or 0:,}銘柄**は"
+                     f"実測として使わず、推定に戻している。")
+            L.append("  - 検算に落ちる原因は、セグメント別など"
+                     "**全体でない数字**を合計として拾ってしまう場合。"
+                     "落ちた書類は次の実行で取り直す。")
+        _dt = (_em.get("dtypes") or {})
+        if _dt:
+            L.append(f"- 書類の内訳: 有価証券報告書 {_dt.get('120', 0):,} / "
+                     f"半期報告書 {_dt.get('160', 0):,}")
+            if _dt.get("160", 0) == 0 and _dt.get("120", 0) > 0:
+                L.append("  - **半期報告書が0件。** 有報だけが読めている状態。"
+                         "半期は `InterimInstant`（当中間期末日時点）を使うと"
+                         "金融庁の「報告書インスタンス作成ガイドライン」に"
+                         "定められていて、そこには対応済み。"
+                         "**それでも0件なら別の原因**なので、下の"
+                         "「読めなかった理由」の要素ID・コンテキストIDを見ること。")
+        _nm = _em.get("nomatch") or {}
+        if _nm:
+            L.append("- **読めなかった理由**（書類種類:理由）: "
+                     + " / ".join(f"`{k}` {v}" for k, v in
+                                  sorted(_nm.items(), key=lambda x: -x[1])[:6]))
+        for _p in (_em.get("probe") or [])[:3]:
+            _el = "・".join(str(x) for x in (_p.get("elems") or [])[:4]) or "—"
+            _cx = "・".join(str(x) for x in (_p.get("ctx") or [])[:4]) or "—"
+            L.append(f"  - 種類{_p.get('dtype')} / {_p.get('why')} / "
+                     f"要素ID `{_el}` / コンテキスト `{_cx}`")
         if _em.get("skipped"):
             L.append(f"- **今回は取りに行っていない: {_em['skipped']}**")
             L.append("  - `EDINET_API_KEY` を GitHub Secrets に入れ、"
@@ -4501,10 +4713,15 @@ try:
                      "Secretsに入れるだけでは Actions のジョブには見えない。")
         else:
             L.append(f"- 今回: 一覧 {_em.get('listed_days', 0)}日 / "
-                     f"未取得 {_em.get('todo', 0)}件のうち "
-                     f"{_em.get('downloaded', 0)}件を取得 / "
+                     f"未取得 {_em.get('todo', 0)}件"
+                     f"（うち清原枠の候補 {_em.get('todo_priority', 0)}件を優先）"
+                     f"のうち {_em.get('downloaded', 0)}件を取得 / "
                      f"貸借を読めた {_em.get('parsed', 0)}件 "
                      f"（要求 {_em.get('req', 0)}回 / 429 {_em.get('n429', 0)}回）")
+            if _em.get("todo", 0) > _em.get("downloaded", 0):
+                L.append(f"  - 残り {_em['todo'] - _em.get('downloaded', 0):,}件は"
+                         "次の実行に回している。**清原枠に出る銘柄から先に"
+                         "落とす**ので、表の実測は数回で埋まる。")
             if _em.get("blocked"):
                 L.append(f"- **止まった: {_em['blocked']}** … "
                          "鍵かレート制限。次回に持ち越す。")
