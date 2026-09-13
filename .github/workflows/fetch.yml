@@ -25,6 +25,12 @@ jobs:
       # ここで環境変数として渡すだけ。コードはヘッダーに載せるのみで、
       # ログにも data/ にも書かない。未設定でもジョブは通る（財務の段だけ飛ぶ）。
       JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
+      # EDINET のAPIキー。こちらは鍵をURLのクエリ文字列で渡す仕様なので
+      # J-Quantsより漏れやすい。コード側でURLも例外文もログに出さず、
+      # data/*.json に対しても混入検査をかけている。
+      # ★Secrets に入れるだけでは足りない。ここで env に渡さないと
+      #   ジョブからは見えず、貸借対照表の段が黙って飛ぶ。
+      EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,6 +56,21 @@ jobs:
           print("依存の確認OK:", need)
           PY
 
+      # 鍵が env に渡っているかだけ確認する。値は出さない（長さのみ）。
+      # 「Secretsには入れたのに env に書き忘れていた」を早く見つけるため。
+      - name: Verify keys
+        run: |
+          python - <<'PY'
+          import os
+          for k in ("JQUANTS_API_KEY", "EDINET_API_KEY"):
+              v = (os.environ.get(k) or "").strip()
+              if v:
+                  print(f"{k}: 渡っている（{len(v)}文字）")
+              else:
+                  print(f"::warning::{k} が env に渡っていません。"
+                        "この段のデータは取得されません")
+          PY
+
       - name: Fetch
         run: python fetch_market_data.py
 
@@ -69,7 +90,7 @@ jobs:
           print("commit_guard:", json.dumps(g, ensure_ascii=False))
           if g.get("raw_fields") or g.get("api_key_found_in"):
               print("::error::公開してはいけない内容が data/ にありました。上を確認してください")
-          for k in ("fund", "fund_raw", "kiyohara", "netcash"):
+          for k in ("fund", "fund_raw", "edinet", "kiyohara", "netcash"):
               print(k, ":", json.dumps(m.get(k) or {}, ensure_ascii=False)[:600])
           PY
 
