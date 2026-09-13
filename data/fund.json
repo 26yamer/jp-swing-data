@@ -1,8 +1,8 @@
 {
- "generated_at_jst": "2026-09-12T21:26:49.330318+09:00",
- "asof_latest_disclosure": "2026-06-17",
- "pool": 1723,
- "n_codes": 1605,
+ "generated_at_jst": "2026-09-13T10:41:31.598713+09:00",
+ "asof_latest_disclosure": "2026-06-18",
+ "pool": 1722,
+ "n_codes": 1604,
  "span_days": 730,
  "note": "断面のパーセンタイル（0〜100、大きいほど上位）のみを収録する。母集団は当日スクリーニングを通過した銘柄。J-Quantsの生の財務数値は利用条件により公開できないため含まない。",
  "factors": {
@@ -12,17 +12,17 @@
   "revision": "会社予想の改定方向（高いほど上方修正）"
  },
  "coverage": {
-  "has": 1605,
-  "value": 1605,
-  "quality": 1649,
-  "moat": 1544,
-  "revision": 1295
+  "has": 1604,
+  "value": 1604,
+  "quality": 1648,
+  "moat": 1543,
+  "revision": 1294
  },
  "used_in_score": false,
  "jq": {
   "dates_asked": 523,
   "dates_with_data": 484,
-  "rows": 37668,
+  "rows": 37664,
   "codes": 4131,
   "req": 523,
   "n429": 0,
@@ -34,10 +34,10 @@
  },
  "pct": {
   "1332": {
-   "value": 54,
+   "value": 53,
    "quality": 25,
    "moat": 58,
-   "revision": 86
+   "revision": 87
   },
   "135A": {
    "value": 0,
@@ -52,7 +52,7 @@
   },
   "1417": {
    "value": 59,
-   "quality": 35,
+   "quality": 36,
    "moat": 38,
    "revision": 42
   },
@@ -97,7 +97,7 @@
   },
   "146A": {
    "value": 96,
-   "quality": 40,
+   "quality": 41,
    "moat": 53
   },
   "147A": {
@@ -170,7 +170,7 @@
    "revision": 86
   },
   "1762": {
-   "value": 72,
+   "value": 71,
    "quality": 32,
    "moat": 40,
    "revision": 42
@@ -242,7 +242,7 @@
    "revision": 42
   },
   "1815": {
-   "value": 85,
+   "value": 84,
    "quality": 16,
    "moat": 39,
    "revision": 42
@@ -269,7 +269,7 @@
    "value": 43,
    "quality": 49,
    "moat": 49,
-   "revision": 87
+   "revision": 88
   },
   "1847": {
    "value": 52,
@@ -347,12 +347,6 @@
    "value": 57,
    "quality": 50,
    "moat": 59
-  },
-  "1909": {
-   "value": 0,
-   "quality": 61,
-   "moat": 56,
-   "revision": 93
   },
   "1911": {
    "value": 92,
@@ -499,7 +493,7 @@
   "1969": {
    "value": 15,
    "quality": 58,
-   "moat": 51,
+   "moat": 52,
    "revision": 85
   },
   "1975": {
@@ -518,7 +512,7 @@
    "value": 41,
    "quality": 51,
    "moat": 54,
-   "revision": 88
+   "revision": 89
   },
   "1980": {
    "value": 16,
@@ -672,7 +666,7 @@
   },
   "2201": {
    "value": 41,
-   "quality": 60,
+   "quality": 61,
    "moat": 63,
    "revision": 42
   },
@@ -746,14 +740,14 @@
   },
   "2282": {
    "value": 61,
-   "quality": 48,
+   "quality": 49,
    "revision": 42
   },
   "2292": {
    "value": 92,
    "quality": 28,
    "moat": 50,
-   "revision": 92
+   "revision": 93
   },
   "2301": {
    "value": 79,
@@ -763,7 +757,7 @@
   },
   "2317": {
    "value": 8,
-   "quality": 75,
+   "quality": 74,
    "moat": 71,
    "revision": 42
   },
@@ -1054,9 +1048,9 @@
    "moat": 67
   },
   "2705": {
-   "value": 1,
+   "value": 0,
    "quality": 26,
-   "moat": 64,
+   "moat": 65,
    "revision": 42
   },
   "2726": {
@@ -1183,7 +1177,7 @@
    "revision": 42
   },
   "2871": {
-   "value": 28,
+   "value": 27,
    "quality": 37,
    "moat": 64,
    "revision": 42
@@ -1213,7 +1207,7 @@
    "revision": 98
   },
   "2897": {
-   "value": 35,
+   "value": 34,
    "quality": 47,
    "moat": 53,
    "revision": 42
@@ -1471,7 +1465,7 @@
   },
   "3107": {
    "value": 28,
-   "quality": 19,
+   "quality": 20,
    "moat": 52,
    "revision": 42
   },
@@ -1576,12 +1570,12 @@
    "moat": 68
   },
   "3201": {
-   "value": 67,
+   "value": 66,
    "quality": 52,
    "moat": 60
   },
   "3221": {
-   "value": 19,
+   "value": 18,
    "quality": 78,
    "moat": 70,
    "revision": 42
@@ -1697,7 +1691,7 @@
    "revision": 42
   },
   "3387": {
-   "value": 3,
+   "value": 2,
    "quality": 21,
    "moat": 50,
    "revision": 42
@@ -1715,7 +1709,7 @@
    "revision": 42
   },
   "3395": {
-   "value": 34,
+   "value": 33,
    "quality": 33,
    "moat": 61,
    "revision": 42
@@ -1941,7 +1935,7 @@
   },
   "3636": {
    "value": 76,
-   "quality": 62,
+   "quality": 63,
    "moat": 49,
    "revision": 88
   },
@@ -2053,7 +2047,7 @@
    "revision": 42
   },
   "3741": {
-   "value": 13,
+   "value": 12,
    "quality": 88,
    "moat": 65,
    "revision": 42
@@ -2119,14 +2113,14 @@
   },
   "3798": {
    "value": 18,
-   "quality": 85,
+   "quality": 84,
    "moat": 57,
    "revision": 42
   },
   "3817": {
    "value": 31,
    "quality": 73,
-   "moat": 76,
+   "moat": 75,
    "revision": 42
   },
   "3836": {
@@ -2225,7 +2219,7 @@
    "revision": 42
   },
   "3922": {
-   "value": 12,
+   "value": 11,
    "quality": 94,
    "moat": 51,
    "revision": 42
@@ -2325,7 +2319,7 @@
    "value": 75,
    "quality": 26,
    "moat": 39,
-   "revision": 78
+   "revision": 79
   },
   "4008": {
    "value": 78,
@@ -2420,7 +2414,7 @@
    "revision": 42
   },
   "4047": {
-   "value": 33,
+   "value": 32,
    "quality": 51,
    "moat": 46,
    "revision": 97
@@ -2449,7 +2443,7 @@
    "revision": 42
   },
   "4063": {
-   "value": 20,
+   "value": 19,
    "quality": 91,
    "moat": 57,
    "revision": 42
@@ -2509,7 +2503,7 @@
   },
   "4100": {
    "value": 64,
-   "quality": 11,
+   "quality": 12,
    "moat": 20,
    "revision": 42
   },
@@ -2776,7 +2770,7 @@
    "revision": 96
   },
   "4307": {
-   "value": 4,
+   "value": 3,
    "quality": 38,
    "moat": 28,
    "revision": 42
@@ -2941,7 +2935,7 @@
   "4420": {
    "value": 34,
    "quality": 59,
-   "moat": 28
+   "moat": 29
   },
   "4431": {
    "value": 3,
@@ -2991,7 +2985,7 @@
   },
   "4480": {
    "value": 9,
-   "quality": 9,
+   "quality": 10,
    "moat": 7
   },
   "4481": {
@@ -3023,7 +3017,7 @@
    "revision": 78
   },
   "4503": {
-   "value": 23,
+   "value": 22,
    "quality": 64,
    "moat": 44,
    "revision": 98
@@ -3194,7 +3188,7 @@
   },
   "4613": {
    "value": 34,
-   "quality": 37,
+   "quality": 38,
    "moat": 67,
    "revision": 42
   },
@@ -3307,7 +3301,7 @@
    "revision": 42
   },
   "4681": {
-   "value": 21,
+   "value": 20,
    "quality": 40,
    "moat": 56,
    "revision": 42
@@ -3341,7 +3335,7 @@
    "moat": 57
   },
   "4691": {
-   "value": 26,
+   "value": 25,
    "quality": 50,
    "moat": 48,
    "revision": 95
@@ -3458,7 +3452,7 @@
   "4816": {
    "value": 9,
    "quality": 96,
-   "moat": 63,
+   "moat": 64,
    "revision": 42
   },
   "4819": {
@@ -4048,7 +4042,7 @@
   "5445": {
    "value": 83,
    "quality": 86,
-   "moat": 80,
+   "moat": 79,
    "revision": 6
   },
   "5449": {
@@ -4059,7 +4053,7 @@
   },
   "5451": {
    "value": 69,
-   "quality": 60,
+   "quality": 61,
    "moat": 58,
    "revision": 42
   },
@@ -4212,7 +4206,7 @@
   "5726": {
    "value": 24,
    "quality": 48,
-   "moat": 37,
+   "moat": 38,
    "revision": 6
   },
   "5741": {
@@ -4398,7 +4392,7 @@
   },
   "5989": {
    "value": 96,
-   "quality": 33,
+   "quality": 34,
    "moat": 57,
    "revision": 42
   },
@@ -4427,7 +4421,7 @@
    "revision": 80
   },
   "6016": {
-   "value": 6,
+   "value": 5,
    "quality": 70,
    "moat": 62,
    "revision": 89
@@ -4435,7 +4429,7 @@
   "6023": {
    "value": 35,
    "quality": 43,
-   "moat": 60,
+   "moat": 61,
    "revision": 42
   },
   "6036": {
@@ -4445,7 +4439,7 @@
    "revision": 42
   },
   "6039": {
-   "value": 17,
+   "value": 16,
    "quality": 58,
    "moat": 52,
    "revision": 42
@@ -4521,7 +4515,7 @@
    "revision": 42
   },
   "6089": {
-   "value": 50,
+   "value": 49,
    "quality": 16,
    "moat": 50,
    "revision": 42
@@ -4535,7 +4529,7 @@
   "6099": {
    "value": 65,
    "quality": 55,
-   "moat": 67
+   "moat": 68
   },
   "6103": {
    "value": 64,
@@ -4574,7 +4568,7 @@
    "revision": 98
   },
   "6135": {
-   "value": 48,
+   "value": 47,
    "quality": 60,
    "moat": 55,
    "revision": 87
@@ -4598,7 +4592,7 @@
   "6143": {
    "value": 64,
    "quality": 44,
-   "moat": 42
+   "moat": 43
   },
   "6145": {
    "value": 66,
@@ -4607,7 +4601,7 @@
    "revision": 91
   },
   "6146": {
-   "value": 2,
+   "value": 1,
    "quality": 94,
    "moat": 75,
    "revision": 100
@@ -4642,7 +4636,7 @@
    "revision": 42
   },
   "6183": {
-   "value": 46,
+   "value": 45,
    "quality": 42,
    "moat": 65,
    "revision": 42
@@ -4666,7 +4660,7 @@
   },
   "6200": {
    "value": 67,
-   "quality": 94,
+   "quality": 93,
    "moat": 69,
    "revision": 5
   },
@@ -4799,7 +4793,7 @@
   "6282": {
    "value": 64,
    "quality": 76,
-   "moat": 75,
+   "moat": 76,
    "revision": 85
   },
   "6284": {
@@ -4827,7 +4821,7 @@
    "revision": 42
   },
   "6301": {
-   "value": 30,
+   "value": 29,
    "quality": 62,
    "moat": 74,
    "revision": 42
@@ -4955,7 +4949,7 @@
   },
   "6364": {
    "value": 40,
-   "quality": 73,
+   "quality": 74,
    "moat": 74,
    "revision": 42
   },
@@ -4986,11 +4980,11 @@
   "6370": {
    "value": 20,
    "quality": 69,
-   "moat": 54,
+   "moat": 55,
    "revision": 42
   },
   "6371": {
-   "value": 74,
+   "value": 73,
    "quality": 56,
    "moat": 56,
    "revision": 42
@@ -5013,7 +5007,7 @@
    "moat": 17
   },
   "6381": {
-   "value": 41,
+   "value": 40,
    "quality": 66,
    "moat": 57,
    "revision": 42
@@ -5081,7 +5075,7 @@
    "revision": 42
   },
   "6433": {
-   "value": 11,
+   "value": 10,
    "quality": 23,
    "moat": 6
   },
@@ -5569,12 +5563,12 @@
   "6741": {
    "value": 72,
    "quality": 66,
-   "moat": 36,
+   "moat": 37,
    "revision": 42
   },
   "6742": {
    "value": 58,
-   "quality": 31,
+   "quality": 32,
    "moat": 16,
    "revision": 42
   },
@@ -5790,7 +5784,7 @@
    "revision": 42
   },
   "6861": {
-   "value": 5,
+   "value": 4,
    "quality": 100,
    "moat": 87
   },
@@ -5860,7 +5854,7 @@
   "6918": {
    "value": 67,
    "quality": 73,
-   "moat": 32,
+   "moat": 33,
    "revision": 42
   },
   "6923": {
@@ -5978,7 +5972,7 @@
    "value": 57,
    "quality": 58,
    "moat": 43,
-   "revision": 79
+   "revision": 80
   },
   "6995": {
    "value": 86,
@@ -6029,7 +6023,7 @@
   "7033": {
    "value": 74,
    "quality": 77,
-   "moat": 60
+   "moat": 59
   },
   "7035": {
    "value": 4,
@@ -6311,7 +6305,7 @@
   "7273": {
    "value": 44,
    "quality": 18,
-   "moat": 22,
+   "moat": 23,
    "revision": 42
   },
   "7276": {
@@ -6567,7 +6561,7 @@
    "revision": 42
   },
   "7522": {
-   "value": 25,
+   "value": 24,
    "quality": 28,
    "moat": 59,
    "revision": 42
@@ -6691,7 +6685,7 @@
    "revision": 42
   },
   "7637": {
-   "value": 39,
+   "value": 38,
    "quality": 35,
    "moat": 49,
    "revision": 86
@@ -6908,7 +6902,7 @@
    "value": 16,
    "quality": 72,
    "moat": 46,
-   "revision": 83
+   "revision": 84
   },
   "7810": {
    "value": 6,
@@ -6989,7 +6983,7 @@
   },
   "7874": {
    "value": 82,
-   "quality": 30,
+   "quality": 31,
    "moat": 42,
    "revision": 93
   },
@@ -7075,7 +7069,7 @@
    "moat": 52
   },
   "7947": {
-   "value": 45,
+   "value": 44,
    "quality": 52,
    "moat": 48,
    "revision": 42
@@ -7127,7 +7121,7 @@
    "revision": 42
   },
   "7976": {
-   "value": 40,
+   "value": 39,
    "quality": 61,
    "moat": 57
   },
@@ -7179,7 +7173,7 @@
    "revision": 42
   },
   "8005": {
-   "value": 37,
+   "value": 36,
    "quality": 52,
    "moat": 45,
    "revision": 79
@@ -7332,7 +7326,7 @@
    "revision": 42
   },
   "8074": {
-   "value": 57,
+   "value": 56,
    "quality": 21,
    "moat": 51,
    "revision": 42
@@ -7356,7 +7350,7 @@
    "revision": 90
   },
   "8081": {
-   "value": 61,
+   "value": 60,
    "quality": 32,
    "moat": 48,
    "revision": 42
@@ -7375,7 +7369,7 @@
   },
   "8088": {
    "value": 59,
-   "quality": 30,
+   "quality": 31,
    "moat": 49,
    "revision": 2
   },
@@ -7398,7 +7392,7 @@
   },
   "8098": {
    "value": 67,
-   "quality": 26,
+   "quality": 27,
    "moat": 58,
    "revision": 42
   },
@@ -7406,7 +7400,7 @@
    "value": 70,
    "quality": 15,
    "moat": 53,
-   "revision": 78
+   "revision": 79
   },
   "8103": {
    "value": 74,
@@ -7533,7 +7527,7 @@
    "revision": 42
   },
   "8173": {
-   "value": 65,
+   "value": 64,
    "quality": 21,
    "moat": 52,
    "revision": 42
@@ -7611,7 +7605,7 @@
   },
   "8252": {
    "value": 24,
-   "quality": 47,
+   "quality": 46,
    "moat": 71,
    "revision": 42
   },
@@ -7621,7 +7615,7 @@
    "revision": 42
   },
   "8255": {
-   "value": 52,
+   "value": 51,
    "quality": 46,
    "moat": 60,
    "revision": 42
@@ -7706,7 +7700,7 @@
    "revision": 42
   },
   "8337": {
-   "value": 70,
+   "value": 69,
    "quality": 4,
    "revision": 90
   },
@@ -7751,7 +7745,7 @@
    "revision": 42
   },
   "8359": {
-   "value": 63,
+   "value": 62,
    "quality": 5,
    "revision": 42
   },
@@ -7882,7 +7876,7 @@
    "revision": 88
   },
   "8522": {
-   "value": 59,
+   "value": 58,
    "quality": 3,
    "revision": 96
   },
@@ -8101,7 +8095,7 @@
    "revision": 88
   },
   "8771": {
-   "value": 9,
+   "value": 8,
    "quality": 87,
    "moat": 73,
    "revision": 42
@@ -8281,7 +8275,7 @@
    "value": 64,
    "quality": 36,
    "moat": 58,
-   "revision": 77
+   "revision": 78
   },
   "9007": {
    "value": 51,
@@ -8583,7 +8577,7 @@
   },
   "9324": {
    "value": 89,
-   "quality": 32,
+   "quality": 33,
    "moat": 58,
    "revision": 42
   },
@@ -8651,7 +8645,7 @@
    "revision": 90
   },
   "9413": {
-   "value": 83,
+   "value": 82,
    "quality": 58,
    "moat": 34,
    "revision": 42
@@ -8668,7 +8662,7 @@
    "revision": 42
   },
   "9424": {
-   "value": 7,
+   "value": 6,
    "quality": 41,
    "moat": 59
   },
@@ -8697,7 +8691,7 @@
    "revision": 42
   },
   "9436": {
-   "value": 8,
+   "value": 7,
    "quality": 92,
    "moat": 90,
    "revision": 42
@@ -9075,7 +9069,7 @@
    "revision": 88
   },
   "9793": {
-   "value": 24,
+   "value": 23,
    "quality": 88,
    "moat": 82,
    "revision": 42
@@ -9122,7 +9116,7 @@
    "revision": 42
   },
   "9861": {
-   "value": 10,
+   "value": 9,
    "quality": 34,
    "moat": 47,
    "revision": 42
@@ -9157,7 +9151,7 @@
    "revision": 84
   },
   "9900": {
-   "value": 32,
+   "value": 31,
    "quality": 63,
    "moat": 55,
    "revision": 42
@@ -9199,7 +9193,7 @@
    "revision": 42
   },
   "9960": {
-   "value": 22,
+   "value": 21,
    "quality": 63,
    "moat": 64,
    "revision": 42
