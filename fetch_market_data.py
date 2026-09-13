@@ -759,7 +759,7 @@ def fetch_tdnet(days=4):
 #  J-Quants 財務情報 ── 欠けていた「ファンダメンタルズ」の半分
 #
 #  なぜ入れるか:
-#    自作の trend / revert は実測で無作為抽出との差が t=+0.08 / +0.06 だった。
+#    自作の trend / revert は実測で母集団平均との差がほぼ0だった。
 #    値動きの形だけでは順位に情報が無い。一方、日本株はバリューが効き
 #    モメンタムが効かないとする研究が複数ある（Fama-French 2012 /
 #    Asness-Moskowitz-Pedersen 2013）。証拠の強い側を作っていなかった。
@@ -821,9 +821,18 @@ JQ_F = {
     "ta":    ("TA", "TotalAssets"),
     "eqar":  ("EqAR", "EquityToAssetRatio"),
     "cfo":   ("CFO", "CashFlowsFromOperatingActivities"),
+    "cash":  ("CashEq", "CashAndEquivalents"),
+    "eq":    ("Eq", "Equity"),
     "feps":  ("FEPS", "ForecastEarningsPerShare"),
     "fop":   ("FOP", "ForecastOperatingProfit"),
     "fnp":   ("FNP", "ForecastProfit"),
+    # 時価総額を出すのに要る。期末発行済株式数（自己株を含む）と期末自己株式数。
+    "shout": ("ShOutFY", "NumberOfIssuedAndOutstandingSharesAtTheEndOfFiscalYearIncludingTreasuryStock"),
+    "trsh":  ("TrShFY", "NumberOfTreasuryStockAtTheEndOfFiscalYear"),
+    # 株主還元。清原達郎氏は「最終的なカタリストは株主還元」としている。
+    "divann":  ("DivAnn", "ResultDividendPerShareAnnual"),
+    "fdivann": ("FDivAnn", "ForecastDividendPerShareAnnual"),
+    "payout":  ("PayoutRatioAnn", "ResultPayoutRatioAnnual"),
 }
 
 def _jqv(row, name):
@@ -953,7 +962,11 @@ def jq_build(rows):
             "bps": _jqf(r, "bps"), "feps": _jqf(r, "feps"), "eps": _jqf(r, "eps"),
             "sales": _jqf(r, "sales"), "op": _jqf(r, "op"), "ta": _jqf(r, "ta"),
             "eqar": _jqf(r, "eqar"), "cfo": _jqf(r, "cfo"),
-            "fop": _jqf(r, "fop"), "fnp": _jqf(r, "fnp")})
+            "cash_eq": _jqf(r, "cash"), "eq": _jqf(r, "eq"),
+            "fop": _jqf(r, "fop"), "fnp": _jqf(r, "fnp"),
+            "shout": _jqf(r, "shout"), "trsh": _jqf(r, "trsh"),
+            "divann": _jqf(r, "divann"), "fdivann": _jqf(r, "fdivann"),
+            "payout": _jqf(r, "payout")})
     for c in hist:
         hist[c].sort(key=lambda x: x["date"])
     return hist
@@ -992,8 +1005,41 @@ def jq_metrics(rows_upto):
     cfoa = None
     if last.get("cfo") is not None and last.get("ta") and last["ta"] > 0:
         cfoa = last["cfo"] / last["ta"] * 100
+    sh = None
+    if last.get("shout"):
+        sh = last["shout"] - (last.get("trsh") or 0.0)
+        if not (sh > 0): sh = None
+
+    # ── 株主還元（清原氏が「最終的なカタリスト」とする部分）─────────
+    #   ① 増配の方向 … 今期の会社予想年間配当 ÷ 直近の実績年間配当
+    #   ② 自己株買いの実行 … 期末自己株式数が前の開示から増えているか
+    #   ③ 配当の水準 … 予想（無ければ実績）年間配当。株価は呼び出し側で割る
+    div_now = last.get("fdivann")
+    if div_now is None: div_now = last.get("divann")
+    div_up = None
+    _base = None
+    for r in reversed(fin[:-1]):
+        if r.get("divann") is not None and r["divann"] > 0:
+            _base = r["divann"]; break
+    if _base and div_now is not None:
+        div_up = (div_now / _base - 1) * 100
+    buyback = None
+    _prev_tr = None
+    for r in reversed(fin[:-1]):
+        if r.get("trsh") is not None:
+            _prev_tr = r["trsh"]; break
+    if (_prev_tr is not None and last.get("trsh") is not None
+            and last.get("shout") and last["shout"] > 0):
+        buyback = (last["trsh"] - _prev_tr) / last["shout"] * 100
+    no_div = (div_now is not None and div_now <= 0
+              and (last.get("divann") or 0) <= 0)
     return {"bps": last.get("bps"), "feps": last.get("feps"), "eqar": last.get("eqar"),
             "opm": opm, "opm_stab": stab, "rev": rev, "cfoa": cfoa,
+            # ネットキャッシュ比率の上下限を出すのに使う素の値
+            "cash": last.get("cash_eq"),
+            "ta": last.get("ta"), "eq": last.get("eq"), "sh": sh,
+            "op": last.get("op"), "per": last.get("per"),
+            "div": div_now, "div_up": div_up, "buyback": buyback, "no_div": no_div,
             "asof": last["date"]}
 
 def jq_pit_index(hist, cal):
@@ -1027,7 +1073,38 @@ def jq_metrics_at(hist, pit, code, i):
 #   quality  … 予想ROE・営業利益率・自己資本比率。
 #   moat     … 営業利益率の水準とばらつきの小ささ。**競争優位の代理**。
 #   revision … 会社予想が上方に改定されたか。
-FUND_FACTORS = ("value", "quality", "moat", "revision")
+# ── 清原達郎氏が挙げている順位付けを、書かれたとおりに分解して試す ──────
+#   本人のまとめスライドより:
+#     ・株を買うときに一番重視するのは PER
+#     ・さらにネットキャッシュ比率も加える
+#     ・PBR は見るけど重視はしない
+#     ・バリュートラップがある
+#     ・最終的なカタリストは株主還元
+#
+#   これまでの value は PBR と PER を等ウェイトで混ぜていた。
+#   本人の重み付けと食い違っていたので、分解して測り直す。
+#     ep       … 予想利益利回り（＝1/PER）だけ。本人が一番重視するもの
+#     bp       … 純資産倍率の逆数（＝1/PBR）だけ。本人が重視しないもの
+#     netcash  … ネットキャッシュ比率（無料データで作れる下限版）
+#     kiyohara … ep と netcash を 2:1 で合成。「PERを一番重視し、
+#                さらにネットキャッシュ比率も加える」の素直な形。
+#                ★2:1 という重みは本人が指定していない。私が置いた仮定。
+#                だから ep 単独・netcash 単独とも並べて出す。
+#     payout   … 株主還元（増配の方向・自己株買いの実行・配当の水準）。
+#                本人が「最終的なカタリスト」と言っているもの。
+#                同時にバリュートラップの見分けでもある（割安なまま放置
+#                される会社は株主に返さない）。
+#   value は比較のため残す（混ぜたものが分解したものより良いかを見る）。
+FUND_FACTORS = ("value", "ep", "bp", "netcash", "kiyohara", "payout",
+                "quality", "moat", "revision")
+
+# ★実運用で並べ替えに使う因子。過去検証で基準（t≥2.8）を通ったものだけを置く。
+#   いま通っているのは value（保有10日 t=+4.01 / 15日 t=+3.10）。
+#   清原式の kiyohara（PER重視＋ネットキャッシュ）はまだ未検証なので、
+#   検証結果を見てから差し替える。先に入れ替えると、また検証していない
+#   ものを運用することになる。
+#   ここに置くのは fund_today より前で定義しておくため（定義順の事故を作らない）。
+RANK_BY = "value"
 
 def _mean_pct(parts):
     """使える成分だけで平均する。欠けている成分で全体を落とさない。"""
@@ -1068,13 +1145,38 @@ def fund_scores(df, fmap):
     stab = col(lambda m, p: m.get("opm_stab"))
     rev  = col(lambda m, p: m.get("rev"))
 
+    # ネットキャッシュ比率の下限版（清原式の保守的な近似）
+    #   負債合計＝総資産−純資産、時価総額＝株価×(発行済−自己株)
+    #   流動資産と投資有価証券は無料では取れないので、
+    #   現金同等物 ≤ 流動資産 / 0 ≤ 投資有価証券×70% で下に押さえた値を使う。
+    #   本来の比率はこれ以上になる。過大評価にはならない。
+    nc = col(lambda m, p: ((m["cash"] - (m["ta"] - m["eq"])) / (p * m["sh"]))
+             if (m.get("cash") is not None and m.get("ta") is not None
+                 and m.get("eq") is not None and m.get("sh") and p > 0) else None)
+    dy = col(lambda m, p: (m["div"] / p * 100)
+             if (m.get("div") is not None and p > 0) else None)
+    dup = col(lambda m, p: m.get("div_up"))
+    bb  = col(lambda m, p: m.get("buyback"))
+
     def pr(s): return s.rank(pct=True)
-    out = {"value":    _mean_pct([pr(bp), pr(ep)]),
+    _ep, _bp, _nc = pr(ep), pr(bp), pr(nc)
+    # 株主還元: 配当の水準・増配の方向・自己株買いの実行。
+    # 無配は最下位に落とす（0点ではなく最下位。バリュートラップの典型）
+    _po = _mean_pct([pr(dy), pr(dup), pr(bb)])
+    _nodiv = col(lambda m, p: 1.0 if m.get("no_div") else None)
+    _po = _po.where(_nodiv.isna(), 0.0)
+    out = {"value":    _mean_pct([_bp, _ep]),
+           "ep":       _ep,
+           "bp":       _bp,
+           "netcash":  _nc,
+           # 「PERを一番重視し、さらにネットキャッシュ比率も加える」を 2:1 で
+           "kiyohara": _mean_pct([_ep, _ep, _nc]),
+           "payout":   _po,
            "quality":  _mean_pct([pr(froe), pr(opm), pr(eqar)]),
            "moat":     _mean_pct([pr(opm), pr(stab)]),
            "revision": pr(rev)}
     # ファンダが引けた銘柄。ここに入らない銘柄は
-    # ファンダ側の母集団から外す（無作為の基準線も同じ母集団から取る）。
+    # ファンダ側の母集団から外す（基準線も同じ母集団の平均を取る）。
     has = (~bp.isna()) | (~ep.isna())
     return out, has
 
@@ -1182,6 +1284,14 @@ def fund_today(sc, refetch=True):
     for c, rs in hist.items():
         m = jq_metrics(rs)
         if m: fmap[c] = m
+    # ネットキャッシュ比率（清原式）の候補絞り込み。fmap があるここでやる。
+    try:
+        _nm = {c: (MASTER.get(c, {}) or {}).get("name", "") for c in fmap}
+        _s7 = {c: (MASTER.get(c, {}) or {}).get("s17", "") for c in fmap}
+        netcash_shortlist(sc, fmap, _nm, _s7)
+    except Exception as e:
+        meta["errors"].append(f"netcash: {type(e).__name__}: {e}")
+        meta["netcash"] = {"error": str(e)[:120]}
     out, has = fund_scores(sc, fmap)
     codes = [str(c).replace(".T", "") for c in sc["code"].tolist()]
     pct = {}
@@ -1202,10 +1312,16 @@ def fund_today(sc, refetch=True):
                  "母集団は当日スクリーニングを通過した銘柄。"
                  "J-Quantsの生の財務数値は利用条件により公開できないため含まない。"),
         "factors": {
-            "value":    "純資産倍率の逆数と予想利益利回りの合成（高いほど割安）",
+            "ep":       "予想利益利回り＝1/PER（清原氏が一番重視するもの）",
+            "netcash":  "ネットキャッシュ比率の下限版（現金同等物−負債合計）÷時価総額",
+            "kiyohara": "epとnetcashを2:1で合成（2:1の重みは本人指定ではない）",
+            "payout":   "株主還元＝配当の水準＋増配の方向＋自己株買いの実行。無配は最下位",
+            "bp":       "純資産倍率の逆数＝1/PBR（清原氏は見るが重視しない）",
+            "value":    "bpとepの等ウェイト合成（従来版・比較用）",
             "quality":  "予想ROE・営業利益率・自己資本比率の合成",
             "moat":     "営業利益率の水準とばらつきの小ささ。競争優位の代理指標であって測定ではない",
             "revision": "会社予想の改定方向（高いほど上方修正）"},
+        "ranked_by": RANK_BY,
         "coverage": fund_coverage(out, has),
         "used_in_score": False,
         "jq": jqinfo, "pct": pct}
@@ -1214,6 +1330,115 @@ def fund_today(sc, refetch=True):
                     ("asof_latest_disclosure", "pool", "n_codes", "coverage", "jq")}
     print(f"[財務] {len(pct):,}銘柄に順位を付与（開示の最新 {asof} / 照会{_JQ['req']}回）")
     return pct
+
+# ══════════════════════════════════════════════════════════════════════
+#  ネットキャッシュ比率（清原達郎『わが投資術』）の候補絞り込み
+#
+#  式:
+#    ネットキャッシュ ＝ 流動資産 ＋ 投資有価証券×70% − 負債合計
+#    ネットキャッシュ比率 ＝ ネットキャッシュ ÷ 時価総額
+#    （70%を掛けるのは、売却時の税金約30%を引いて現実に使える額にするため）
+#    比率が1以上 ＝ 資産を売って負債を返しても現金が余る ＝ 本業がタダで付いてくる
+#
+#  無料データで作れる部分と作れない部分:
+#    負債合計   ＝ 総資産 − 純資産      … J-Quantsで取れる（TA, Eq）
+#    時価総額   ＝ 株価 × (発行済株式数 − 自己株式数) … 取れる（ShOutFY, TrShFY）
+#    流動資産      … 取れない（貸借の内訳はPremium）
+#    投資有価証券  … 取れない（同じ）
+#
+#  そこで、取れない2つを**不等式で挟む**。近似や仮定は置かない。
+#    現金同等物 ≤ 流動資産、  0 ≤ 投資有価証券×70%
+#      → 下限 NC_lo ＝ 現金同等物 − 負債合計
+#    流動資産 ＋ 投資有価証券×70% ≤ 総資産
+#      → 上限 NC_hi ＝ 総資産 − 負債合計 ＝ 純資産
+#
+#  ここから手作業を激減させる3分類が出る:
+#    ① 下限比率 ≥ 1 → 清原式でも必ず1以上。**手で確かめる必要がない**
+#    ② 下限 < 1 ≤ 上限 → 1以上になりうる。**ここだけ手で確かめる**
+#    ③ 上限比率 < 1（＝PBR > 1）→ 清原式で1以上になることが**数学的に不可能**。
+#       手作業の対象から完全に外せる
+#
+#  除外:
+#    銀行・保険・証券は流動資産と負債の意味が違うので式が成立しない。17業種で外す。
+#    本業が赤字（営業利益 ≤ 0）の会社も外す。現金が減っていく側なので、
+#    現金の多さを割安と読むと逆になる。
+# ══════════════════════════════════════════════════════════════════════
+NC_PATH      = f"{OUT}/netcash.json"
+NC_EXCLUDE   = ("銀行", "金融（除く銀行）")   # 式が成立しない業種
+NC_SHORTLIST = 60      # 手で確かめる候補の上限件数
+
+def netcash_bounds(code, m, price):
+    """1銘柄のネットキャッシュ比率の下限・上限。作れなければ None。
+       近似はしない。挟めるところまでしか言わない。"""
+    if not m or not price or price <= 0: return None
+    ta, eq, cash, sh = m.get("ta"), m.get("eq"), m.get("cash"), m.get("sh")
+    if ta is None or eq is None or sh is None: return None
+    if not (ta > 0) or not (sh > 0): return None
+    debt = ta - eq                       # 負債合計＝総資産−純資産
+    mcap = price * sh
+    if not (mcap > 0): return None
+    lo = (cash - debt) / mcap if cash is not None else None
+    hi = eq / mcap                       # ＝1/PBR
+    return {"lo": lo, "hi": hi, "op": m.get("op"), "asof": m.get("asof")}
+
+def netcash_state(b):
+    """3分類。手で確かめる必要があるのはどれかを決める。"""
+    if not b: return "不明"
+    if b["op"] is not None and b["op"] <= 0: return "除外(本業赤字)"
+    if b["hi"] is None or b["hi"] < 1.0:     return "対象外(上限で1未満)"
+    if b["lo"] is not None and b["lo"] >= 1.0: return "確実(下限で1以上)"
+    return "要確認"
+
+def netcash_shortlist(sc, fmap, names=None, s17=None):
+    """手で確かめる価値のある銘柄だけを、確からしい順に並べて書き出す。
+
+       ★書き出すのはコード・銘柄名・分類・順位だけ。
+         比率の数値そのものは書かない。純資産や総資産が逆算できてしまい、
+         J-Quantsの生の財務数値を公開したことになるため。
+         正確な比率は、本人がバフェット・コードから取った値で計算する。"""
+    names, s17 = names or {}, s17 or {}
+    rows = []
+    for i, c in enumerate(sc["code"].tolist()):
+        cc = str(c).replace(".T", "")
+        b = netcash_bounds(cc, fmap.get(cc), float(sc["close"].iloc[i]))
+        st = netcash_state(b)
+        if st in ("不明", "対象外(上限で1未満)", "除外(本業赤字)"): continue
+        if s17.get(cc) in NC_EXCLUDE: continue
+        m = fmap.get(cc) or {}
+        # 株主還元の印。清原氏は「最終的なカタリストは株主還元」としている。
+        # ネットキャッシュが厚いのに株主に返さない会社は、割安なまま放置される。
+        if m.get("no_div"):
+            ret = "無配"
+        else:
+            _u, _b = m.get("div_up"), m.get("buyback")
+            _t = []
+            if _u is not None and _u > 0: _t.append("増配")
+            if _b is not None and _b > 0.1: _t.append("自己株買い")
+            ret = "／".join(_t) if _t else "配当のみ"
+        rows.append({"code": cc, "name": names.get(cc, ""), "s17": s17.get(cc, ""),
+                     "state": st, "ret": ret,
+                     "_lo": (b["lo"] if b["lo"] is not None else -9e9)})
+    # 下限が大きいほど「1以上」が確からしい
+    rows.sort(key=lambda r: -r["_lo"])
+    for n, r in enumerate(rows[:NC_SHORTLIST], start=1):
+        r["rank"] = n; r.pop("_lo", None)
+    out = rows[:NC_SHORTLIST]
+    n_sure = sum(1 for r in out if r["state"].startswith("確実"))
+    payload = {"generated_at_jst": NOW.isoformat(),
+               "formula": "ネットキャッシュ＝流動資産＋投資有価証券×70%−負債合計／比率＝÷時価総額",
+               "pool": int(len(sc)), "shortlist": len(out), "sure": n_sure,
+               "excluded_sectors": list(NC_EXCLUDE),
+               "note": ("上限（＝純資産÷時価総額＝1/PBR）が1未満の銘柄は清原式でも"
+                        "1以上になりえないので除いてある。本業赤字も除いてある。"
+                        "比率の数値は載せない（J-Quantsの生の財務数値が逆算できるため）。"
+                        "正確な値はバフェット・コードの 流動資産・投資有価証券・負債合計・"
+                        "時価総額 で計算すること。"),
+               "rows": out}
+    json.dump(payload, open(NC_PATH, "w"), ensure_ascii=False, indent=1)
+    meta["netcash"] = {k: payload[k] for k in ("pool", "shortlist", "sure")}
+    print(f"[ネットキャッシュ] 手で確かめる候補 {len(out)}件"
+          f"（うち下限で既に1以上 {n_sure}件）")
+    return out
 
 # ── public リポジトリに出してはいけないものが混ざっていないかの検査 ──
 #   ① J-Quantsの生の財務数値（利用条件で第三者閲覧が禁止されている）
@@ -1292,10 +1517,11 @@ MAX_ATR_PCT      = 6.0          # これを超えるものは一過性の材料�
 #    一方、過去2年の実データは今ある。同じ問いに今日答えられる。
 #
 #  何を比べるのか（先に決めておく。後から良い結果を探さない）:
-#    ① 順張り上位10件 vs 同じ母集団からの無作為10件
-#    ② 逆張り上位10件 vs 同じ母集団からの無作為10件
+#    ① バリュー上位10件 vs 同じ母集団の全銘柄を等ウェイトで建てた平均
+#    ② 文献由来の因子（モメンタム・短期反転・低ボラ）も同じ母集団で
 #    ③ ①②を「TOPIXが200日線の上/下」で分けたとき
-#    比較対象が無作為抽出なのが肝心。「平均Rがプラス」では意味がない。
+#    比較対象が母集団平均であることが肝心。「平均Rがプラス」では意味がない。
+#    母集団平均は乱数ではなく全銘柄の実測値。誰が何回走らせても同じ数字になる。
 #    流動性と値幅で絞った母集団から適当に買っても同じ結果なら、
 #    順位付けは何もしていないことになる。
 #
@@ -1317,13 +1543,21 @@ BT_PERIOD    = "5y"     # 2年では200日線を割る局面がほぼ無く（�
                         # レジームの検証ができなかった。5年に延ばす。
 BT_STEP      = 5        # 何営業日ごとに建てるか
 BT_TOP       = 10       # 各サイドの採用数
-BT_HOLDS     = (10, 15, 25)
+# 保有期間を大きく広げた。理由:
+#   バリューの効き目（建て日で束ねた日次の差）が 10日+0.182 → 15日+0.229
+#   → 25日+0.256 と単調に増えていた。25日で打ち切ると、伸びている途中で
+#   測るのをやめていることになる。清原達郎氏が『3年（場合によっては5年）持つ・
+#   最低2倍を狙う・3割上昇での売却は勧めない』としているのと方向が一致する。
+#   5年分の実データは既に手元にあるので、追加の取得なしで測れる。
+BT_HOLDS     = (10, 25, 60, 120, 250)
+# 利確の有無も比べる。3ATR利確はバリューの上振れを切っている可能性がある。
+BT_EXITS     = (("2atr_3atr", True), ("2atr_only", False))
 BT_WARMUP    = 280      # 12-2モメンタム（252日）に必要な本数
 BT_MAX_AGE_D = 30       # これより新しい結果があれば作り直さない
 BT_BUDGET_S  = 2400
 BT_CHUNK     = 180
-BT_DRAWS     = 5        # 無作為抽出の試行回数（ばらつきを均す）
-BT_SEED      = 20260911
+# 乱数は使わない。基準線は母集団の全銘柄平均（推定ではなく実測）なので、
+# 抽出回数も種も要らない。同じ入力なら常に同じ結果になる。
 
 def _rsi_series(c, n=14):
     """全期間のRSI。1点ずつ再計算すると検証が終わらないので通しで出す。"""
@@ -1384,7 +1618,7 @@ def bt_features(ax, vol):
 
 # ══════════════════════════════════════════════════════════════
 #  比べる選び方（先に決めて、全部報告する。良いものだけ拾わない）
-#    trend / revert … 自作。実測で無作為との差 t=+0.08 / +0.06 だった
+#    trend / revert … 自作。実測で母集団平均との差 t=+0.08 / +0.06 だった
 #    mom12_2 … 12ヶ月モメンタム（直近1ヶ月を除く）。Jegadeesh-Titman。
 #               直近1ヶ月を除くのは、そこが反転する領域だから。
 #               ただし日本株はモメンタムが効かないとする研究が複数ある。
@@ -1398,13 +1632,25 @@ def bt_features(ax, vol):
 #               日本株はバリューが効きモメンタムが効かないとする研究があり、
 #               証拠の強い側を今まで作っていなかった。
 #               ★この4つは「財務が引けた銘柄」だけの母集団で戦うので、
-#                 比較の基準線も同じ母集団から取った random_f を使う。
-#                 全銘柄からの random と比べると、ETFを含む/含まないの
+#                 比較の基準線も同じ母集団の全銘柄平均 pool_f を使う。
+#                 全銘柄の平均と比べると、ETFを含む/含まないの
 #                 違いが優位性に見えてしまう。
-BT_FACTORS = ("trend", "revert", "mom12_2", "rev5", "lowvol") + FUND_FACTORS
-# 9通りを一度に比べるので、たまたま良く見えるものが出やすい。
-#   名目 t>=2.5（両側 p≈0.012）だと 1-(1-0.012)^9 ≈ 10% で誤検出が出る。
-#   t>=2.8（p≈0.005）なら ≈4.4% に下がる。因子を5→9に増やしたので線を上げる。
+# 自作の順張り/逆張りは 2026-09-13 に削除した（本人の判断）。
+# 5年の検証で点推定が全条件でマイナス、かつ有意ではなかった。
+# 「効かなかったものとの比較」を失うという心配はあるが、
+# 意味のある比較相手は同じ母集団の全銘柄平均（pool / pool_f）で、
+# そちらは残るので検出力は落ちない。
+BT_FACTORS = ("mom12_2", "rev5", "lowvol") + FUND_FACTORS
+# 12通りを一度に比べる（技術3 + ファンダ9）。
+#   t>=2.8 は両側 p≈0.005 なので 1-(1-0.005)^12 ≈ 5.8%。ぎりぎり許容範囲。
+#   ★因子を増やしても線は下げない。結果を見てから基準を緩めるのは
+#     自分を欺く一番ありがちなやり方。
+#   ★なお ep / bp / netcash / kiyohara / payout は私が思い付いたものではなく、
+#     清原達郎氏のまとめスライドに書かれている順位付けをそのまま分解したもの。
+#     「先に決めた仮説を測る」ので、良い数字を探し回るのとは性質が違う。
+#     ただし12通り比べる事実は変わらないので、線は 2.8 のまま。
+# 因子は9→7に減ったが、しきい値は下げない。
+# 結果を見たあとに基準を緩めるのは、自分を欺く一番ありがちなやり方。
 BT_T_THRESHOLD = 2.8
 
 def bt_alt_scores(df):
@@ -1421,8 +1667,8 @@ def bt_score_at(f, i):
     import numpy as np
     c, a = f["close"][i], f["atr"][i]
     if not (c > 0) or not (a > 0): return None
-    rng = f["hi60"][i] - f["lo60"][i]
-    if not (rng > 0): return None
+    rngw = f["hi60"][i] - f["lo60"][i]      # 値幅（randomの略ではない）
+    if not (rngw > 0): return None
     m25, m75 = f["ma25"][i], f["ma75"][i]
     if not (m25 > 0) or not (m75 > 0): return None
     atr_pct = a/c*100
@@ -1430,34 +1676,85 @@ def bt_score_at(f, i):
     if not (mm == mm): return None          # 12-2が出ない銘柄は全因子から外す
     return dict(close=c, atr=a, atr_pct=atr_pct, rsi=f["rsi"][i],
                 vs25=(c/m25-1)*100, vs75=(c/m75-1)*100,
-                pos60=(c-f["lo60"][i])/rng*100, r20=f["r20"][i],
+                pos60=(c-f["lo60"][i])/rngw*100, r20=f["r20"][i],
                 r5=f["r5"][i], mom12_2=mm,
                 volr=f["volr"][i] if f["volr"][i] == f["volr"][i] else 1.0,
                 turn=f["turn"][i])
 
-def bt_simulate(f, i, entry, atr, hold):
-    """i+1 以降の実際の高安で決着させる。窓は寄値で約定。"""
+def bt_simulate(f, i, entry, atr, hold, use_target=True):
+    """i+1 以降の実際の高安で決着させる。窓は寄値で約定。
+
+       use_target=False は「利確しない（損切りと期限だけ）」。
+       清原達郎氏は『3割上昇での売却は勧めない・最低2倍を狙う』としており、
+       3ATR利確はその上振れを途中で切っている可能性がある。
+       同じ選び方・同じ損切りで、利確の有無だけを変えて比べる。"""
     stop, tgt = entry - 2*atr, entry + 3*atr
     n = len(f["close"])
     for k in range(i+1, min(i+1+hold, n)):
-        op, hi, lo, cl = f["open"][k], f["high"][k], f["low"][k], f["close"][k]
+        op, hi, lo = f["open"][k], f["high"][k], f["low"][k]
         if lo <= stop:
             fill = min(op, stop) if op == op else stop
             return (fill-entry)/(2*atr), k-i, "stop"
-        if hi >= tgt:
+        if use_target and hi >= tgt:
             fill = max(op, tgt) if op == op else tgt
             return (fill-entry)/(2*atr), k-i, "target"
     k = min(i+hold, n-1)
     return (f["close"][k]-entry)/(2*atr), k-i, "timeout"
 
+def bt_simulate_many(M, rows, i, entry, atr, hold, use_target=True):
+    """上と同じ決着を、その日の母集団まとめて一度に出す。
+
+       なぜ要るか:
+         保有期間を250日まで延ばすと、1銘柄ずつPythonの輪で回すと
+         「母集団の全銘柄 × 建て日 × 保有期間」で数千万回になり終わらない。
+         同じ規則を行列で解く。結果は1銘柄ずつの計算と一致すること
+         （bt_simulate との一致）をテストで確かめている。
+
+       M: {"open","high","low","close"} それぞれ (銘柄, 営業日) の行列
+       rows: 使う銘柄の行番号、entry/atr: 建値とATR（rowsと同じ長さ）"""
+    import numpy as np
+    n = M["close"].shape[1]
+    hi_e = min(i + 1 + hold, n)
+    if hi_e <= i + 1:
+        return (np.zeros(len(rows)), np.zeros(len(rows), int),
+                np.array(["timeout"] * len(rows), dtype=object))
+    sl = slice(i + 1, hi_e)
+    O, H, L, C = (M[k][rows, sl] for k in ("open", "high", "low", "close"))
+    stop = entry - 2 * atr
+    tgt = entry + 3 * atr
+    big = H.shape[1] + 10
+    s_any = L <= stop[:, None]
+    s_k = np.where(s_any.any(1), s_any.argmax(1), big)
+    if use_target:
+        t_any = H >= tgt[:, None]
+        t_k = np.where(t_any.any(1), t_any.argmax(1), big)
+    else:
+        t_k = np.full(len(rows), big)
+    # 同じ日に両方触れたら損切りを先とする（日足では順序が分からないため）
+    is_stop = s_k <= t_k
+    first = np.minimum(s_k, t_k)
+    hit = first < big
+    last = H.shape[1] - 1
+    k_idx = np.where(hit, np.minimum(first, last), last)
+    take = np.arange(len(rows))
+    op = O[take, k_idx]
+    fill = np.where(hit,
+                    np.where(is_stop,
+                             np.where(np.isnan(op), stop, np.minimum(op, stop)),
+                             np.where(np.isnan(op), tgt, np.maximum(op, tgt))),
+                    C[take, k_idx])
+    R = (fill - entry) / (2 * atr)
+    bars = k_idx + 1
+    how = np.where(hit, np.where(is_stop, "stop", "target"), "timeout").astype(object)
+    return R, bars, how
+
 def run_backtest(codes, bench="1306.T"):
-    """過去2年で、順位付けに情報があるかを無作為抽出と比べる。
+    """過去2年で、順位付けに情報があるかを母集団の全銘柄平均と比べる。
 
        ★全銘柄を同じ営業日カレンダーに揃えてから位置で引く。
          揃えないと、配列の位置 i が銘柄ごとに違う日付を指し、
          「同じ日に建てた」という前提が崩れて比較そのものが無意味になる。"""
     import numpy as np, yfinance as yf
-    rng = np.random.default_rng(BT_SEED)
 
     # ① 基準となる営業日カレンダーと、その日のレジーム（200日線の上か）
     b = yf.download(bench, period=BT_PERIOD, interval="1d",
@@ -1500,9 +1797,10 @@ def run_backtest(codes, bench="1306.T"):
     # ★コード順のまま取ると、時間切れで打ち切られたときに
     #   1300〜4000番台（ETF・REIT・食品・化学）に偏った標本になり、
     #   それを市場全体の結果として報告してしまう。
-    #   固定の種で混ぜてから取るので、打ち切られても中立な部分標本になる。
-    codes = list(codes)
-    rng.shuffle(codes)
+    #   コードの文字列を逆順にして並べると、先頭の桁が散るので
+    #   打ち切られても業種に偏らない部分標本になる。乱数は使わない
+    #   （同じ入力なら必ず同じ順序＝結果が再現できる）。
+    codes = sorted(codes, key=lambda c: str(c)[::-1])
 
     feats, t0, asked = {}, time.time(), 0
     for j in range(0, len(codes), BT_CHUNK):
@@ -1532,9 +1830,18 @@ def run_backtest(codes, bench="1306.T"):
         raise RuntimeError(f"検証に足る銘柄が集まらない: {len(feats)}")
 
     nbar = len(cal)
-    trades = {k: [] for k in BT_FACTORS + ("random", "random_f")}
+    # 決着をまとめて解くための行列。銘柄の行番号を引けるようにしておく。
+    _codes_m = list(feats)
+    _row = {c: k for k, c in enumerate(_codes_m)}
+    M = {k: np.vstack([feats[c][k] for c in _codes_m])
+         for k in ("open", "high", "low", "close")}
+    print(f"[検証] 決着用の行列 {M['close'].shape[0]}銘柄 × {M['close'].shape[1]}営業日")
+
+    trades = {k: [] for k in BT_FACTORS + ("pool", "pool_f")}
     n_dates, n_dates_f = 0, 0
-    for i in range(BT_WARMUP, nbar - max(BT_HOLDS) - 1, BT_STEP):
+    # ★最長の保有期間ぶんを一律に切り落とすと、短い保有の標本まで減ってしまう。
+    #   建て日は最短の保有期間で決め、各保有期間ごとに「足りる日か」を見る。
+    for i in range(BT_WARMUP, nbar - min(BT_HOLDS) - 1, BT_STEP):
         pool = []
         for c, f in feats.items():
             s = bt_score_at(f, i)
@@ -1546,20 +1853,21 @@ def run_backtest(codes, bench="1306.T"):
         if len(pool) < 50: continue
         n_dates += 1
         df = pd.DataFrame(pool)
-        tr, rv = rank_candidates(df)
-        picks = {"trend": [r for _, r in tr.head(BT_TOP).iterrows() if r["trend"] > 0],
-                 "revert": [r for _, r in rv.head(BT_TOP).iterrows() if r["revert"] > 0]}
-        # 文献由来の因子も同じ母集団・同じ執行ルールで
+        picks = {}
+        # 文献由来の因子。同じ母集団・同じ執行ルールで比べる
         alt = bt_alt_scores(df)
         for name, sc in alt.items():
             order = np.argsort(-sc)[:BT_TOP]
             picks[name] = [df.iloc[k] for k in order]
-        # 無作為は同じ母集団から。これが比較の基準線
-        for _ in range(BT_DRAWS):
-            idx = rng.choice(len(df), size=min(BT_TOP, len(df)), replace=False)
-            picks.setdefault("random", []).extend(df.iloc[k] for k in idx)
+        # 基準線は「同じ母集団の全銘柄を等ウェイトで建てたときの平均」。
+        # 以前は乱数で10件を5回抽出してその平均を取っていたが、
+        # それは全銘柄平均を推定しているだけで、全部建てれば推定ではなく
+        # 実測になる。乱数も種も要らず、誰が何回走らせても同じ数字が出る。
+        # （建てる値段・決着はどちらの場合も実際に付いた高安だけを使っている。
+        #   価格を作り出す種類のシミュレーションは一度も入っていない）
+        picks["pool"] = [df.iloc[k] for k in range(len(df))]
         # ファンダ側。母集団は「その日までに財務が開示されている銘柄」だけ。
-        # 基準線(random_f)も必ず同じ母集団から取る。
+        # 基準線(pool_f)も必ず同じ母集団から取る。
         if jpit:
             fmap = {}
             for c in df["code"].tolist():
@@ -1577,17 +1885,25 @@ def run_backtest(codes, bench="1306.T"):
                     if ok.sum() < JQ_MIN_POOL: continue
                     order = np.argsort(-np.where(ok, v, -np.inf))[:BT_TOP]
                     picks[name] = [sub.iloc[k] for k in order if ok[k]]
-                for _ in range(BT_DRAWS):
-                    idx = rng.choice(len(sub), size=min(BT_TOP, len(sub)), replace=False)
-                    picks.setdefault("random_f", []).extend(sub.iloc[k] for k in idx)
+                # ファンダ側の基準線も同じ母集団の全銘柄平均
+                picks["pool_f"] = [sub.iloc[k] for k in range(len(sub))]
         for kind, rows in picks.items():
-            w = 1.0/BT_DRAWS if kind.startswith("random") else 1.0
-            for r in rows:
-                f = feats[r["code"]]
-                for hold in BT_HOLDS:
-                    R, bars, how = bt_simulate(f, i, float(r["close"]), float(r["atr"]), hold)
-                    trades[kind].append({"i": i, "hold": hold, "R": R, "bars": bars,
-                                         "how": how, "w": w, "up": above.get(i)})
+            if not rows: continue
+            # 母集団平均は全銘柄なので、1日の重みを採用件数(BT_TOP)に揃える。
+            # 揃えないと基準線だけ件数が百倍になり、件数の比較が読めなくなる。
+            w = (BT_TOP / len(rows)) if kind.startswith("pool") else 1.0
+            ridx = np.array([_row[r["code"]] for r in rows])
+            ent = np.array([float(r["close"]) for r in rows])
+            atv = np.array([float(r["atr"]) for r in rows])
+            up_i = above.get(i)
+            for hold in BT_HOLDS:
+                if i + hold >= nbar: continue      # その保有期間には足りない日
+                for exname, use_t in BT_EXITS:
+                    R, bars, how = bt_simulate_many(M, ridx, i, ent, atv, hold, use_t)
+                    for j in range(len(rows)):
+                        trades[kind].append({"i": i, "hold": hold, "ex": exname,
+                                             "R": float(R[j]), "bars": int(bars[j]),
+                                             "how": str(how[j]), "w": w, "up": up_i})
     meta["backtest_dates"] = n_dates
     meta["backtest_dates_fund"] = n_dates_f
     cov = round(asked/len(codes)*100, 1) if codes else 0
@@ -1598,7 +1914,7 @@ def run_backtest(codes, bench="1306.T"):
           f"延べ {sum(len(v) for v in trades.values()):,}件")
     return trades, n_dates, len(feats), str(cal[0].date()), str(cal[-1].date()), cov, n_dates_f
 
-def bt_clustered(trades, hold, regime=None):
+def bt_clustered(trades, hold, regime=None, ex="2atr_3atr"):
     """建て日ごとに束ねてから差を検定する。
 
        なぜ要るか:
@@ -1610,7 +1926,7 @@ def bt_clustered(trades, hold, regime=None):
          この値を根拠に発注するかどうかを決めるので、ここは直さないといけない。
 
        やること:
-         各建て日について「その因子の平均R − **同じ日の**無作為の平均R」を出し、
+         各建て日について「その因子の平均R − **同じ日の**母集団平均のR」を出し、
          その日次の差を検定する。同じ日で引き算するので、市場全体の動き
          （分散の大半を占める）が消える。
          さらに保有期間ぶん間隔を空けた部分標本でも出し、期間の重なりも消す。
@@ -1620,6 +1936,7 @@ def bt_clustered(trades, hold, regime=None):
     for kind, rows in trades.items():
         for r in rows:
             if r["hold"] != hold: continue
+            if r.get("ex", "2atr_3atr") != ex: continue
             if regime is not None and r["up"] != regime: continue
             per.setdefault(r["i"], {}).setdefault(kind, []).append(r["R"])
     gap = max(1, -(-hold // BT_STEP))      # 期間が重ならない間隔（切り上げ）
@@ -1636,7 +1953,7 @@ def bt_clustered(trades, hold, regime=None):
         return round(mu / (sd / n ** 0.5), 2), n
     out = {}
     for k in BT_FACTORS:
-        bk = "random_f" if k in FUND_FACTORS else "random"
+        bk = "pool_f" if k in FUND_FACTORS else "pool"
         ds = []
         for i in sorted(per):
             a, b = per[i].get(k), per[i].get(bk)
@@ -1650,10 +1967,11 @@ def bt_clustered(trades, hold, regime=None):
                   "t_nonoverlap": t_ind, "n_nonoverlap": n_ind, "gap": gap}
     return out
 
-def bt_summary(trades, hold, regime=None):
+def bt_summary(trades, hold, regime=None, ex="2atr_3atr"):
     out = {}
     for kind, rows in trades.items():
         d = [r for r in rows if r["hold"] == hold
+             and r.get("ex", "2atr_3atr") == ex
              and (regime is None or r["up"] == regime)]
         if not d: continue
         w = sum(r["w"] for r in d)
@@ -1665,21 +1983,21 @@ def bt_summary(trades, hold, regime=None):
                      "target": round(sum(r["w"] for r in d if r["how"] == "target")/w*100, 1),
                      "stop": round(sum(r["w"] for r in d if r["how"] == "stop")/w*100, 1),
                      "timeout": round(sum(r["w"] for r in d if r["how"] == "timeout")/w*100, 1)}
-    # 無作為との差が、順位付けが生んでいる値。
+    # 母集団平均との差が、順位付けが生んでいる値。
     # ★ファンダ側は「財務が引けた銘柄」だけの母集団で戦っているので、
-    #   全銘柄からの random と比べてはいけない。同じ母集団から取った
-    #   random_f と比べる。そうしないと、ETFが母集団から抜けた効果を
+    #   全銘柄の平均と比べてはいけない。同じ母集団から取った
+    #   pool_f と比べる。そうしないと、ETFが母集団から抜けた効果を
     #   ファンダの優位性として報告してしまう。
     for k in BT_FACTORS:
         if k not in out: continue
-        bk = "random_f" if k in FUND_FACTORS else "random"
+        bk = "pool_f" if k in FUND_FACTORS else "pool"
         base = out.get(bk, {}).get("avg_r")
         if base is None: continue
         out[k]["base"] = bk
-        out[k]["vs_random"] = round(out[k]["avg_r"] - base, 4)
+        out[k]["vs_pool"] = round(out[k]["avg_r"] - base, 4)
         # 平均の差の粗い有意性（1件あたりのRの散らばりを1.0とみなす）
         n = out[k]["n"]
-        out[k]["t_rough"] = round(out[k]["vs_random"] / (1.0/max(n, 1)**0.5), 2) if n else None
+        out[k]["t_rough"] = round(out[k]["vs_pool"] / (1.0/max(n, 1)**0.5), 2) if n else None
     return out
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1794,7 +2112,9 @@ def append_signals(sig, recs, kind, today):
     have_today = set(zip(sig["date"].astype(str), sig["code"].astype(str))) if len(sig) else set()
     add = []
     for i, r in enumerate(recs[:SIG_TOP_N], start=1):
-        score = r.get("trend" if kind == "trend" else "revert", 0)
+        # 新しい台帳は "score"（バリューの断面順位）。
+        # 古い行は trend/revert を持っているので、読める形は残す。
+        score = r.get("score", r.get("trend", r.get("revert", 0)))
         try:
             score = float(score)
         except (TypeError, ValueError):
@@ -1823,7 +2143,7 @@ def signal_summary(sig):
     d = d.dropna(subset=["r"])
     out = {"closed": int(len(d)), "open": int((sig["status"] == "open").sum()),
            "days": int(sig["date"].astype(str).nunique())}
-    for k in ("trend", "revert", None):
+    for k in ("value", "trend", "revert", None):
         part = d if k is None else d[d["kind"] == k]
         if not len(part): continue
         win = int((part["r"] > 0).sum())
@@ -1959,15 +2279,15 @@ def screen_all(codes, sig=None, open_map=None):
                 if atr_pct < MIN_ATR_PCT or atr_pct > MAX_ATR_PCT: continue
 
                 w60 = ax.tail(60)                      # レンジ位置も調整済みで揃える
-                rng = float(w60["High"].max() - w60["Low"].min())
-                if rng <= 0: continue
+                rngw = float(w60["High"].max() - w60["Low"].min())   # 値幅
+                if rngw <= 0: continue
                 rows.append(dict(
                     code=c, close=last, turnover=turnover,
                     atr=round(a, 2), atr_pct=round(atr_pct, 2), adjf=round(f_last, 6),
                     rsi=round(_rsi(acl.values), 1),
                     vs25=round((acl.iloc[-1]/acl.rolling(25).mean().iloc[-1]-1)*100, 2),
                     vs75=round((acl.iloc[-1]/acl.rolling(75).mean().iloc[-1]-1)*100, 2),
-                    pos60=round((float(ax["Close"].iloc[-1])-w60["Low"].min())/rng*100, 1),
+                    pos60=round((float(ax["Close"].iloc[-1])-w60["Low"].min())/rngw*100, 1),
                     r20=round((acl.iloc[-1]/acl.iloc[-21]-1)*100, 2),
                     r60=round((acl.iloc[-1]/acl.iloc[-61]-1)*100, 2),
                     vol_ratio=round(float(x["Volume"].iloc[-1]/x["Volume"].tail(20).mean()), 2)))
@@ -1992,55 +2312,36 @@ def screen_all(codes, sig=None, open_map=None):
     meta["signals_settled"] = settled
     return pd.DataFrame(rows), done
 
-def rank_candidates(df):
-    """順張りと逆張りは別の設定なので、混ぜずに分けて順位を付ける。
-       単一の総合スコアにすると、性格の違う銘柄が同じ土俵で比較されて意味を失う。"""
-    import numpy as np
-    if df.empty: return df, df
+CAND_TOP_N = 20
+
+def rank_value(df):
+    """バリューの断面順位で並べる。これが唯一の選び方。
+
+       なぜ自作の順張り/逆張りを消したのか:
+         5年・184回の建て日で、同じ母集団の全銘柄平均と比べた点推定が
+         すべての保有期間でマイナスだった。有意ではないので「有害」ではなく
+         「情報があるとは言えない」。一方バリューは建て日で束ねた厳しい
+         検定でも 保有10日 t=+4.01 / 15日 t=+3.10 で、しきい値2.8を超えた。
+         検証を通った選び方だけを使う。
+
+       ★並べる条件は過去検証と同じでなければいけない。
+         検証したのは「流動性・株価・ATR帯のフィルタを通った母集団から
+         バリュー上位10件」だけ。ここにRSIや移動平均の条件を足すと、
+         検証していないものを運用することになる（良くなる保証は無い）。
+         決算跨ぎの除外・業種重複の注意は**運用上のリスク管理**であって
+         選別の条件ではない。検証に入っていないことをレポートに明記する。
+
+       財務が引けない銘柄（ETF・REIT・新規上場直後）は候補にならない。
+       これは仕様。バリューで並べられないものをバリューで選べない。"""
+    _c = "f_" + RANK_BY
+    if df.empty or _c not in df.columns:
+        return df.iloc[0:0]
     d = df.copy()
-    heat = np.where(d["rsi"] > 75, (d["rsi"]-75)/25*20, 0)
-    # 出来高を伴わない上昇は続きにくい。初回の実運用では上位15件のうち
-    # 9件が出来高比 1.0未満（0.46〜0.79倍）のまま20日+25〜37%という並びだった。
-    # 出来高比1.0を基準に ±8点。
-
-    # 順張り: 移動平均の上に並び、60日レンジの上方にいて、20日が伸びている
-    # 満点に達する水準が低すぎると、強い銘柄が全部同じ点になって順位が意味を失う。
-    # 初回の実運用では上位15件が 97.1〜99.3 の 2.2点差に固まっていた（4項目が飽和）。
-    # 実際の分布（25日 +9〜38% / 75日 +15〜84% / 20日 +11〜76%）に合わせて広げる。
-    # 配点は 基礎92点 + 出来高±8点 = 0〜100。
-    # 以前は基礎100点に出来高を足していたため 101.6 のような値が出て、
-    # 「100点満点のスコア」という説明と食い違っていた。
-    d["trend"] = np.clip(
-        18*np.clip(d["vs25"]/12, 0, 1) +          # 25日線からの上方乖離（12%で満点）
-        18*np.clip(d["vs75"]/30, 0, 1) +          # 75日線からの上方乖離（30%で満点）
-        23*np.clip(d["pos60"]/100, 0, 1) +        # 60日レンジ内の位置
-        18*np.clip(d["r20"]/25, 0, 1) +           # 20日リターン（25%で満点）
-        15*np.clip((d["atr_pct"]-1.5)/2.5, 0, 1)  # 値幅（スイング適性）
-        - heat
-        # 列が欠けても順位付け全体を落とさない（1列の欠損でその日の候補が消えるのは割に合わない）
-        + np.clip((d.get("vol_ratio", pd.Series(1.0, index=d.index))-1.0)*8, -8, 8),
-        0, 100).round(1)
-    # 保有の拒否ルール「RSI>78は買い増し不可」と揃える。
-    # 新規の順張りは買い増しそのものなので、同じ線を引かないと整合が取れない。
-    # 実測では4174（RSI81・出来高4.73倍・当日に業績開示）が1位に来ていた。
-    d.loc[d["rsi"] > 78, "trend"] = 0
-
-    # 逆張り: 長期トレンドは生きている（75日線の上）が、短期で売られすぎ
-    #   ★ 以前は「75日線を5%以上割ったら0」としていたが、これはほぼ効かなかった。
-    #     初回の実運用では上位8件中6件が75日線の -3.7〜-5.0% に固まり、
-    #     見出しの「長期は上向き」が事実と食い違っていた。
-    #     下降トレンドの途中を「押し目」と呼ばないよう、75日線の上を必須にする。
-    d["revert"] = (
-        25*np.clip(-d["vs25"]/8, 0, 1) +         # 25日線を下回るほど高得点
-        25*np.clip((45-d["rsi"])/25, 0, 1) +     # RSIが低いほど高得点
-        20*np.clip((40-d["pos60"])/40, 0, 1) +   # 60日レンジの下方
-        15*np.clip(d["vs75"]/10, 0, 1) +         # ただし長期は上向きであること
-        15*np.clip((d["atr_pct"]-1.5)/2.5, 0, 1)
-    ).round(1)
-    d.loc[d["vs75"] < 0, "revert"] = 0           # 75日線の下にあるものは逆張り対象外
-
-    return (d.sort_values("trend", ascending=False).head(20),
-            d.sort_values("revert", ascending=False).head(20))
+    v = pd.to_numeric(d[_c], errors="coerce")
+    d = d[v.notna()].copy()
+    if d.empty: return d
+    d["score"] = pd.to_numeric(d[_c], errors="coerce").astype(float).round(1)
+    return d.sort_values("score", ascending=False).head(CAND_TOP_N)
 
 # ── JPX 決算発表予定日（公式）─────────────────────────────────────
 #    yfinance の予定日は日本の中小型で欠けやすく、実測で 40件中10件（25%）しか
@@ -2431,8 +2732,8 @@ try:
                         sc["f_" + _k] = pd.Series(
                             [FUND_PCT.get(str(c).replace(".T", ""), {}).get(_k)
                              for c in sc["code"]], index=sc.index, dtype="object")
-                trend, revert = rank_candidates(sc)
-                tr0, rv0 = trend.to_dict("records"), revert.to_dict("records")
+                cand = rank_value(sc)
+                tr0 = cand.to_dict("records")
                 # 決算日は順位が付いてから、載る銘柄だけ引く（全銘柄には引けない）
                 try:
                     EHIST = update_earnings_history()  # 決算短信の履歴を積み上げる
@@ -2443,12 +2744,11 @@ try:
                 except Exception as e:
                     meta["errors"].append(f"jpx_earnings: {type(e).__name__}: {e}")
                 try:
-                    CAND_EARN = next_earnings_for({r["code"] for r in tr0 + rv0})
+                    CAND_EARN = next_earnings_for({r["code"] for r in tr0})
                 except Exception as e:
                     meta["errors"].append(f"cand_earnings: {type(e).__name__}: {e}")
                     meta["cand_earnings"] = {"error": str(e)[:120]}
                 tr = _decorate(tr0)
-                rv = _decorate(rv0)
                 # ★台帳への追加は大引け後の実行だけ。
                 #   11:35の実行では当日足がまだ未完成で、それを「終値」として
                 #   建値に使うと、成績の前提（当日終値で建てた）が嘘になる。
@@ -2457,8 +2757,7 @@ try:
                 # 記録してしまい、建値と日付が食い違う。
                 _bar = meta.get("screen_last_bar") or str(NOW.date())
                 if session_complete():
-                    SIG = append_signals(SIG, tr, "trend", _bar)
-                    SIG = append_signals(SIG, rv, "revert", _bar)
+                    SIG = append_signals(SIG, tr, "value", _bar)
                     meta["signals_appended"] = True
                     meta["signals_bar"] = _bar
                 else:
@@ -2467,7 +2766,7 @@ try:
                     print(f"[台帳] 場中（{NOW:%H:%M}）のため追加は見送り。"
                           "大引け後・寄り付き前・土日の実行で記録する")
             else:
-                tr, rv = [], []
+                tr = []
             # ── 過去検証（月1回・大引け後だけ）────────────────────
             try:
                 _btp = f"{OUT}/backtest.json"
@@ -2475,8 +2774,9 @@ try:
                 # 執行ルールのどれかが変われば、古い結果は比較できない。
                 _cfg = {"period": BT_PERIOD, "step": BT_STEP, "top": BT_TOP,
                         "holds": list(BT_HOLDS), "warmup": BT_WARMUP,
-                        "factors": list(BT_FACTORS), "draws": BT_DRAWS,
-                        "stat": "clustered-v1",
+                        "exits": [e for e, _ in BT_EXITS],
+                        "factors": list(BT_FACTORS),
+                        "stat": "clustered-v1", "baseline": "pool-mean-v1",
                         "filters": [MIN_TURNOVER, MIN_PRICE, MIN_ATR_PCT, MAX_ATR_PCT]}
                 _age, _same_cfg = 999, False
                 if os.path.exists(_btp):
@@ -2508,13 +2808,16 @@ try:
                                       "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
                           "config": _cfg, "t_threshold": BT_T_THRESHOLD,
                           "factors": list(BT_FACTORS),
-                          "all": {str(h): bt_summary(tk, h) for h in BT_HOLDS},
-                          "clustered": {str(h): bt_clustered(tk, h) for h in BT_HOLDS},
-                          "regime": {"above200": bt_summary(tk, 15, True),
-                                     "below200": bt_summary(tk, 15, False)}}
+                          "exits": [e for e, _ in BT_EXITS],
+                          "all": {e: {str(h): bt_summary(tk, h, ex=e) for h in BT_HOLDS}
+                                  for e, _ in BT_EXITS},
+                          "clustered": {e: {str(h): bt_clustered(tk, h, ex=e) for h in BT_HOLDS}
+                                        for e, _ in BT_EXITS},
+                          "regime": {"above200": bt_summary(tk, 25, True),
+                                     "below200": bt_summary(tk, 25, False)}}
                     json.dump(bt, open(_btp, "w"), ensure_ascii=False, indent=1)
                     meta["backtest"] = {"tickers": nf, "dates": nd,
-                                        "main": bt["all"][str(15)]}
+                                        "main": bt["all"]["2atr_3atr"][str(25)]}
                     print("[検証] backtest.json を生成")
             except Exception as e:
                 import traceback
@@ -2542,12 +2845,13 @@ try:
                        "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
                                    "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
                        "s17_unmapped": meta.get("s17_unmapped", {}),
-                       "trend": tr, "revert": rv}),
+                       "top_n": CAND_TOP_N, "ranked_by": "value",
+                       "candidates": tr}),
                       open(f"{OUT}/candidates.json", "w"), ensure_ascii=False,
                       indent=1, default=str)
-            named = sum(1 for r in tr + rv if r["name"])
-            print(f"[全銘柄] 走査{scanned} / 通過{len(sc)} / "
-                  f"銘柄名あり {named}/{max(len(tr)+len(rv),1)} / candidates.json を生成")
+            named = sum(1 for r in tr if r["name"])
+            print(f"[全銘柄] 走査{scanned} / 通過{len(sc)} / バリュー候補{len(tr)} / "
+                  f"銘柄名あり {named}/{max(len(tr),1)} / candidates.json を生成")
 except Exception as e:
     import traceback
     meta["errors"].append(f"screen: {type(e).__name__}: {e}")
@@ -2861,18 +3165,26 @@ try:
         L.append(f"\n## 保有銘柄の適時開示\n\n生成に失敗: {e}")
 
     # ── 過去検証 ──────────────────────────────────────────────
-    #    順位付けに情報があるのか。無作為抽出との差だけが答え。
+    #    順位付けに情報があるのか。母集団平均との差だけが答え。
     try:
         bt = json.load(open(f"{OUT}/backtest.json", encoding="utf-8"))
-        m = bt["all"][str(15)]
+        # 新しい形は all[執行方式][保有日数]。古いファイルでも読めるようにする。
+        _EXD = "2atr_3atr"
+        _A  = bt["all"].get(_EXD, bt["all"]) if isinstance(bt["all"], dict) else {}
+        _CA = (bt.get("clustered") or {})
+        _CL = _CA.get(_EXD, _CA) if isinstance(_CA, dict) else {}
+        _MAIN = "25" if "25" in _A else ("15" if "15" in _A else next(iter(_A), None))
+        m = _A.get(_MAIN) or {}
         _cov = bt.get("coverage_pct")
         L.append(f"\n## 過去検証（{bt['from']}〜{bt['to']} / {bt['tickers']:,}銘柄 / "
                  f"{bt['entry_dates']}回の建て日）\n")
         if _cov is not None and _cov < 95:
             L.append(f"> **母集団の {_cov}% までしか照会できていない**（時間予算）。"
-                     "無作為に混ぜてから取っているので業種の偏りは無いが、"
+                     "コードの並びを散らしてから取っているので業種の偏りは無いが、"
                      "標本が小さいぶん差の検出力は落ちる。\n")
-        L.append("**問い: この順位付けは、同じ母集団から無作為に選ぶより良いのか。**\n")
+        L.append("**問い: この順位付けは、同じ母集団の全銘柄を等ウェイトで建てるより良いのか。**\n")
+        L.append("基準線は乱数ではなく、**その日に条件を満たした全銘柄を実際に付いた値段で"
+                 "建てたときの平均**。推定ではなく実測なので、何度走らせても同じ数字になる。\n")
         _thr = bt.get("t_threshold", 2.5)
         L.append(f"比べた選び方は **{len(bt.get('factors', []))}通り**。"
                  f"一度に複数を比べるとたまたま良く見えるものが出るので、"
@@ -2880,7 +3192,7 @@ try:
         _ndf = bt.get("entry_dates_fund")
         if _ndf:
             L.append(f"財務を使う4つは、財務が引けた銘柄だけの母集団で戦うので、"
-                     f"基準線も同じ母集団から取った「無作為（財務あり）」と比べる。"
+                     f"基準線も同じ母集団の「全銘柄平均（財務あり）」と比べる。"
                      f"財務が揃った建て日は **{_ndf}回**"
                      f"（無料枠のデータが直近2年ぶんしか無いため、"
                      f"技術指標側より少ない）。\n")
@@ -2889,20 +3201,19 @@ try:
                      f"{bt['jq']['skipped']}）。下の表は技術指標だけの比較。\n")
         # ★見出しと区切り行のセル数を必ず揃える。
         #   過去に2回、見出しだけ増やして最後の列が黙って消えた。
-        L.append("| 選び方 | 件数 | 勝率 | 平均R | 基準 | 無作為との差 | 粗いt値 | 利確% | 損切% | 時間切れ% |")
+        L.append("| 選び方 | 件数 | 勝率 | 平均R | 基準 | 母集団平均との差 | 粗いt値 | 利確% | 損切% | 時間切れ% |")
         L.append("|---|--:|--:|--:|:--|--:|--:|--:|--:|--:|")
-        _labels = [("trend", "順張り（自作）"), ("revert", "逆張り（自作）"),
-                   ("mom12_2", "12-2モメンタム"), ("rev5", "短期リバーサル(5日)"),
+        _labels = [("mom12_2", "12-2モメンタム"), ("rev5", "短期リバーサル(5日)"),
                    ("lowvol", "低ボラティリティ"),
                    ("value", "バリュー（財務）"), ("quality", "クオリティ（財務）"),
                    ("moat", "競争優位の代理（財務）"), ("revision", "業績修正方向（財務）")]
-        _bases = [("random", "**無作為10（基準・全銘柄）**"),
-                  ("random_f", "**無作為10（基準・財務あり）**")]
-        _bname = {"random": "全銘柄", "random_f": "財務あり"}
+        _bases = [("pool", "**母集団の全銘柄平均（基準）**"),
+                  ("pool_f", "**母集団の全銘柄平均（財務あり・基準）**")]
+        _bname = {"pool": "全銘柄平均", "pool_f": "財務あり平均"}
         for k, lbl in _labels + _bases:
             v = m.get(k)
             if not v: continue
-            vr = f"{v['vs_random']:+.4f}" if "vs_random" in v else "—"
+            vr = f"{v['vs_pool']:+.4f}" if "vs_pool" in v else "—"
             tv = f"{v['t_rough']:+.2f}" if v.get("t_rough") is not None else "—"
             bn = _bname.get(v.get("base"), "—")
             L.append(f"| {lbl} | {v['n']:,.0f} | {v['win_pct']:.1f}% | {v['avg_r']:+.4f} | "
@@ -2910,13 +3221,13 @@ try:
                      f"{v['timeout']:.0f}% |")
 
         # ── 建て日で束ねた検定（採否はこちらで決める）──────────────
-        _cl = (bt.get("clustered") or {}).get(str(15)) or {}
+        _cl = _CL.get(_MAIN) or {}
         if _cl:
             L.append("\n**建て日で束ねた検定（こちらが本番）**\n")
             L.append("上の「粗いt値」は1件ごとのRが独立だと仮定していて、"
                      "**有意性を大きく過大評価する**。同じ日に建てた10件は同じ市場の"
                      "動きを共有し、5営業日ごとに建てて15日持つので期間も重なっている。"
-                     "そこで建て日ごとに「その因子の平均R − 同じ日の無作為の平均R」を出し、"
+                     "そこで建て日ごとに「その因子の平均R − 同じ日の母集団平均のR」を出し、"
                      "その日次の差を検定する。同じ日で引くので市場全体の動きが消える。"
                      "さらに保有期間ぶん間隔を空けた部分標本でも出す。\n")
             L.append("| 選び方 | 基準 | 日次の差の平均 | t（全日） | 日数 | t（重なりなし） | 日数 |")
@@ -2943,48 +3254,93 @@ try:
             t, nm = _ct(k)
             if t is None: return None
             tag = f"t={t:+.2f}（{nm}）"
-            if t >= _thr:   return f"- **{lbl}: 無作為を上回っている（{tag} ≥ {_thr}）。使う根拠がある。**"
-            if t <= -_thr:  return f"- **{lbl}: 無作為を下回っている（{tag}）。使ってはいけない。**"
-            return f"- {lbl}: 無作為との差は誤差の範囲（{tag}）。**情報があるとは言えない。**"
+            if t >= _thr:   return f"- **{lbl}: 母集団平均を上回っている（{tag} ≥ {_thr}）。使う根拠がある。**"
+            if t <= -_thr:  return f"- **{lbl}: 母集団平均を下回っている（{tag}）。使ってはいけない。**"
+            return f"- {lbl}: 母集団平均との差は誤差の範囲（{tag}）。**情報があるとは言えない。**"
         L.append("")
         for k, lbl in _labels:
             line = _verdict(k, lbl)
             if line: L.append(line)
         _best = max(((_ct(k)[0] if _ct(k)[0] is not None else -99), k) for k, _ in _labels)
+        _vt = _ct("value")[0]
         if _best[0] < _thr:
-            L.append(f"\n> **どの選び方も無作為を有意に上回っていない（最良でも t={_best[0]:+.2f}）。**")
+            L.append(f"\n> **どの選び方も母集団平均を有意に上回っていない（最良でも t={_best[0]:+.2f}）。**")
             L.append("> **この状態で新規の発注推奨を出してはいけない。** "
                      "順位付けに情報が無いなら、建てるほど手数料・スリッページ・税の分だけ負ける。")
             L.append("> 保有の管理（損切り・決算跨ぎ・開示対応）は通常どおり続ける。")
+        elif _vt is not None and _vt < _thr:
+            L.append(f"\n> **バリューが基準を下回った（t={_vt:+.2f} < {_thr}）。**"
+                     "選別の主軸が根拠を失っている。"
+                     "**新規の発注推奨は出さず、保有の管理だけを続けること。**")
+        else:
+            L.append(f"\n> **バリューが基準を超えている（t={_vt:+.2f} ≥ {_thr}）。**"
+                     "新規候補はバリュー上位から出す。")
+            L.append("> ただし検証で確かめたのは**「フィルタ通過の母集団からバリュー上位10件を"
+                     "当日終値で建て、2ATR損切り・3ATR利確・15日で手仕舞う」**という手順だけ。"
+                     "決算跨ぎの除外・業種重複の回避・RSIの条件は**検証に入っていない**"
+                     "運用ルールで、結果を良くも悪くもしうる。")
+            L.append("> 検証されたのは**上昇局面のみ**（1,020件のうち910件がTOPIX 200日線の上、"
+                     "下は110件で判定不能）。200日線を割った局面での挙動は分かっていない。")
+            L.append("> 生存バイアスは残る。倒産して上場廃止になった会社が母集団に無いので"
+                     "バリューは**過大評価**されうる一方、PBR1倍割れがTOB・MBOで"
+                     "プレミアム付き非上場化した分も抜けているので**過小評価**にも働く。"
+                     "どちらが大きいかは無料データでは分からない。")
 
         rg = bt.get("regime", {})
         if rg.get("above200") and rg.get("below200"):
             L.append("\n**TOPIXが200日線の上か下かで分けたとき（保有15日）**\n")
-            L.append("| 局面 | 選び方 | 件数 | 勝率 | 平均R | 無作為との差 |")
+            L.append("| 局面 | 選び方 | 件数 | 勝率 | 平均R | 母集団平均との差 |")
             L.append("|---|---|--:|--:|--:|--:|")
             _small = []
             for key, lbl in [("above200", "200日線の上"), ("below200", "200日線の下")]:
-                for k, kl in _labels + [("random", "無作為（全銘柄）"),
-                                        ("random_f", "無作為（財務あり）")]:
+                for k, kl in _labels + [("pool", "母集団平均（全銘柄）"),
+                                        ("pool_f", "母集団平均（財務あり）")]:
                     v = (rg.get(key) or {}).get(k)
                     if not v: continue
-                    vr = f"{v['vs_random']:+.4f}" if "vs_random" in v else "—"
+                    vr = f"{v['vs_pool']:+.4f}" if "vs_pool" in v else "—"
                     L.append(f"| {lbl} | {kl} | {v['n']:,.0f} | {v['win_pct']:.1f}% | "
                              f"{v['avg_r']:+.4f} | {vr} |")
-                n_cell = ((rg.get(key) or {}).get("random") or {}).get("n", 0)
+                n_cell = ((rg.get(key) or {}).get("pool") or {}).get("n", 0)
                 if n_cell and n_cell < 100: _small.append(f"{lbl}（{n_cell:,.0f}件）")
             if _small:
                 L.append(f"\n> **{'、'.join(_small)} は件数が少なく、数字を根拠にできない。** "
                          "1〜2件の損益で平均が動く水準。"
                          "**この欄の差を理由に建て方を変えないこと。**")
 
-        L.append("\n**保有期間を変えたとき（頑健性の確認。良い数字を選ぶためではない）**\n")
-        L.append("| 保有 | 順張り平均R | 逆張り平均R | 無作為平均R |")
-        L.append("|--:|--:|--:|--:|")
-        for h in bt["holds"]:
-            a = bt["all"][str(h)]
-            g = lambda k: f"{a[k]['avg_r']:+.4f}" if k in a else "—"
-            L.append(f"| {h}日 | {g('trend')} | {g('revert')} | {g('random')} |")
+        # ── 保有期間と利確の有無（清原達郎氏の主張を実測で確かめる欄）────
+        L.append("\n**保有期間と利確の有無を変えたとき**\n")
+        L.append("清原達郎氏は『3年（場合によっては5年）持つ・最低2倍を狙う・"
+                 "3割上昇での売却は勧めない』としている。"
+                 "いまの執行（3ATR利確・15〜25日で手仕舞い）はその上振れを"
+                 "途中で切っている可能性がある。**同じ選び方・同じ損切りで、"
+                 "保有期間と利確の有無だけを変えて比べる。**\n")
+        L.append("| 保有 | 執行 | バリュー平均R | 母集団平均R | 差 | t(全日) | t(重なりなし) | 利確% | 損切% | 期限% |")
+        L.append("|--:|:--|--:|--:|--:|--:|--:|--:|--:|--:|")
+        _exl = {"2atr_3atr": "2ATR損切+3ATR利確", "2atr_only": "2ATR損切のみ"}
+        for h in bt.get("holds", []):
+            for e in bt.get("exits", [_EXD]):
+                a = (bt["all"].get(e) or {}).get(str(h)) or {}
+                c = ((bt.get("clustered") or {}).get(e) or {}).get(str(h)) or {}
+                v, pf = a.get("value"), a.get("pool_f")
+                if not v: continue
+                cv = c.get("value") or {}
+                f1 = f"{cv['t_dates']:+.2f}" if cv.get("t_dates") is not None else "—"
+                f2 = f"{cv['t_nonoverlap']:+.2f}" if cv.get("t_nonoverlap") is not None else "—"
+                d  = f"{v['vs_pool']:+.4f}" if "vs_pool" in v else "—"
+                L.append(f"| {h}日 | {_exl.get(e, e)} | {v['avg_r']:+.4f} | "
+                         f"{(pf or {}).get('avg_r', float('nan')):+.4f} | {d} | {f1} | {f2} | "
+                         f"{v['target']:.0f}% | {v['stop']:.0f}% | {v['timeout']:.0f}% |")
+        L.append("\n> **読み方**: 差が保有期間とともに伸びるなら、いまの15〜25日は"
+                 "**伸びている途中で降りている**ということ。"
+                 "「2ATR損切のみ」のほうが平均Rが高いなら、3ATR利確が"
+                 "**上振れを刈っている**ということ。"
+                 "どちらも起きていなければ、いまの執行のままでよい。")
+        L.append("> ただし保有期間を伸ばすと建て日が減り、独立な観測はさらに減る。"
+                 "**t（重なりなし）の日数を必ず見ること。** 20回台では判定に足りない。")
+        L.append("> 保有を伸ばすほど決算を跨ぐ回数が増える。"
+                 "「決算をまたぐ建玉は作らない」という運用ルールとは正面から衝突する。"
+                 "**この表は執行ルールを決めるための材料で、"
+                 "そのまま運用に移せるものではない。**\n")
 
         L.append("\n**この検証の限界（結果を良い方に歪めるもの）**")
         L.append("- **生存バイアス。** 銘柄一覧は「いま上場している会社」なので、"
@@ -3019,7 +3375,8 @@ try:
         else:
             L.append("| 種別 | 件数 | 勝率 | 平均R | 累計R | 利確 | 損切 | 時間切れ | 平均保有 |")
             L.append("|---|--:|--:|--:|--:|--:|--:|--:|--:|")
-            for k, lbl in [("all", "合計"), ("trend", "順張り"), ("revert", "逆張り")]:
+            for k, lbl in [("all", "合計"), ("value", "バリュー"),
+                           ("trend", "順張り(廃止)"), ("revert", "逆張り(廃止)")]:
                 v = sg.get(k)
                 if not v: continue
                 L.append(f"| {lbl} | {v['n']} | {v['win_pct']:.1f}% | {v['avg_r']:+.3f} | "
@@ -3098,7 +3455,8 @@ try:
                 except (TypeError, ValueError): return "—"
                 if f != f: return "—"                 # NaN
                 return f"{int(round(f))}"
-            vs = [one(k) for k in ("value", "quality", "moat", "revision")]
+            # 清原達郎氏が挙げている3つ: PER・ネットキャッシュ比率・株主還元
+            vs = [one(k) for k in ("ep", "netcash", "payout")]
             return "—" if all(x == "—" for x in vs) else "/".join(vs)
 
         L.append(f"\n## 新規候補（全銘柄スクリーニング）\n")
@@ -3122,7 +3480,10 @@ try:
         if cj.get("master_count", 0) == 0:
             L.append("\n> **注意: 銘柄マスタが取得できていない。** 候補に銘柄名と業種が付かず、"
                      "候補のBを機械的に付けられない。`openpyxl` が入っているか確認すること。\n")
-        if not cj.get("trend") and not cj.get("revert"):
+        _rows = cj.get("candidates")
+        if _rows is None:      # 旧い形のファイルでも読めるようにする
+            _rows = (cj.get("trend") or []) + (cj.get("revert") or [])
+        if not _rows:
             L.append(f"\n> **本日の通過は0件。** これはフィルタが厳しすぎるか、走査側で例外が出ているかのどちらか。")
             sk = cj.get("skipped") or {}
             if sk:
@@ -3134,25 +3495,20 @@ try:
                 L.append("> 例外は記録されていないので、フィルタ（売買代金・価格・ATR）で全件が落ちたということ。")
             L.append("")
 
-        L.append("\n### 順張り候補（移動平均の上・レンジ上方・20日が伸びている）\n")
-        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | 重複 | スコア | 財務順位 | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 決算 | 当日の開示 |")
+        L.append(f"\n### 新規候補（バリューの断面順位の上位{CAND_TOP_N}件）\n")
+        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | 重複 | 割安順位 | PER/NC/還元 | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 決算 | 当日の開示 |")
         L.append("|--:|---|---|---|:-:|:-:|--:|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
-        for i, r in enumerate(cj["trend"][:15]):
+        for i, r in enumerate(_rows[:15]):
+            _s = r.get("score")
+            _s = f"**{float(_s):.0f}**" if _s is not None else "—"
             L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
-                     f"{_ov(r)} | **{r['trend']:.1f}** | {_fund(r)} | {r['close']:,.1f} | {r['rsi']:.0f} | "
+                     f"{_ov(r)} | {_s} | {_fund(r)} | {r['close']:,.1f} | {r['rsi']:.0f} | "
                      f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
                      f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {r['vol_ratio']:.2f}x | {_earn(r)} | {_disc(r)} |")
-
-        L.append("\n### 逆張り候補（長期は上向きだが短期で売られすぎ）\n")
-        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | 重複 | スコア | 財務順位 | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 決算 | 当日の開示 |")
-        L.append("|--:|---|---|---|:-:|:-:|--:|:-:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
-        for i, r in enumerate(cj["revert"][:15]):
-            if r["revert"] <= 0: continue
-            L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
-                     f"{_ov(r)} | **{r['revert']:.1f}** | {_fund(r)} | {r['close']:,.1f} | {r['rsi']:.0f} | "
-                     f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
-                     f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {_earn(r)} | {_disc(r)} |")
-
+        L.append("\n> RSI・移動平均・60日位置・20日リターンの列は**参考表示**で、"
+                 "並べ替えには使っていない。過去検証で確かめたのは"
+                 "「フィルタ通過の母集団からバリュー上位」という手順だけなので、"
+                 "そこに条件を足すと検証していないものを運用することになる。\n")
         L.append("\n**この表の読み方と限界**")
         L.append("- **スコアの重み・閾値は検証されていない。** 配点も境目も手で決めた値で、"
                  "過去データで当てはめた結果ではない。順張りスコアは実質的に"
@@ -3165,11 +3521,21 @@ try:
         L.append("- 順張りと逆張りは別の尺度なので**混ぜて比較しない**。")
         _fd = meta.get("fund") or {}
         if _fd.get("n_codes"):
-            L.append(f"- **「財務順位」列は `割安/質/競争優位の代理/修正方向` の4つの"
-                     f"断面パーセンタイル**（0〜100、大きいほど上位／母集団は当日の通過"
-                     f"{_fd.get('pool', 0):,}銘柄＋保有銘柄）。付与できたのは "
+            L.append(f"- **「PER/NC/還元」列は `予想PERの割安さ/ネットキャッシュ比率/株主還元` の"
+                     f"3つの断面パーセンタイル**（0〜100、大きいほど上位／母集団は"
+                     f"当日の通過{_fd.get('pool', 0):,}銘柄＋保有銘柄）。付与できたのは "
                      f"**{_fd['n_codes']:,}銘柄**"
                      f"（財務の最新開示日 {_fd.get('asof_latest_disclosure', '?')}）。")
+            L.append(f"  - **この3つは清原達郎氏が挙げている順位付け**。"
+                     "「一番重視するのはPER」「さらにネットキャッシュ比率も加える」"
+                     "「PBRは見るけど重視はしない」「最終的なカタリストは株主還元」。"
+                     f"並べ替えに使っているのは **{RANK_BY}**（過去検証で基準を通ったもの）。")
+            L.append("  - 株主還元は`配当の水準＋増配の方向＋自己株買いの実行`の合成。"
+                     "**無配は最下位に落としてある**（割安なまま放置される会社の典型。"
+                     "清原氏の言う「バリュートラップ」の見分けがここに当たる）。")
+            L.append("  - ネットキャッシュ比率は**下限版**（現金同等物で流動資産を代用し、"
+                     "投資有価証券を0とみなす）。本来の比率はこれ以上になる。"
+                     "正確な値は下の「確認候補」の節から手で求める。")
             if _fd.get("reused"):
                 _age, _ah = _fd.get("age_days"), _fd.get("age_hours")
                 _when = (f"{_ah:.0f}時間前" if (_age == 0 and _ah is not None)
@@ -3225,6 +3591,68 @@ try:
         L.append("\n## 新規候補\n\nスクリーニング未実行。")
     except Exception as e:
         L.append(f"\n## 新規候補\n\n生成に失敗: {e}")
+    # ── ネットキャッシュ比率（清原式）の手作業候補 ──────────────
+    try:
+        nc = json.load(open(f"{OUT}/netcash.json", encoding="utf-8"))
+        L.append("\n## ネットキャッシュ比率の確認候補（清原達郎式）\n")
+        L.append("**ネットキャッシュ ＝ 流動資産 ＋ 投資有価証券×70% − 負債合計**／"
+                 "**比率 ＝ ネットキャッシュ ÷ 時価総額**。"
+                 "70%は売却時の税金（約30%）を引くため。"
+                 "比率1以上＝資産を売って負債を返しても現金が余る＝本業がタダで付いてくる。\n")
+        L.append(f"通過{nc.get('pool', 0):,}銘柄から、**手で確かめる価値のある"
+                 f"{nc.get('shortlist', 0)}件**に絞った"
+                 f"（うち下限だけで既に1以上と確定しているのが **{nc.get('sure', 0)}件**）。\n")
+        L.append("絞り方は不等式で、近似は置いていない:\n")
+        L.append("- 負債合計 ＝ 総資産 − 純資産、時価総額 ＝ 株価 × (発行済 − 自己株) "
+                 "… ここまでは無料データで出る")
+        L.append("- 流動資産と投資有価証券は無料では取れないので、"
+                 "**現金同等物 ≤ 流動資産** と **流動資産＋投資有価証券×70% ≤ 総資産** で挟む")
+        L.append("- → 下限 ＝ (現金同等物 − 負債合計) ÷ 時価総額、"
+                 "上限 ＝ 純資産 ÷ 時価総額（＝1/PBR）")
+        L.append("- **上限が1未満（PBR>1）の銘柄は、清原式でも1以上になりえない** "
+                 "→ 手作業の対象から外してある")
+        L.append("- 銀行・保険・証券は流動資産と負債の意味が違い式が成立しないので除外。"
+                 "本業赤字（営業利益≤0）も除外\n")
+        _r = nc.get("rows") or []
+        if _r:
+            L.append("| 順 | コード | 銘柄名 | 17業種 | 分類 | 株主還元 |")
+            L.append("|--:|---|---|---|:-:|:-:|")
+            for r in _r[:40]:
+                L.append(f"| {r.get('rank', '')} | {r['code']} | "
+                         f"{(r.get('name') or '—')[:14]} | {r.get('s17') or '—'} | "
+                         f"{r.get('state', '')} | {r.get('ret', '—')} |")
+            L.append("\n**手で入れるのは2項目だけ**: バフェット・コードで各銘柄の"
+                     "**流動資産**と**投資有価証券**を見る。負債合計と時価総額は"
+                     "そちらにも出ているので突き合わせに使える。\n")
+            L.append("> 「確実(下限で1以上)」は現金だけで負債を返して時価総額を超えている。"
+                     "流動資産と投資有価証券を足せば比率はさらに上がるので、"
+                     "**確認は不要**（数字の妥当性だけ見ればよい）。")
+            L.append("> 「要確認」は上限では1を超えるが下限では届かない。"
+                     "売掛金・棚卸資産・投資有価証券の大きさで決まるので、"
+                     "**この2項目を入れないと判定できない**。上から順に見ていけばよい。")
+            L.append("> **比率の数値をこのファイルに載せていない**のは、載せると"
+                     "純資産や総資産が逆算でき、J-Quantsの生の財務数値を公開した"
+                     "ことになるため（利用条件）。正確な比率はバフェット・コードの"
+                     "値で計算すること。")
+            L.append("> **「株主還元」列がバリュートラップの見分け**。清原氏は"
+                     "「最終的なカタリストは株主還元」としている。現金が厚いのに"
+                     "株主に返さない会社は、割安なまま何年も放置されうる。"
+                     "**「無配」は現金の厚さを割安と読んではいけない印。**")
+            L.append("> 清原氏は「**小型株は経営者が9割**」としている。"
+                     "経営者の意志・言動の一致・中期経営計画の具体性は無料データに無く、"
+                     "**この仕組みでは判定できない**。候補を出すところまでが機械の仕事で、"
+                     "そこから先は決算説明資料と中期経営計画を見る作業が残る。")
+            L.append("> 「この投資法は最低でも株価上昇2倍は狙うべき」という前提とも"
+                     "突き合わせること。3ATR（およそ+7〜15%）で利確する"
+                     "いまの執行とは噛み合わない。")
+        else:
+            L.append("該当なし。上限（1/PBR）が1以上で本業黒字の銘柄が"
+                     "通過銘柄の中に無かったということ。")
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        L.append(f"\n## ネットキャッシュ比率の確認候補\n\n生成に失敗: {e}")
+
     L.append("\n## マクロ\n")
     L.append("| 指標 | 日付 | 値 | 前日比 |")
     L.append("|---|:-:|--:|--:|")
