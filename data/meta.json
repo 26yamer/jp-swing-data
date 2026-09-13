@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-13T15:14:28.011549+09:00",
+ "fetched_at_jst": "2026-09-13T16:57:30.188284+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -98,7 +98,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 43,
+ "news_ok": 42,
  "jgb": {
   "date": "2026-09-10",
   "age_days": 3,
@@ -129,6 +129,11 @@
   "named": true,
   "source": "jpx_master"
  },
+ "netcash": {
+  "pool": 1727,
+  "shortlist": 60,
+  "sure": 0
+ },
  "fund": {
   "asof_latest_disclosure": "2026-06-18",
   "pool": 1727,
@@ -136,6 +141,11 @@
   "coverage": {
    "has": 1604,
    "value": 1604,
+   "ep": 428,
+   "bp": 1245,
+   "netcash": 1358,
+   "kiyohara": 1625,
+   "payout": 1643,
    "quality": 1648,
    "moat": 1543,
    "revision": 1294
@@ -169,13 +179,13 @@
   "codes": 656
  },
  "cand_earnings": {
-  "asked": 40,
-  "ok": 11,
-  "from_jpx": 6,
-  "from_yf": 5,
-  "recent": 11,
+  "asked": 20,
+  "ok": 8,
+  "from_jpx": 2,
+  "from_yf": 6,
+  "recent": 3,
   "estimate": 0,
-  "unknown": 18,
+  "unknown": 9,
   "error": 0
  },
  "signals_appended": true,
@@ -193,8 +203,8 @@
    "HTTP 400": 3
   }
  },
- "backtest_dates": 184,
- "backtest_dates_fund": 102,
+ "backtest_dates": 187,
+ "backtest_dates_fund": 105,
  "backtest_coverage": {
   "asked": 4247,
   "universe": 4247,
@@ -203,128 +213,161 @@
  },
  "backtest": {
   "tickers": 3556,
-  "dates": 184,
+  "dates": 187,
   "main": {
-   "trend": {
-    "n": 1840.0,
-    "avg_r": 0.0883,
-    "win_pct": 47.1,
-    "target": 30.5,
-    "stop": 42.0,
-    "timeout": 27.5,
-    "base": "random",
-    "vs_random": -0.0393,
-    "t_rough": -1.69
-   },
-   "revert": {
-    "n": 1840.0,
-    "avg_r": 0.0948,
-    "win_pct": 48.6,
-    "target": 22.4,
-    "stop": 31.5,
-    "timeout": 46.0,
-    "base": "random",
-    "vs_random": -0.0328,
-    "t_rough": -1.41
-   },
    "mom12_2": {
     "n": 1840.0,
-    "avg_r": 0.0679,
-    "win_pct": 46.7,
-    "target": 29.0,
-    "stop": 40.5,
-    "timeout": 30.4,
-    "base": "random",
-    "vs_random": -0.0597,
-    "t_rough": -2.56
+    "avg_r": 0.0813,
+    "win_pct": 44.7,
+    "target": 37.4,
+    "stop": 49.1,
+    "timeout": 13.5,
+    "base": "pool",
+    "vs_pool": -1.4806,
+    "t_rough": -63.51
    },
    "rev5": {
     "n": 1840.0,
-    "avg_r": 0.0448,
-    "win_pct": 47.7,
-    "target": 17.1,
-    "stop": 26.8,
-    "timeout": 56.1,
-    "base": "random",
-    "vs_random": -0.0828,
-    "t_rough": -3.55
+    "avg_r": 0.0508,
+    "win_pct": 47.1,
+    "target": 25.2,
+    "stop": 36.6,
+    "timeout": 38.3,
+    "base": "pool",
+    "vs_pool": -1.5111,
+    "t_rough": -64.82
    },
    "lowvol": {
     "n": 1840.0,
-    "avg_r": 0.2342,
-    "win_pct": 53.8,
-    "target": 33.4,
-    "stop": 36.6,
-    "timeout": 29.9,
-    "base": "random",
-    "vs_random": 0.1066,
-    "t_rough": 4.57
+    "avg_r": 0.263,
+    "win_pct": 52.4,
+    "target": 42.5,
+    "stop": 43.4,
+    "timeout": 14.1,
+    "base": "pool",
+    "vs_pool": -1.2989,
+    "t_rough": -55.72
    },
    "value": {
     "n": 1020.0,
-    "avg_r": 0.3432,
-    "win_pct": 59.2,
-    "target": 35.6,
-    "stop": 29.4,
-    "timeout": 35.0,
-    "base": "random_f",
-    "vs_random": 0.2292,
-    "t_rough": 7.32
+    "avg_r": 0.4044,
+    "win_pct": 58.1,
+    "target": 47.4,
+    "stop": 35.6,
+    "timeout": 17.1,
+    "base": "pool_f",
+    "vs_pool": 0.2435,
+    "t_rough": 7.78
+   },
+   "ep": {
+    "n": 1010.0,
+    "avg_r": 0.3748,
+    "win_pct": 56.8,
+    "target": 45.9,
+    "stop": 36.4,
+    "timeout": 17.6,
+    "base": "pool_f",
+    "vs_pool": 0.2139,
+    "t_rough": 6.8
+   },
+   "bp": {
+    "n": 1010.0,
+    "avg_r": 0.369,
+    "win_pct": 56.8,
+    "target": 44.3,
+    "stop": 37.2,
+    "timeout": 18.5,
+    "base": "pool_f",
+    "vs_pool": 0.2081,
+    "t_rough": 6.61
+   },
+   "netcash": {
+    "n": 1010.0,
+    "avg_r": 0.1789,
+    "win_pct": 50.8,
+    "target": 35.0,
+    "stop": 41.4,
+    "timeout": 23.6,
+    "base": "pool_f",
+    "vs_pool": 0.018,
+    "t_rough": 0.57
+   },
+   "kiyohara": {
+    "n": 1020.0,
+    "avg_r": 0.3098,
+    "win_pct": 56.1,
+    "target": 43.1,
+    "stop": 38.4,
+    "timeout": 18.4,
+    "base": "pool_f",
+    "vs_pool": 0.1489,
+    "t_rough": 4.76
+   },
+   "payout": {
+    "n": 1020.0,
+    "avg_r": 0.0951,
+    "win_pct": 48.4,
+    "target": 34.1,
+    "stop": 43.7,
+    "timeout": 22.2,
+    "base": "pool_f",
+    "vs_pool": -0.0658,
+    "t_rough": -2.1
    },
    "quality": {
     "n": 1020.0,
-    "avg_r": 0.082,
-    "win_pct": 47.7,
-    "target": 27.1,
-    "stop": 39.5,
-    "timeout": 33.4,
-    "base": "random_f",
-    "vs_random": -0.032,
-    "t_rough": -1.02
+    "avg_r": 0.1022,
+    "win_pct": 46.2,
+    "target": 35.5,
+    "stop": 47.2,
+    "timeout": 17.4,
+    "base": "pool_f",
+    "vs_pool": -0.0587,
+    "t_rough": -1.87
    },
    "moat": {
     "n": 1020.0,
-    "avg_r": 0.0819,
-    "win_pct": 48.8,
-    "target": 25.5,
-    "stop": 39.2,
-    "timeout": 35.3,
-    "base": "random_f",
-    "vs_random": -0.0321,
-    "t_rough": -1.03
+    "avg_r": 0.0804,
+    "win_pct": 46.1,
+    "target": 34.8,
+    "stop": 47.7,
+    "timeout": 17.5,
+    "base": "pool_f",
+    "vs_pool": -0.0805,
+    "t_rough": -2.57
    },
    "revision": {
     "n": 970.0,
-    "avg_r": 0.1127,
-    "win_pct": 48.0,
-    "target": 27.5,
-    "stop": 35.5,
-    "timeout": 37.0,
-    "base": "random_f",
-    "vs_random": -0.0013,
-    "t_rough": -0.04
-   },
-   "random": {
-    "n": 1840.0,
-    "avg_r": 0.1276,
-    "win_pct": 49.9,
-    "target": 28.4,
-    "stop": 36.8,
-    "timeout": 34.8
-   },
-   "random_f": {
-    "n": 1020.0,
-    "avg_r": 0.114,
+    "avg_r": 0.1994,
     "win_pct": 49.8,
-    "target": 27.3,
-    "stop": 37.0,
-    "timeout": 35.7
+    "target": 37.3,
+    "stop": 42.1,
+    "timeout": 20.6,
+    "base": "pool_f",
+    "vs_pool": 0.0385,
+    "t_rough": 1.2
+   },
+   "pool": {
+    "n": 1840.0,
+    "avg_r": 1.5619,
+    "win_pct": 48.8,
+    "target": 37.9,
+    "stop": 44.8,
+    "timeout": 17.3
+   },
+   "pool_f": {
+    "n": 1020.0,
+    "avg_r": 0.1609,
+    "win_pct": 49.4,
+    "target": 37.1,
+    "stop": 43.9,
+    "timeout": 19.0
    }
   }
  },
  "signals": {
   "closed": 0,
-  "open": 20
+  "open": 30
  },
  "regime": {
   "px": 419.7000122070313,
