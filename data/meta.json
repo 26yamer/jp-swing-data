@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-13T21:17:43.689853+09:00",
+ "fetched_at_jst": "2026-09-13T22:38:53.892736+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -54,7 +54,9 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [],
+ "errors": [
+  "fetch_feed('財経新聞', 'https://www.zaikei.co.jp/rss/'): ConnectTimeout: HTTPSConnectionPool(host='www.zaikei.co.jp', port=443): Max retries exceeded with url: /rss/ (Caused by ConnectTimeoutError(<HTTPSConnection(host='www.zaikei.co.jp', port=443) at 0x7f4c888514f0>, 'Connection to www.zaikei.co.jp timed out. (connect timeout=25)'))"
+ ],
  "anomalies": [
   {
    "code": "1306.T",
@@ -98,7 +100,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 40,
+ "news_ok": 41,
  "jgb": {
   "date": "2026-09-10",
   "age_days": 3,
@@ -135,14 +137,18 @@
   "sure": 0
  },
  "edinet": {
-  "codes": 55,
-  "with_ca": 55,
-  "with_inv": 44,
+  "codes": 273,
+  "with_ca": 273,
+  "usable": 260,
+  "bs_bad": 4,
+  "with_inv": 228,
   "listed_days": 45,
-  "todo": 780,
-  "downloaded": 90,
-  "parsed": 55,
-  "req": 135,
+  "todo": 2510,
+  "todo_priority": 70,
+  "priority_given": 91,
+  "downloaded": 220,
+  "parsed": 218,
+  "req": 265,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -158,28 +164,157 @@
    "単位",
    "値"
   ],
+  "dtypes": {
+   "120": 222,
+   "160": 51
+  },
+  "nomatch": {
+   "120:連結と個別が混在": 9
+  },
+  "probe": [
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior1YearInstant_CapitalSurplusIFRSMember",
+     "Prior1YearInstant_RetainedEarningsIFRSMember",
+     "Prior1YearInstant_ShareCapitalIFRSMember",
+     "Prior1YearInstant_TreasurySharesIFRSMember",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_ExchangeDifferencesOnTranslationOfForeignOperationsIFRSMember"
+    ],
+    "vals": {
+     "ca": 30132000000.0,
+     "liab": 63911000000.0,
+     "ta": 97949000000.0,
+     "na": 34037000000.0
+    }
+   },
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior1YearInstant_CapitalStockMember",
+     "Prior1YearInstant_CapitalSurplusMember",
+     "Prior1YearInstant_RetainedEarningsMember",
+     "Prior1YearInstant_ShareholdersEquityMember",
+     "Prior1YearInstant_TreasuryStockMember",
+     "Prior2YearInstant_CapitalStockMember"
+    ],
+    "vals": {
+     "ca": 46033000000.0,
+     "liab": 58756000000.0,
+     "ta": 75900000000.0,
+     "na": 17143000000.0
+    }
+   },
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior1YearInstant_CapitalSurplusIFRSMember",
+     "Prior1YearInstant_ShareCapitalIFRSMember",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_ExchangeDifferencesOnTranslationOfForeignOperationsIFRSMember",
+     "Prior2YearInstant_OtherComponentsOfEquityIFRSMember",
+     "Prior2YearInstant_RemeasurementsOfDefinedBenefitPlansIFRSMember"
+    ],
+    "vals": {
+     "ca": 88842000000.0,
+     "liab": 122487000000.0,
+     "ta": 205407000000.0,
+     "na": 82919000000.0
+    }
+   },
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior1YearInstant_CapitalSurplusIFRSMember",
+     "Prior1YearInstant_RetainedEarningsIFRSMember",
+     "Prior1YearInstant_ShareCapitalIFRSMember",
+     "Prior2YearInstant",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_RemeasurementsOfDefinedBenefitPlansIFRSMember"
+    ],
+    "vals": {
+     "ca": 51526000000.0,
+     "liab": 23110913000000.0,
+     "ta": 29592153000000.0,
+     "na": 6481239000000.0
+    }
+   },
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior1YearInstant_CapitalSurplusIFRSMember",
+     "Prior1YearInstant_RetainedEarningsIFRSMember",
+     "Prior1YearInstant_ShareCapitalIFRSMember",
+     "Prior1YearInstant_TreasurySharesIFRSMember",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_FinancialAssetsMeasuredAtFairValueThroughOtherComprehensiveIncomeIFRSMember"
+    ],
+    "vals": {
+     "ca": 447288000000.0,
+     "liab": 342922000000.0,
+     "ta": 856380000000.0,
+     "na": 513457000000.0
+    }
+   },
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior1YearInstant_CapitalSurplusIFRSMember",
+     "Prior1YearInstant_RetainedEarningsIFRSMember",
+     "Prior1YearInstant_ShareCapitalIFRSMember",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_ExchangeDifferencesOnTranslationOfForeignOperationsIFRSMember",
+     "Prior2YearInstant_FinancialAssetsMeasuredAtFairValueThroughOtherComprehensiveIncomeIFRSMember"
+    ],
+    "vals": {
+     "ca": 9347653000.0,
+     "liab": 16539730000.0,
+     "ta": 27377104000.0,
+     "na": 10837373000.0
+    }
+   }
+  ],
   "err": {
-   "zip:BadZipFile": 1
+   "zip:BadZipFile": 2
   }
  },
  "kiyohara": {
   "universe": 4118,
-  "passed": 88,
+  "passed": 45,
   "shown": 40,
   "sure": 0,
-  "likely": 3,
+  "likely": 0,
   "no_div": 1,
-  "with_real": 2,
-  "real_ge1": 2,
-  "real_near": 0,
+  "with_real": 26,
+  "real_ge1": 20,
+  "real_near": 6,
   "bands": {
-   "real_ge1": 2,
-   "real_near": 0,
+   "real_ge1": 20,
+   "real_near": 4,
    "real_lo": 0,
    "sure": 0,
-   "likely": 3,
-   "maybe": 18,
-   "thin": 17,
+   "likely": 0,
+   "maybe": 5,
+   "thin": 11,
    "unknown": 0
   },
   "dropped": {
@@ -188,22 +323,23 @@
    "売買代金が薄い": 751,
    "予想PERが出ない(赤字予想)": 292,
    "PBR>0.8倍": 133,
+   "流動資産≤負債合計(実測)": 28,
    "時価総額>500億円": 27,
    "銀行・金融（式が成立しない）": 159,
-   "流動資産≤負債合計(実測)": 3,
+   "ネットキャッシュ比率<0.8(実測)": 18,
    "本業が赤字": 3
   }
  },
  "fund_raw": {
-  "bps": 4059,
-  "feps": 3871,
-  "eq": 4127,
-  "ta": 4127,
-  "cash": 4090,
-  "sh": 4125,
-  "op": 4012,
-  "div": 4047,
-  "codes": 4127
+  "n_bps": 4059,
+  "n_feps": 3871,
+  "n_eq": 4127,
+  "n_ta": 4127,
+  "n_cash": 4090,
+  "n_sh": 4125,
+  "n_op": 4012,
+  "n_div": 4047,
+  "n_codes": 4127
  },
  "fund": {
   "asof_latest_disclosure": "2026-06-18",
@@ -261,181 +397,7 @@
  },
  "signals_appended": true,
  "signals_bar": "2026-09-11",
- "jq_bt": {
-  "dates_asked": 523,
-  "dates_with_data": 484,
-  "rows": 37664,
-  "codes": 4131,
-  "req": 523,
-  "n429": 0,
-  "blocked": null,
-  "resp_key": "data",
-  "err": {
-   "HTTP 400": 3
-  }
- },
- "backtest_dates": 187,
- "backtest_dates_fund": 105,
- "backtest_coverage": {
-  "asked": 4247,
-  "universe": 4247,
-  "pct": 100.0,
-  "usable": 3556
- },
- "backtest": {
-  "tickers": 3556,
-  "dates": 187,
-  "main": {
-   "mom12_2": {
-    "n": 1840.0,
-    "avg_r": 0.0813,
-    "win_pct": 44.7,
-    "target": 37.4,
-    "stop": 49.1,
-    "timeout": 13.5,
-    "base": "pool",
-    "vs_pool": -1.4806,
-    "t_rough": -63.51
-   },
-   "rev5": {
-    "n": 1840.0,
-    "avg_r": 0.0508,
-    "win_pct": 47.1,
-    "target": 25.2,
-    "stop": 36.6,
-    "timeout": 38.3,
-    "base": "pool",
-    "vs_pool": -1.5111,
-    "t_rough": -64.82
-   },
-   "lowvol": {
-    "n": 1840.0,
-    "avg_r": 0.263,
-    "win_pct": 52.4,
-    "target": 42.5,
-    "stop": 43.4,
-    "timeout": 14.1,
-    "base": "pool",
-    "vs_pool": -1.2989,
-    "t_rough": -55.72
-   },
-   "value": {
-    "n": 1020.0,
-    "avg_r": 0.4478,
-    "win_pct": 59.6,
-    "target": 48.1,
-    "stop": 33.9,
-    "timeout": 17.9,
-    "base": "pool_f",
-    "vs_pool": 0.2913,
-    "t_rough": 9.3
-   },
-   "ep": {
-    "n": 1010.0,
-    "avg_r": 0.3981,
-    "win_pct": 58.0,
-    "target": 46.7,
-    "stop": 35.7,
-    "timeout": 17.5,
-    "base": "pool_f",
-    "vs_pool": 0.2416,
-    "t_rough": 7.68
-   },
-   "bp": {
-    "n": 1010.0,
-    "avg_r": 0.4113,
-    "win_pct": 59.4,
-    "target": 46.4,
-    "stop": 34.7,
-    "timeout": 18.9,
-    "base": "pool_f",
-    "vs_pool": 0.2548,
-    "t_rough": 8.1
-   },
-   "netcash": {
-    "n": 1010.0,
-    "avg_r": 0.1414,
-    "win_pct": 49.1,
-    "target": 34.7,
-    "stop": 42.3,
-    "timeout": 23.1,
-    "base": "pool_f",
-    "vs_pool": -0.0151,
-    "t_rough": -0.48
-   },
-   "kiyohara": {
-    "n": 1020.0,
-    "avg_r": 0.1538,
-    "win_pct": 48.1,
-    "target": 36.5,
-    "stop": 43.4,
-    "timeout": 20.1,
-    "base": "pool_f",
-    "vs_pool": -0.0027,
-    "t_rough": -0.09
-   },
-   "payout": {
-    "n": 1020.0,
-    "avg_r": 0.1612,
-    "win_pct": 50.8,
-    "target": 36.4,
-    "stop": 41.6,
-    "timeout": 22.1,
-    "base": "pool_f",
-    "vs_pool": 0.0047,
-    "t_rough": 0.15
-   },
-   "quality": {
-    "n": 1020.0,
-    "avg_r": 0.0594,
-    "win_pct": 44.4,
-    "target": 33.9,
-    "stop": 48.2,
-    "timeout": 17.8,
-    "base": "pool_f",
-    "vs_pool": -0.0971,
-    "t_rough": -3.1
-   },
-   "moat": {
-    "n": 1020.0,
-    "avg_r": 0.0778,
-    "win_pct": 46.0,
-    "target": 34.8,
-    "stop": 48.0,
-    "timeout": 17.2,
-    "base": "pool_f",
-    "vs_pool": -0.0787,
-    "t_rough": -2.51
-   },
-   "revision": {
-    "n": 970.0,
-    "avg_r": 0.1785,
-    "win_pct": 48.9,
-    "target": 36.3,
-    "stop": 42.5,
-    "timeout": 21.2,
-    "base": "pool_f",
-    "vs_pool": 0.022,
-    "t_rough": 0.69
-   },
-   "pool": {
-    "n": 1840.0,
-    "avg_r": 1.5619,
-    "win_pct": 48.8,
-    "target": 37.9,
-    "stop": 44.8,
-    "timeout": 17.3
-   },
-   "pool_f": {
-    "n": 1020.0,
-    "avg_r": 0.1565,
-    "win_pct": 49.2,
-    "target": 36.9,
-    "stop": 44.1,
-    "timeout": 19.0
-   }
-  }
- },
+ "backtest_skipped": "前回から0日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 0,
   "open": 39
