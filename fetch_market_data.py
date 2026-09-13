@@ -1204,6 +1204,331 @@ def fund_coverage(out, has):
             **{k: int((~v.isna()).sum()) for k, v in out.items()}}
 
 # ══════════════════════════════════════════════════════════════════════
+#  EDINET（金融庁）── 本物のネットキャッシュ比率を作るための貸借対照表
+#
+#  なぜ要るか:
+#    清原達郎氏の式は
+#      ネットキャッシュ ＝ 流動資産 ＋ 投資有価証券×70% − 負債合計
+#    だが、**流動資産も投資有価証券も J-Quants 無料枠には無い**
+#    （無料で取れるのは総資産と純資産だけ。貸借の内訳は Premium）。
+#    つまりこれまで一度も本物の比率を計算できていなかった。
+#    現金−負債の下限値と「1に届くのに何割必要か」の目安で代用していた。
+#
+#  EDINET なら無料で取れる:
+#    有価証券報告書・半期報告書のXBRLをCSVで取得でき、
+#    流動資産合計・投資有価証券・負債合計が入っている。
+#    しかも2008年以降の履歴があるので、開示日ベースの検証もできる
+#    （J-Quants無料枠は2年しかなく、保有250日の検定ができなかった原因）。
+#
+#  ライセンス（J-Quantsと扱いが違う）:
+#    EDINETの情報は公共データ利用規約(PDL1.0)準拠で、
+#    **二次利用・再配布が認められている**。出典表記が必要。
+#    よって取得した数値を public リポジトリにコミットしてよい。
+#    加工したものを「国が作成した未加工のもの」のように見せてはいけないので、
+#    出典と「もとに作成」を必ず添える。
+#    ★J-Quantsの数値は引き続きコミットしない。混ぜないよう別ファイルにする。
+#
+#  APIキーの扱い（J-Quantsより危ない）:
+#    EDINETはキーを**URLのクエリパラメータ**で送る仕様。
+#    publicリポジトリのActionsログにURLが出ると鍵が漏れる。
+#    → URLは一切ログに出さない。例外にも出さない。
+#    → commit_guard の伏せ字対象にEDINETのキーも加える。
+#
+#  取得量:
+#    1社あたり年2回（有報＋半期報告書。四半期報告書は2024年に廃止）。
+#    約4,000社で年8,000書類。1回の実行で取る数に上限を置き、
+#    日々のぶんを積み上げる。規約が大量アクセスを禁じているので間隔も空ける。
+# ══════════════════════════════════════════════════════════════════════
+ED_BASE       = "https://api.edinet-fsa.go.jp/api/v2"
+ED_KEY        = (os.environ.get("EDINET_API_KEY") or "").strip()
+ED_PATH       = f"{OUT}/edinet.json"
+ED_DOC_TYPES  = ("120", "160")   # 120=有価証券報告書 160=半期報告書
+ED_LIST_DAYS  = 10               # 毎回見る「新しい側」の日数
+ED_BACKFILL_D = 500             # 初回に遡る範囲（1年半。有報1回は必ず入る）
+ED_MAX_LIST   = 45               # 1回の実行で引く一覧の日数
+ED_MAX_DOCS   = 90               # 1回の実行で落とす書類数（積み上げる）
+ED_GAP_S      = 1.0              # 大量アクセス禁止なので1秒空ける
+ED_RETRY      = 3
+ED_ATTRIB     = ("出典：EDINET閲覧（提出）サイト"
+                 "（https://disclosure2.edinet-fsa.go.jp/）をもとに作成、PDL1.0")
+ED_INV_HAIRCUT = 0.70            # 投資有価証券の掛け目（売却時の税約30%を引く）
+
+# 拾う要素。連結が空なら個別を見る（非連結の会社がある）。
+ED_ELEM = {
+    "ca":   ("jppfs_cor:CurrentAssets",),
+    "inv":  ("jppfs_cor:InvestmentSecurities",),
+    "liab": ("jppfs_cor:Liabilities",),
+    "ta":   ("jppfs_cor:Assets",),
+    "na":   ("jppfs_cor:NetAssets",),
+}
+_ED = {"req": 0, "n429": 0, "err": {}, "blocked": None,
+       "enc": None, "sep": None, "cols": None, "docs": 0, "parsed": 0}
+
+def _ed_url(path, params):
+    """URLを作る。★この文字列は絶対にログへ出さない（鍵が入っている）。"""
+    import urllib.parse
+    p = dict(params); p["Subscription-Key"] = ED_KEY
+    return f"{ED_BASE}{path}?" + urllib.parse.urlencode(p)
+
+def _ed_get(path, params, binary=False):
+    """EDINETを1回叩く。鍵はURLに入るので、例外にもログにもURLを出さない。"""
+    import urllib.request, urllib.error
+    if not ED_KEY or _ED["blocked"]: return None
+    for att in range(ED_RETRY):
+        try:
+            req = urllib.request.Request(
+                _ed_url(path, params), headers={"User-Agent": "jp-swing/1.0"})
+            _ED["req"] += 1
+            with urllib.request.urlopen(req, timeout=60) as r:
+                b = r.read()
+            time.sleep(ED_GAP_S)
+            return b if binary else json.loads(b.decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            # ★e には URL が含まれる。str(e) を残さない。
+            if e.code == 429:
+                _ED["n429"] += 1
+                time.sleep(min(ED_GAP_S * (2 ** att) * 5, 60)); continue
+            if e.code in (401, 403):
+                _ED["blocked"] = f"HTTP {e.code}（キーか権限）"
+                return None
+            k = f"HTTP {e.code}"
+            _ED["err"][k] = _ED["err"].get(k, 0) + 1
+            if e.code >= 500 and att < ED_RETRY - 1:
+                time.sleep(ED_GAP_S * (2 ** att)); continue
+            return None
+        except Exception as e:
+            k = type(e).__name__        # メッセージは残さない（URLが混じりうる）
+            _ED["err"][k] = _ED["err"].get(k, 0) + 1
+            if att < ED_RETRY - 1:
+                time.sleep(ED_GAP_S * (2 ** att)); continue
+            return None
+    return None
+
+def ed_list(date):
+    """その日に提出された書類の一覧。type=2 で提出書類一覧まで取る。"""
+    o = _ed_get("/documents.json", {"date": date, "type": 2})
+    if not isinstance(o, dict): return []
+    r = o.get("results")
+    return r if isinstance(r, list) else []
+
+def ed_pick(results):
+    """有報・半期報告書のうち、証券コードが付いているものだけ。
+       訂正報告書(130/170)は本体と別に出るので、ここでは拾わない
+       （訂正を本体と誤って混ぜると数字が二重になる）。"""
+    out = []
+    for r in results or []:
+        if str(r.get("docTypeCode") or "") not in ED_DOC_TYPES: continue
+        sec = str(r.get("secCode") or "").strip()
+        if not sec: continue                       # 非上場は対象外
+        code = sec[:4] if len(sec) == 5 and sec.endswith("0") else sec
+        did = str(r.get("docID") or "").strip()
+        if not did: continue
+        out.append({"code": code, "docid": did,
+                    "submit": str(r.get("submitDateTime") or "")[:10],
+                    "period": str(r.get("periodEnd") or "")[:10],
+                    "dtype": str(r.get("docTypeCode"))})
+    return out
+
+def _ed_decode(raw):
+    """EDINETのCSVは文字コードと区切りが環境依存で当てにくい。
+       決め打ちにせず、順に試して「列名が読めたもの」を採る。
+       どれで読めたかは meta に残す（次回の当てが付く）。"""
+    for enc in ("utf-16", "utf-16-le", "utf-8-sig", "cp932", "utf-8"):
+        try:
+            t = raw.decode(enc)
+        except Exception:
+            continue
+        if "要素ID" in t or "elementId" in t or "要素ID" in t:
+            head = t.splitlines()[0] if t.splitlines() else ""
+            sep = "\t" if head.count("\t") >= head.count(",") else ","
+            return t, enc, sep
+    return None, None, None
+
+def ed_parse_csv(zip_bytes):
+    """ZIPの中のCSVから、貸借対照表の必要項目を取り出す。
+
+       ★当期・時点（Instant）の値だけを使う。前期や期間の値を混ぜない。
+       ★連結を優先し、無ければ個別を使う（非連結の会社がある）。
+       取れなかった項目は None のまま返す（0で埋めない）。"""
+    import zipfile, io
+    try:
+        z = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except Exception as e:
+        _ED["err"]["zip:" + type(e).__name__] = _ED["err"].get("zip:" + type(e).__name__, 0) + 1
+        return None
+    # ★監査報告書のCSVは除く。実際のファイル名は jpaud-aai-cc-001_... で、
+    #   "audit" という語は入っていない（以前は "audit" で弾くつもりだったが
+    #   何も弾けていなかった）。接頭辞 jpaud で判定する。
+    names = [n for n in z.namelist()
+             if n.lower().endswith(".csv")
+             and not os.path.basename(n).lower().startswith("jpaud")]
+    # XBRL_TO_CSV 配下が本体。無ければ全部見る
+    pref = [n for n in names if "XBRL_TO_CSV" in n.upper()] or names
+    want = {e: k for k, es in ED_ELEM.items() for e in es}
+    got = {}
+    for n in pref:
+        try:
+            raw = z.read(n)
+        except Exception:
+            continue
+        txt, enc, sep = _ed_decode(raw)
+        if txt is None: continue
+        if _ED["enc"] is None: _ED["enc"], _ED["sep"] = enc, ("TAB" if sep == "\t" else "COMMA")
+        lines = txt.splitlines()
+        if not lines: continue
+        hdr = [h.strip().strip('"') for h in lines[0].split(sep)]
+        if _ED["cols"] is None: _ED["cols"] = hdr[:12]
+        def col(*cands):
+            for c in cands:
+                if c in hdr: return hdr.index(c)
+            return None
+        i_el = col("要素ID", "elementId")
+        i_cx = col("コンテキストID", "contextRef")
+        i_vl = col("値", "value")
+        i_cs = col("連結・個別")
+        if i_el is None or i_cx is None or i_vl is None: continue
+        for ln in lines[1:]:
+            f = [x.strip().strip('"') for x in ln.split(sep)]
+            if len(f) <= max(i_el, i_cx, i_vl): continue
+            el = f[i_el]
+            if el not in want: continue
+            cx = f[i_cx]
+            # 当期の時点の値だけ。前期(Prior)や期間(Duration)は使わない
+            if not cx.startswith("CurrentYear") or "Instant" not in cx: continue
+            solo = ("NonConsolidated" in cx) or \
+                   (i_cs is not None and len(f) > i_cs and f[i_cs] == "個別")
+            try:
+                v = float(f[i_vl].replace(",", ""))
+            except (ValueError, AttributeError):
+                continue
+            k = want[el]
+            # 連結を優先。既に連結が入っていれば個別で上書きしない
+            if k in got and got[k][1] is False and solo: continue
+            got[k] = (v, solo)
+    if not got: return None
+    _ED["parsed"] += 1
+    out = {k: v for k, (v, _s) in got.items()}
+    out["solo"] = all(s for _v, s in got.values())
+    return out
+
+def ed_load():
+    try:
+        if os.path.exists(ED_PATH):
+            o = json.load(open(ED_PATH, encoding="utf-8"))
+            if isinstance(o.get("rows"), dict): return o
+    except Exception as e:
+        meta["errors"].append(f"edinet load: {type(e).__name__}")
+    return {"rows": {}, "seen_dates": [], "attribution": ED_ATTRIB}
+
+def ed_dates_to_scan(seen):
+    """引く日付。新しい側（直近ED_LIST_DAYS日）は毎回見て、
+       残りは古い側へ遡って埋める。土日は提出が無いので省く。"""
+    today = NOW.date()
+    fresh, back = [], []
+    for k in range(1, ED_LIST_DAYS + 1):
+        d = today - dt.timedelta(days=k)
+        if d.weekday() < 5: fresh.append(d.isoformat())
+    for k in range(ED_LIST_DAYS + 1, ED_BACKFILL_D + 1):
+        d = today - dt.timedelta(days=k)
+        if d.weekday() >= 5: continue
+        s = d.isoformat()
+        if s not in seen: back.append(s)
+    # 新しい側は必ず見る。古い側は残り枠だけ
+    return fresh + back[:max(ED_MAX_LIST - len(fresh), 0)]
+
+def ed_update():
+    """一覧を引いて、まだ持っていない書類を落として貸借を取り出す。
+       1回の実行で落とす数に上限を置き、日々積み上げる。"""
+    cache = ed_load()
+    if not ED_KEY:
+        meta["edinet"] = {"skipped": "EDINET_API_KEY 未設定",
+                          "codes": len(cache["rows"])}
+        print("[EDINET] EDINET_API_KEY が無いので貸借対照表は取りに行かない"
+              f"（手元のキャッシュ {len(cache['rows'])}銘柄はそのまま使う）")
+        return cache
+    seen = set(cache.get("seen_dates") or [])
+    rows = cache["rows"]
+    dates = ed_dates_to_scan(seen)
+    found, got_docs, listed = [], 0, 0
+    for d in dates:
+        r = ed_list(d)
+        if _ED["blocked"]: break
+        listed += 1
+        seen.add(d)
+        found.extend(ed_pick(r))
+    # 既に持っていて、同じ書類なら取り直さない
+    todo = []
+    for f in found:
+        cur = rows.get(f["code"])
+        if cur and cur.get("docid") == f["docid"]: continue
+        if cur and (cur.get("submit") or "") > f["submit"]: continue   # 古い方は不要
+        todo.append(f)
+    todo.sort(key=lambda x: x["submit"], reverse=True)      # 新しい開示を先に
+    for f in todo[:ED_MAX_DOCS]:
+        if _ED["blocked"]: break
+        b = _ed_get(f"/documents/{f['docid']}", {"type": 5}, binary=True)
+        _ED["docs"] += 1
+        if not b: continue
+        v = ed_parse_csv(b)
+        if not v: continue
+        got_docs += 1
+        rows[f["code"]] = {"docid": f["docid"], "submit": f["submit"],
+                           "period": f["period"], "dtype": f["dtype"],
+                           "ca": v.get("ca"), "inv": v.get("inv"),
+                           "liab": v.get("liab"), "ta": v.get("ta"),
+                           "na": v.get("na"), "solo": v.get("solo")}
+    cache["rows"] = rows
+    cache["seen_dates"] = sorted(seen)[-1200:]
+    cache["attribution"] = ED_ATTRIB
+    cache["generated_at_jst"] = NOW.isoformat()
+    cache["note"] = ("有価証券報告書・半期報告書の貸借対照表から、"
+                     "流動資産合計・投資有価証券・負債合計・資産合計・純資産合計を"
+                     "取り出したもの。" + ED_ATTRIB)
+    cache["with_ca"] = sum(1 for v in rows.values() if v.get("ca") is not None)
+    cache["with_inv"] = sum(1 for v in rows.values() if v.get("inv") is not None)
+    try:
+        json.dump(cache, open(ED_PATH, "w"), ensure_ascii=False, indent=1)
+    except Exception as e:
+        meta["errors"].append(f"edinet write: {type(e).__name__}")
+    meta["edinet"] = {"codes": len(rows), "with_ca": cache["with_ca"],
+                      "with_inv": cache["with_inv"], "listed_days": listed,
+                      "todo": len(todo), "downloaded": _ED["docs"],
+                      "parsed": got_docs, "req": _ED["req"], "n429": _ED["n429"],
+                      "blocked": _ED["blocked"], "enc": _ED["enc"],
+                      "sep": _ED["sep"], "cols": _ED["cols"],
+                      "err": dict(_ED["err"])}
+    print(f"[EDINET] 一覧{listed}日 / 未取得{len(todo)}件のうち{_ED['docs']}件を取得 / "
+          f"解釈成功{got_docs}件 / 累計{len(rows):,}銘柄"
+          f"（流動資産あり{cache['with_ca']:,}）")
+    if _ED["blocked"]:
+        print(f"::warning::EDINETが止まりました（{_ED['blocked']}）。"
+              "キーとプランを確認してください")
+    elif len(rows) == 0:
+        print("::warning::EDINETから1件も取れていません。meta.json の edinet を確認してください")
+    return cache
+
+def ed_netcash(ed_rows, code, price, shares):
+    """清原式のネットキャッシュ比率。**これが本物**。
+         ネットキャッシュ ＝ 流動資産 ＋ 投資有価証券×70% − 負債合計
+         比率 ＝ ネットキャッシュ ÷ 時価総額
+       作れなければ None を返す（推測で埋めない）。"""
+    r = (ed_rows or {}).get(str(code))
+    if not r or not price or not shares: return None
+    ca, liab = r.get("ca"), r.get("liab")
+    if ca is None or liab is None: return None
+    mcap = price * shares
+    if not (mcap > 0): return None
+    inv = r.get("inv") or 0.0        # 投資有価証券が無い会社は0で正しい
+    nc = ca + inv * ED_INV_HAIRCUT - liab
+    return {"ratio": nc / mcap, "asof": r.get("submit"),
+            "period": r.get("period"), "solo": r.get("solo"),
+            "inv_missing": r.get("inv") is None,
+            # 本人指定の「流動資産のほうが負債より大きい」。投資有価証券を
+            # 足せば比率が出ても、この条件自体は流動資産と負債合計で見る。
+            "ca_gt_liab": bool(ca > liab),
+            "ca": ca, "liab": liab, "inv": r.get("inv"), "ta": r.get("ta")}
+
+# ══════════════════════════════════════════════════════════════════════
 #  清原枠のスクリーニング（2026-09-13に指定された条件）
 #
 #  指定:
@@ -1225,8 +1550,10 @@ def fund_coverage(out, has):
 #      要確認 … それ以外（売掛金・棚卸資産を入れれば超える可能性がある）
 #    ネットキャッシュ比率 ≥ 1 は
 #      確実   … 下限 ≥ 1
-#      有力   … 下限 ≥ KY_NC_NEAR（「1に近い」側）
-#      要確認 … それ未満（上限は1.25以上あるので可能性は残る）
+#      確実   … 現金だけで比率1以上
+#      有力   … 普通の貸借（現金以外の流動資産が総資産の35%程度）で届く
+#      要確認 … 60%まで要る
+#      薄い   … それ以上＝異常な貸借が必要
 #
 #  この節が出すのは**候補**であって推奨ではない。
 #  清原氏は「小型株は経営者が9割」としており、経営者の意志・言動の一致・
@@ -1236,9 +1563,29 @@ KY_PATH         = f"{OUT}/kiyohara.json"
 KY_MAX_PER      = 8.0            # 予想PER の上限
 KY_MAX_PBR      = 0.8            # PBR の上限
 KY_MAX_MCAP     = 50_000_000_000  # 時価総額 500億円
-KY_NC_NEAR      = 0.8            # ネットキャッシュ比率が「1に近い」の下限（下限版）
-KY_MIN_TURNOVER = 10_000_000     # 売買代金20日平均の下限。1銘柄30万円なら
-                                 # 日商1,000万円の3%で、執行はできる水準
+# ★分類のしきい値を実測で切り直した（2026-09-13）。
+#   最初は「下限（現金−負債合計）÷時価総額 ≥ 0.8」を「有力」としたが、
+#   条件を通った71件のうち該当0件、現金>負債すら3件だけだった。
+#   現金だけで時価総額に迫るには現金が総資産の8割という異常な貸借が要るので、
+#   この線はほぼ誰も超えない＝分類が情報を持たなかった。
+#   代わりに「比率1に届くのに、現金以外の資産がどれだけ要るか」で切る:
+#     need ＝ (時価総額 ＋ 負債合計 − 現金) ÷ 総資産
+#   これは「(流動資産−現金) ＋ 投資有価証券×70%」が総資産の何割あれば
+#   比率1に届くかを表す。日本の製造業だと現金以外の流動資産は総資産の
+#   35〜40%程度が普通なので、need が小さいほど届きやすい。
+#   ★この境目は私が置いた仮定。手作業の優先順位を付けるための目安で、
+#     判定そのものはバフェット・コードの実数で行う。
+KY_NC_MIN       = 0.8            # 本物の比率が取れている銘柄に課す下限。
+                                 # 「1以上または1に近い」の「近い」をここで定義する。
+                                 # ★EDINETの貸借対照表が無い銘柄は落とさない
+                                 #   （キャッシュが積み上がる途中で消えてしまうため）。
+KY_NEED_SURE    = 0.0            # これ以下なら現金だけで比率1以上（確実）
+KY_NEED_LIKELY  = 0.35           # これ以下なら普通の貸借で届く（有力）
+KY_NEED_MAYBE   = 0.60           # これ以下なら届く可能性がある（要確認）
+KY_MIN_TURNOVER = 5_000_000      # 売買代金20日平均の下限。1銘柄37.5万円なら
+                                 # 日商500万円の7.5%。数日に分ければ入れる。
+                                 # 1,000万円だと1,125件が落ちていて、小型株を
+                                 # 必要以上に削っていた（実測）。
 KY_NAMES        = 8              # 清原枠で持つ銘柄数の想定。
                                  # 総額600万円なら清原枠300万円、1銘柄37.5万円。
                                  # 単元100株なので株価3,750円以下まで買える。
@@ -1247,8 +1594,13 @@ KY_NAMES        = 8              # 清原枠で持つ銘柄数の想定。
 KY_TOP          = 40             # 出す候補の上限
 KY_EXCLUDE      = ("銀行", "金融（除く銀行）")   # 流動資産と負債の意味が違う
 
-def ky_metrics(m, price):
-    """清原枠の判定に使う数字。作れないものは None のまま返す（推測しない）。"""
+def ky_metrics(m, price, ed_rows=None, code=None):
+    """清原枠の判定に使う数字。作れないものは None のまま返す（推測しない）。
+
+       nc_real … EDINETの貸借対照表から作った**本物の**ネットキャッシュ比率。
+                 流動資産＋投資有価証券×70%−負債合計 ÷ 時価総額。
+       need   … 本物が作れないときの代用（比率1に届くのに現金以外の資産が
+                総資産の何割必要か）。本物があるときは使わない。"""
     if not m or not price or price <= 0: return None
     ta, eq, cash, sh = m.get("ta"), m.get("eq"), m.get("cash"), m.get("sh")
     feps, op = m.get("feps"), m.get("op")
@@ -1257,7 +1609,16 @@ def ky_metrics(m, price):
     mcap = price * sh
     if not (mcap > 0): return None
     debt = ta - eq
-    return {"mcap": mcap, "debt": debt,
+    # 比率1に届くのに、現金以外の資産が総資産の何割必要か（代用）
+    need = ((mcap + debt - cash) / ta) if cash is not None else None
+    # 本物のネットキャッシュ比率（EDINETの貸借対照表がある銘柄だけ）
+    real = ed_netcash(ed_rows, code, price, sh) if (ed_rows and code) else None
+    return {"mcap": mcap, "debt": debt, "need": need,
+            "nc_real": (real or {}).get("ratio"),
+            "nc_asof": (real or {}).get("asof"),
+            "nc_solo": (real or {}).get("solo"),
+            "nc_inv_missing": (real or {}).get("inv_missing"),
+            "nc_ca_gt_liab": (real or {}).get("ca_gt_liab"),
             "per": (price / feps) if (feps is not None and feps > 0) else None,
             "pbr": mcap / eq,
             "nc_lo": ((cash - debt) / mcap) if cash is not None else None,
@@ -1277,14 +1638,55 @@ def ky_pass(k):
     if k["pbr"] > KY_MAX_PBR:                return False, f"PBR>{KY_MAX_PBR}倍"
     if k["mcap"] > KY_MAX_MCAP:              return False, f"時価総額>{KY_MAX_MCAP/1e8:.0f}億円"
     if k["op"] is not None and k["op"] <= 0: return False, "本業が赤字"
+    # ★本物の比率が取れている銘柄には、指定された条件をそのまま課す。
+    #   取れていない銘柄は落とさない（EDINETのキャッシュは日々積み上がる途中で、
+    #   ここで落とすと「まだ取っていないだけ」の銘柄が消える）。
+    r = k.get("nc_real")
+    if r is not None:
+        if k.get("nc_ca_gt_liab") is False:
+            return False, "流動資産≤負債合計(実測)"
+        if r < KY_NC_MIN:
+            return False, f"ネットキャッシュ比率<{KY_NC_MIN}(実測)"
     return True, "通過"
 
+def ky_band(k):
+    """分類の符号。表示文（ky_state）と分けておく。
+       件数の集計は必ずこちらを使う。表示文の先頭一致で数えると、
+       文言を変えた瞬間に黙って0件になる（実際に一度やった）。"""
+    r = k.get("nc_real")
+    if r is not None:
+        if r >= 1.0:        return "real_ge1"
+        if r >= KY_NC_MIN:  return "real_near"
+        return "real_lo"
+    n = k.get("need")
+    if n is None:                   return "unknown"
+    if n <= KY_NEED_SURE:           return "sure"
+    if n <= KY_NEED_LIKELY:         return "likely"
+    if n <= KY_NEED_MAYBE:          return "maybe"
+    return "thin"
+
+KY_BAND_JA = {"real_ge1": "実測1以上", "real_near": "実測1に近い",
+              "real_lo": "実測1未満", "sure": "推定：確実",
+              "likely": "推定：有力", "maybe": "推定：要確認",
+              "thin": "推定：薄い", "unknown": "推定不可"}
+
 def ky_state(k):
-    lo = k.get("nc_lo")
-    if lo is not None and lo >= 1.0:        return "確実(下限で1以上)"
-    if lo is not None and lo >= KY_NC_NEAR: return "有力(下限が1に近い)"
-    if k.get("cash_gt_debt"):               return "要確認(現金>負債)"
-    return "要確認(流動資産次第)"
+    """ネットキャッシュ比率の状態。
+
+       ★EDINETの貸借対照表がある銘柄は**本物の比率**で判定する。
+         無い銘柄だけ、代用（必要割合）で確からしさを言う。
+         両者を同じ言葉で並べると区別が付かないので、表記を分ける。"""
+    r = k.get("nc_real")
+    if r is not None:
+        if r >= 1.0:  return f"実測 {r:.2f}（1以上）"
+        if r >= 0.8:  return f"実測 {r:.2f}（1に近い）"
+        return f"実測 {r:.2f}"
+    n = k.get("need")
+    if n is None:                   return "推定不可(現金が取れない)"
+    if n <= KY_NEED_SURE:           return "推定：確実"
+    if n <= KY_NEED_LIKELY:         return "推定：有力"
+    if n <= KY_NEED_MAYBE:          return "推定：要確認"
+    return "推定：薄い"
 
 def ky_return_tag(k):
     """株主還元。清原氏が「最終的なカタリスト」とするもの＝罠の見分け。"""
@@ -1294,7 +1696,7 @@ def ky_return_tag(k):
     if (k.get("buyback") or 0) > 0.1: t.append("自己株買い")
     return "／".join(t) if t else "配当のみ"
 
-def kiyohara_screen(sc_all, fmap, names=None, s17=None):
+def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None):
     """清原枠の候補。指定条件で絞り、読み取った考えで並べる。
 
        ★書き出すのは分類・順位・タグと、条件の通過状況だけ。
@@ -1315,15 +1717,23 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None):
         if s17.get(cc) in KY_EXCLUDE:
             reasons["銀行・金融（式が成立しない）"] = reasons.get("銀行・金融（式が成立しない）", 0) + 1
             continue
-        k = ky_metrics(fmap.get(cc), float(sc_all["close"].iloc[i]))
+        k = ky_metrics(fmap.get(cc), float(sc_all["close"].iloc[i]), ed_rows, cc)
         ok, why = ky_pass(k)
         if not ok:
             reasons[why] = reasons.get(why, 0) + 1
             continue
         rows.append({"code": cc, "name": names.get(cc, ""), "s17": s17.get(cc, ""),
-                     "state": ky_state(k), "ret": ky_return_tag(k),
+                     "state": ky_state(k), "band": ky_band(k),
+                     "ret": ky_return_tag(k),
+                     "nc_asof": k.get("nc_asof"),
+                     "nc_solo": k.get("nc_solo"),
                      "_ep": (1.0 / k["per"]) if k["per"] else 0.0,
-                     "_nc": k["nc_lo"] if k["nc_lo"] is not None else -9e9,
+                     # ★本物の比率があればそれを使う。無い銘柄は代用（必要割合の
+                     #   符号反転）。本物と代用が混ざるので、順位は目安として読む。
+                     "_nc": (k["nc_real"] if k.get("nc_real") is not None
+                             else (-k["need"] if k.get("need") is not None else -9e9)),
+                     "nc_real": (round(k["nc_real"], 2)
+                                 if k.get("nc_real") is not None else None),
                      "_po": (0.0 if k.get("no_div") else
                              1.0 + max(k.get("div_up") or 0, 0) / 100
                              + max(k.get("buyback") or 0, 0) / 10)})
@@ -1332,15 +1742,32 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None):
     #   断面の順位に直してから足す（単位の違う数字を直接足さない）。
     if rows:
         def prank(key):
-            vals = sorted(range(len(rows)), key=lambda i: rows[i][key])
-            r = [0.0] * len(rows)
-            for pos, i in enumerate(vals): r[i] = (pos + 1) / len(rows)
+            """断面の順位（0〜1）。同じ値には同じ順位を与える。
+
+               ★同点を並び順で割ってはいけない。株主還元タグは
+                 0.0 / 1.0 / 1.x の数種類しか取らないので同点が大量に出る。
+                 以前は同点でも (pos+1)/n を順に振っていたため、
+                 リストの位置（ほぼ証券コード順）が点数に漏れていた。
+                 実測1.10の銘柄が、実測の無い銘柄に抜かれることが起きた。"""
+            n = len(rows)
+            order = sorted(range(n), key=lambda i: rows[i][key])
+            r = [0.0] * n
+            p = 0
+            while p < n:
+                q = p
+                while q + 1 < n and rows[order[q + 1]][key] == rows[order[p]][key]:
+                    q += 1
+                avg = ((p + 1) + (q + 1)) / 2 / n      # 同点は平均順位
+                for i in order[p:q + 1]: r[i] = avg
+                p = q + 1
             return r
         pe, pn, pp = prank("_ep"), prank("_nc"), prank("_po")
         for i, r in enumerate(rows):
             # PER 2 : ネットキャッシュ 1 : 株主還元 1
             r["rank_score"] = round((2 * pe[i] + pn[i] + pp[i]) / 4 * 100, 1)
         rows.sort(key=lambda r: -r["rank_score"])
+    # 本物の比率がある銘柄と無い銘柄が混ざる。何件ずつかを残す。
+
         for n, r in enumerate(rows[:KY_TOP], start=1):
             r["rank"] = n
             for k2 in ("_ep", "_nc", "_po"): r.pop(k2, None)
@@ -1348,14 +1775,33 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None):
     payload = {"generated_at_jst": NOW.isoformat(),
                "screen": {"max_per": KY_MAX_PER, "max_pbr": KY_MAX_PBR,
                           "max_mcap_oku": KY_MAX_MCAP / 1e8,
-                          "nc_near": KY_NC_NEAR,
+                          "need_bands": [KY_NEED_SURE, KY_NEED_LIKELY, KY_NEED_MAYBE],
                           "min_turnover": KY_MIN_TURNOVER,
                           "excluded_sectors": list(KY_EXCLUDE)},
                "formula": "ネットキャッシュ＝流動資産＋投資有価証券×70%−負債合計／比率＝÷時価総額",
                "universe": int(len(sc_all)), "passed": len(rows), "shown": len(out),
-               "sure": sum(1 for r in out if r["state"].startswith("確実")),
-               "likely": sum(1 for r in out if r["state"].startswith("有力")),
+               # ★表示文ではなく band で数える（文言変更で0件になるのを防ぐ）
+               "bands": {b: sum(1 for r in out if r.get("band") == b)
+                         for b in ("real_ge1", "real_near", "real_lo",
+                                   "sure", "likely", "maybe", "thin", "unknown")},
+               "sure": sum(1 for r in out if r.get("band") == "sure"),
+               "likely": sum(1 for r in out if r.get("band") == "likely"),
+               "maybe": sum(1 for r in out if r.get("band") == "maybe"),
+               "thin": sum(1 for r in out if r.get("band") == "thin"),
+               "need_bands": {"sure": KY_NEED_SURE, "likely": KY_NEED_LIKELY,
+                              "maybe": KY_NEED_MAYBE},
                "no_div": sum(1 for r in out if r["ret"] == "無配"),
+               # 通過した全件（rows）と表に出す分（out）を分けて数える
+               "with_real": sum(1 for r in rows if r.get("nc_real") is not None),
+               "with_real_shown": sum(1 for r in out if r.get("nc_real") is not None),
+               "real_ge1": sum(1 for r in rows
+                               if r.get("nc_real") is not None
+                               and r["nc_real"] >= 1.0),
+               "real_near": sum(1 for r in rows
+                                if r.get("nc_real") is not None
+                                and KY_NC_MIN <= r["nc_real"] < 1.0),
+               "nc_min": KY_NC_MIN,
+               "edinet_attribution": ED_ATTRIB,
                "dropped": reasons,
                "rank_weights": "PER2 : ネットキャッシュ1 : 株主還元1（この重みは指定に無い私の置き方）",
                "note": ("条件は本人指定（予想PER8倍以下・PBR0.8倍以下・時価総額500億円以下・"
@@ -1365,9 +1811,13 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None):
                "rows": out}
     json.dump(payload, open(KY_PATH, "w"), ensure_ascii=False, indent=1)
     meta["kiyohara"] = {k: payload[k] for k in
-                        ("universe", "passed", "shown", "sure", "likely", "no_div", "dropped")}
+                        ("universe", "passed", "shown", "sure", "likely", "no_div",
+                         "with_real", "real_ge1", "real_near", "bands", "dropped")}
     print(f"[清原枠] 母集団{len(sc_all):,} → 条件通過{len(rows)}件"
-          f"（確実{payload['sure']} / 有力{payload['likely']} / 無配{payload['no_div']}）")
+          f"（実測あり{payload['with_real']}：1以上{payload['real_ge1']} / "
+          f"1に近い{payload['real_near']}"
+          f"／推定 確実{payload['sure']} 有力{payload['likely']}"
+          f"／無配{payload['no_div']}）")
     return out
 
 NC_PATH      = f"{OUT}/netcash.json"
@@ -1559,8 +2009,21 @@ def fund_today(sc, refetch=True):
         meta["netcash"] = {"error": str(e)[:120]}
     # 清原枠は母集団が違う（ATR帯や売買代金の条件がスイングと別）。
     # ATRで落とす前の全銘柄の枠を使う。
+    # EDINETの貸借対照表（本物のネットキャッシュ比率に要る）。
+    # キーが無くても手元のキャッシュは使う。
+    _ed = {"rows": {}}
     try:
-        kiyohara_screen(FUND_ALL if FUND_ALL is not None else sc, fmap, _nm, _s7)
+        _ed = ed_update()
+    except Exception as e:
+        # ★str(e) は使わない。EDINETは鍵をURLのクエリに載せる仕様なので、
+        #   例外文をそのまま残すと public リポジトリに鍵が出る。
+        meta["errors"].append(f"edinet: {type(e).__name__}")
+        meta["edinet"] = {"error": type(e).__name__}
+        try: _ed = ed_load()
+        except Exception: _ed = {"rows": {}}
+    try:
+        kiyohara_screen(FUND_ALL if FUND_ALL is not None else sc, fmap, _nm, _s7,
+                        (_ed or {}).get("rows"))
     except Exception as e:
         meta["errors"].append(f"kiyohara: {type(e).__name__}: {e}")
         meta["kiyohara"] = {"error": str(e)[:120]}
@@ -1645,6 +2108,8 @@ def fund_today(sc, refetch=True):
 #   ② APIキーそのもの
 #   見つけたら黙って公開せず、その場で削って大きく警告する。
 #   ジョブを落とすのではなく削るのは、その日のレポートまで失うのを避けるため。
+# EDINET由来のファイルは項目名の検査から外す（PDL1.0で公開が認められている）
+ED_EXEMPT = {"edinet.json"}
 RAW_KEYS = {"bps", "feps", "eps", "sales", "op", "ta", "eq", "eqar",
             "cfo", "fop", "fnp", "opm", "opm_stab", "roe", "cfoa"}
 
@@ -1674,10 +2139,19 @@ def commit_guard():
             txt = open(fp, encoding="utf-8").read()
         except Exception:
             continue
-        if JQ_KEY and len(JQ_KEY) >= 12 and JQ_KEY in txt:
-            key_files.append(fp)
-            open(fp, "w", encoding="utf-8").write(txt.replace(JQ_KEY, "[REDACTED]"))
-            txt = None
+        # ★EDINETの鍵はURLのクエリパラメータで送る仕様なので、
+        #   J-Quantsの鍵より漏れやすい。両方を伏せ字の対象にする。
+        for _k in (JQ_KEY, ED_KEY):
+            if _k and len(_k) >= 12 and _k in (txt or ""):
+                if fp not in key_files: key_files.append(fp)
+                txt = txt.replace(_k, "[REDACTED]")
+                open(fp, "w", encoding="utf-8").write(txt)
+        # ★EDINETの数値は公共データ利用規約(PDL1.0)で二次利用が認められて
+        #   いるので、生の項目名（ta など）が入っていて正常。
+        #   この検査はJ-Quantsのデータを守るためのものなので対象外にする。
+        #   （鍵の伏せ字は上で済んでいて、そちらは全ファイルに適用している）
+        if os.path.basename(fp) in ED_EXEMPT:
+            continue
         try:
             o = json.loads(txt if txt is not None
                            else open(fp, encoding="utf-8").read())
@@ -1751,7 +2225,17 @@ BT_TOP       = 10       # 各サイドの採用数
 #   5年分の実データは既に手元にあるので、追加の取得なしで測れる。
 BT_HOLDS     = (10, 25, 60, 120, 250)
 # 利確の有無も比べる。3ATR利確はバリューの上振れを切っている可能性がある。
-BT_EXITS     = (("2atr_3atr", True), ("2atr_only", False))
+# (名前, 利確を使うか, 損切りを使うか)
+#   2atr_3atr … いまのスイングの執行
+#   2atr_only … 利確をやめる。実測で平均Rが大きく伸びた（上振れを刈っていた）
+#   hold_only … 損切りもやめて期限まで持つ。★これが清原式に一番近い。
+#     実測で「利確なし・250日」の損切り率が62%だった。2ATR（約5%）の損切りを
+#     250日保有に付けるのは噛み合っていない。値動きの雑音でほぼ確実に当たる。
+#     清原氏は5%の損切りなど使わず、仮説が崩れたときに降りる。
+#     その「仮説が崩れたとき」は機械化できないので、下限として
+#     「何もせず期限まで持つ」を測る。
+BT_EXITS     = (("2atr_3atr", True, True), ("2atr_only", False, True),
+                ("hold_only", False, False))
 BT_WARMUP    = 280      # 12-2モメンタム（252日）に必要な本数
 BT_MAX_AGE_D = 30       # これより新しい結果があれば作り直さない
 BT_BUDGET_S  = 2400
@@ -1881,7 +2365,7 @@ def bt_score_at(f, i):
                 volr=f["volr"][i] if f["volr"][i] == f["volr"][i] else 1.0,
                 turn=f["turn"][i])
 
-def bt_simulate(f, i, entry, atr, hold, use_target=True):
+def bt_simulate(f, i, entry, atr, hold, use_target=True, use_stop=True):
     """i+1 以降の実際の高安で決着させる。窓は寄値で約定。
 
        use_target=False は「利確しない（損切りと期限だけ）」。
@@ -1892,7 +2376,7 @@ def bt_simulate(f, i, entry, atr, hold, use_target=True):
     n = len(f["close"])
     for k in range(i+1, min(i+1+hold, n)):
         op, hi, lo = f["open"][k], f["high"][k], f["low"][k]
-        if lo <= stop:
+        if use_stop and lo <= stop:
             fill = min(op, stop) if op == op else stop
             return (fill-entry)/(2*atr), k-i, "stop"
         if use_target and hi >= tgt:
@@ -1901,7 +2385,7 @@ def bt_simulate(f, i, entry, atr, hold, use_target=True):
     k = min(i+hold, n-1)
     return (f["close"][k]-entry)/(2*atr), k-i, "timeout"
 
-def bt_simulate_many(M, rows, i, entry, atr, hold, use_target=True):
+def bt_simulate_many(M, rows, i, entry, atr, hold, use_target=True, use_stop=True):
     """上と同じ決着を、その日の母集団まとめて一度に出す。
 
        なぜ要るか:
@@ -1923,8 +2407,11 @@ def bt_simulate_many(M, rows, i, entry, atr, hold, use_target=True):
     stop = entry - 2 * atr
     tgt = entry + 3 * atr
     big = H.shape[1] + 10
-    s_any = L <= stop[:, None]
-    s_k = np.where(s_any.any(1), s_any.argmax(1), big)
+    if use_stop:
+        s_any = L <= stop[:, None]
+        s_k = np.where(s_any.any(1), s_any.argmax(1), big)
+    else:
+        s_k = np.full(len(rows), big)
     if use_target:
         t_any = H >= tgt[:, None]
         t_k = np.where(t_any.any(1), t_any.argmax(1), big)
@@ -2098,8 +2585,9 @@ def run_backtest(codes, bench="1306.T"):
             up_i = above.get(i)
             for hold in BT_HOLDS:
                 if i + hold >= nbar: continue      # その保有期間には足りない日
-                for exname, use_t in BT_EXITS:
-                    R, bars, how = bt_simulate_many(M, ridx, i, ent, atv, hold, use_t)
+                for exname, use_t, use_s in BT_EXITS:
+                    R, bars, how = bt_simulate_many(M, ridx, i, ent, atv, hold,
+                                                    use_t, use_s)
                     for j in range(len(rows)):
                         trades[kind].append({"i": i, "hold": hold, "ex": exname,
                                              "R": float(R[j]), "bars": int(bars[j]),
@@ -2140,6 +2628,27 @@ def bt_clustered(trades, hold, regime=None, ex="2atr_3atr"):
             if regime is not None and r["up"] != regime: continue
             per.setdefault(r["i"], {}).setdefault(kind, []).append(r["R"])
     gap = max(1, -(-hold // BT_STEP))      # 期間が重ならない間隔（切り上げ）
+    def _t_nw(xs, lag):
+        """重なりを捨てずに、重なったぶんだけ標準誤差を膨らませる（Newey-West）。
+
+           なぜ要るか:
+             保有250日を5営業日ごとに建てると、重なりを消した部分標本は
+             5年でも2件しか残らず、検定そのものができなくなる（実測）。
+             重なった系列でも、自己相関を織り込んだ標準誤差を使えば
+             全105日ぶんを使って検定できる。これが標準的な扱い。
+           ★有意性を作り出す道具ではない。重なりが大きいほど標準誤差は
+             膨らみ、t値は小さくなる。捨てるか膨らませるかの違いで、
+             膨らませるほうが情報を捨てずに済む。"""
+        n = len(xs)
+        if n < 12: return None, n
+        a = np.asarray(xs, float); mu = float(a.mean()); e = a - mu
+        v = float(e @ e) / n
+        for j in range(1, min(lag, n - 1) + 1):
+            gj = float(e[j:] @ e[:-j]) / n
+            v += 2.0 * (1.0 - j / (lag + 1)) * gj      # Bartlett の重み
+        if not (v > 0): return None, n
+        return round(mu / (v / n) ** 0.5, 2), n
+
     def _t(xs):
         n = len(xs)
         if n < 8: return None, n
@@ -2162,9 +2671,11 @@ def bt_clustered(trades, hold, regime=None, ex="2atr_3atr"):
         if len(ds) < 8: continue
         t_all, n_all = _t(ds)
         t_ind, n_ind = _t(ds[::gap])
+        t_nw, _ = _t_nw(ds, max(gap - 1, 0))
         out[k] = {"base": bk, "mean_diff": round(float(np.mean(ds)), 4),
                   "t_dates": t_all, "n_dates": n_all,
-                  "t_nonoverlap": t_ind, "n_nonoverlap": n_ind, "gap": gap}
+                  "t_nonoverlap": t_ind, "n_nonoverlap": n_ind, "gap": gap,
+                  "t_nw": t_nw, "nw_lag": max(gap - 1, 0)}
     return out
 
 def bt_summary(trades, hold, regime=None, ex="2atr_3atr"):
@@ -2991,7 +3502,7 @@ try:
                 # 執行ルールのどれかが変われば、古い結果は比較できない。
                 _cfg = {"period": BT_PERIOD, "step": BT_STEP, "top": BT_TOP,
                         "holds": list(BT_HOLDS), "warmup": BT_WARMUP,
-                        "exits": [e for e, _ in BT_EXITS],
+                        "exits": [e for e, _t, _s in BT_EXITS],
                         "factors": list(BT_FACTORS),
                         "stat": "clustered-v1", "baseline": "pool-mean-v1",
                         "filters": [MIN_TURNOVER, MIN_PRICE, MIN_ATR_PCT, MAX_ATR_PCT]}
@@ -3025,11 +3536,11 @@ try:
                                       "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
                           "config": _cfg, "t_threshold": BT_T_THRESHOLD,
                           "factors": list(BT_FACTORS),
-                          "exits": [e for e, _ in BT_EXITS],
+                          "exits": [e for e, _t, _s in BT_EXITS],
                           "all": {e: {str(h): bt_summary(tk, h, ex=e) for h in BT_HOLDS}
-                                  for e, _ in BT_EXITS},
+                                  for e, _t, _s in BT_EXITS},
                           "clustered": {e: {str(h): bt_clustered(tk, h, ex=e) for h in BT_HOLDS}
-                                        for e, _ in BT_EXITS},
+                                        for e, _t, _s in BT_EXITS},
                           "regime": {"above200": bt_summary(tk, 25, True),
                                      "below200": bt_summary(tk, 25, False)}}
                     json.dump(bt, open(_btp, "w"), ensure_ascii=False, indent=1)
@@ -3462,22 +3973,45 @@ try:
                      "そこで建て日ごとに「その因子の平均R − 同じ日の母集団平均のR」を出し、"
                      "その日次の差を検定する。同じ日で引くので市場全体の動きが消える。"
                      "さらに保有期間ぶん間隔を空けた部分標本でも出す。\n")
-            L.append("| 選び方 | 基準 | 日次の差の平均 | t（全日） | 日数 | t（重なりなし） | 日数 |")
+            L.append("| 選び方 | 基準 | 日次の差の平均 | t（重なり補正） | t（補正なし） | t（重なりなし） | 日数 |")
             L.append("|---|:--|--:|--:|--:|--:|--:|")
             for k, lbl in _labels:
                 c = _cl.get(k)
                 if not c: continue
+                f0 = f"**{c['t_nw']:+.2f}**" if c.get("t_nw") is not None else "—"
                 f1 = f"{c['t_dates']:+.2f}" if c.get("t_dates") is not None else "—"
-                f2 = f"{c['t_nonoverlap']:+.2f}" if c.get("t_nonoverlap") is not None else "—"
+                f2 = (f"{c['t_nonoverlap']:+.2f}({c['n_nonoverlap']}日)"
+                      if c.get("t_nonoverlap") is not None else f"—({c.get('n_nonoverlap', 0)}日)")
                 L.append(f"| {lbl} | {_bname.get(c['base'], '—')} | {c['mean_diff']:+.4f} | "
-                         f"{f1} | {c['n_dates']} | {f2} | {c['n_nonoverlap']} |")
+                         f"{f0} | {f1} | {f2} | {c['n_dates']} |")
+            L.append("\n> **採否に使うのは「t（重なり補正）」**（Newey-West）。"
+                     "5営業日ごとに建てて長く持つと期間が重なるので、"
+                     "重なったぶん標準誤差を膨らませる。"
+                     "「t（補正なし）」は重なりを無視していて**大きく出過ぎる**。"
+                     "「t（重なりなし）」は間隔を空けた部分標本で、"
+                     "保有が長いと日数が足りず検定できない（括弧内が使えた日数）。")
             L.append("")
 
         def _ct(k):
-            """採否に使うt値。建て日で束ねた厳しい方を使い、
-               無ければ日次、最後の手段として粗い値。どれを使ったかも返す。"""
+            """採否に使うt値。どれを使ったかも返す。
+
+               ★重なりを補正した Newey-West を主に見る。
+                 「重なりなし」は保有が長いと日数が足りず検定できない
+                 （保有250日・5年で2件しか残らない）。Newey-West は
+                 全日を使い、重なったぶん標準誤差を膨らませる。
+
+               ★ただし補正後が補正前より大きくなったら補正前を採る。
+                 日次の差に負の自己相関があると Newey-West の分散は
+                 小さくなり、t値が上がることがある（数学的には正しい）。
+                 だが「期間が重なっているのに確信が増す」のは、この用途では
+                 都合が良すぎる方向。緩い側には倒さない。"""
             c = _cl.get(k) or {}
-            for key, nm in (("t_nonoverlap", "重なりなし"), ("t_dates", "日次")):
+            nw, dt_ = c.get("t_nw"), c.get("t_dates")
+            if nw is not None and dt_ is not None:
+                return (nw, "重なり補正") if abs(nw) <= abs(dt_) \
+                    else (dt_, "重なり補正（補正前を採用）")
+            for key, nm in (("t_nw", "重なり補正"), ("t_nonoverlap", "重なりなし"),
+                            ("t_dates", "日次")):
                 if c.get(key) is not None: return c[key], nm
             t = (m.get(k) or {}).get("t_rough")
             return (t, "粗い（過大評価）") if t is not None else (None, None)
@@ -3546,9 +4080,10 @@ try:
                  "いまの執行（3ATR利確・15〜25日で手仕舞い）はその上振れを"
                  "途中で切っている可能性がある。**同じ選び方・同じ損切りで、"
                  "保有期間と利確の有無だけを変えて比べる。**\n")
-        L.append("| 保有 | 執行 | バリュー平均R | 母集団平均R | 差 | t(全日) | t(重なりなし) | 利確% | 損切% | 期限% |")
-        L.append("|--:|:--|--:|--:|--:|--:|--:|--:|--:|--:|")
-        _exl = {"2atr_3atr": "2ATR損切+3ATR利確", "2atr_only": "2ATR損切のみ"}
+        L.append("| 保有 | 執行 | 勝率 | 平均R | 中位R | 母集団平均R | 差 | t(重なり補正) | 利確% | 損切% | 期限% |")
+        L.append("|--:|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|")
+        _exl = {"2atr_3atr": "2ATR損切+3ATR利確", "2atr_only": "2ATR損切のみ",
+                "hold_only": "**何もせず持つ**"}
         for h in bt.get("holds", []):
             for e in bt.get("exits", [_EXD]):
                 a = (bt["all"].get(e) or {}).get(str(h)) or {}
@@ -3556,12 +4091,18 @@ try:
                 v, pf = a.get("value"), a.get("pool_f")
                 if not v: continue
                 cv = c.get("value") or {}
-                f1 = f"{cv['t_dates']:+.2f}" if cv.get("t_dates") is not None else "—"
-                f2 = f"{cv['t_nonoverlap']:+.2f}" if cv.get("t_nonoverlap") is not None else "—"
+                f0 = f"{cv['t_nw']:+.2f}" if cv.get("t_nw") is not None else "—"
                 d  = f"{v['vs_pool']:+.4f}" if "vs_pool" in v else "—"
-                L.append(f"| {h}日 | {_exl.get(e, e)} | {v['avg_r']:+.4f} | "
-                         f"{(pf or {}).get('avg_r', float('nan')):+.4f} | {d} | {f1} | {f2} | "
+                _md = f"{v['med_r']:+.3f}" if "med_r" in v else "—"
+                L.append(f"| {h}日 | {_exl.get(e, e)} | {v['win_pct']:.1f}% | "
+                         f"{v['avg_r']:+.4f} | {_md} | "
+                         f"{(pf or {}).get('avg_r', float('nan')):+.4f} | {d} | {f0} | "
                          f"{v['target']:.0f}% | {v['stop']:.0f}% | {v['timeout']:.0f}% |")
+        L.append("\n> **平均Rと中位Rを必ず並べて見ること。** 実測で「2ATR損切のみ・"
+                 "保有250日」は勝率37.9%なのに平均+7.92Rだった。"
+                 "6割が損切りに当たり、残りの大勝ちが平均を押し上げている形で、"
+                 "**真ん中の1件は負けている**。8銘柄しか持てない口座で"
+                 "平均値を期待値として読むのは危険。")
         L.append("\n> **読み方**: 差が保有期間とともに伸びるなら、いまの15〜25日は"
                  "**伸びている途中で降りている**ということ。"
                  "「2ATR損切のみ」のほうが平均Rが高いなら、3ATR利確が"
@@ -3828,16 +4369,48 @@ try:
         ky = json.load(open(f"{OUT}/kiyohara.json", encoding="utf-8"))
         sch = ky.get("screen", {})
         L.append("\n## 清原枠の候補（総額の半分・長期）\n")
-        L.append(f"**ふるい**: 予想PER {sch.get('max_per')}倍以下／"
+        _wr, _r1 = ky.get("with_real", 0), ky.get("real_ge1", 0)
+        _rn, _ncm = ky.get("real_near", 0), ky.get("nc_min", 0.8)
+        L.append(f"**全銘柄に必ず課している条件**: 予想PER {sch.get('max_per')}倍以下／"
                  f"PBR {sch.get('max_pbr')}倍以下／"
-                 f"時価総額 {sch.get('max_mcap_oku'):.0f}億円以下／"
-                 f"流動資産＞負債／ネットキャッシュ比率が1以上または1に近い"
-                 f"（売買代金20日平均 {sch.get('min_turnover', 0)/1e8:.2f}億円以上、"
+                 f"時価総額 {sch.get('max_mcap_oku'):.0f}億円以下"
+                 f"（売買代金20日平均 {sch.get('min_turnover', 0)/1e4:.0f}万円以上、"
                  f"本業黒字、{'・'.join(sch.get('excluded_sectors', []))}を除外）\n")
-        L.append(f"母集団 {ky.get('universe', 0):,}銘柄 → **条件通過 {ky.get('passed', 0)}件**"
-                 f"（下限で既に比率1以上 **{ky.get('sure', 0)}件** / "
-                 f"下限が1に近い **{ky.get('likely', 0)}件** / "
-                 f"無配 {ky.get('no_div', 0)}件）\n")
+        L.append(f"**流動資産＞負債合計／ネットキャッシュ比率 {_ncm}以上** は、"
+                 f"**EDINETの貸借対照表が取れている銘柄にだけ課している**。"
+                 f"取れていない銘柄は落とさず、推定の確からしさを添えて残す"
+                 f"（EDINETのキャッシュは日々積み上がる途中なので、"
+                 f"ここで落とすと「まだ取っていないだけ」の銘柄が消える）。\n")
+        L.append(f"母集団 {ky.get('universe', 0):,}銘柄 → "
+                 f"**条件通過 {ky.get('passed', 0)}件**"
+                 f"（うち無配 {ky.get('no_div', 0)}）\n")
+        L.append(f"- **比率を実測できた: {_wr}件** … EDINETの貸借対照表から"
+                 f"`(流動資産＋投資有価証券×70%−負債合計)÷時価総額` を計算した。"
+                 f"**1以上 {_r1}件 / {_ncm}以上1未満 {_rn}件**")
+        L.append(f"- **実測できていない: {max(ky.get('passed', 0) - _wr, 0)}件** … "
+                 f"貸借対照表が未取得。下の「推定」は私が置いた目安で、"
+                 f"**条件を満たしている保証はない**")
+        if _wr == 0:
+            L.append("\n> **今回は実測が0件。** EDINETのキャッシュがまだ空か、"
+                     "`EDINET_API_KEY` が Actions の env に渡っていない。"
+                     "meta.json の `edinet` を見ること。\n")
+        else:
+            L.append("")
+        L.append("**推定の見方（実測できていない銘柄だけに使う）**: "
+                 "比率1に届くのに「現金以外の資産」が"
+                 "総資産の何割必要かで分けている"
+                 "（`必要割合 ＝ (時価総額＋負債合計−現金) ÷ 総資産`）。\n")
+        L.append("- **推定：確実** … 現金だけで比率1以上")
+        L.append("- **推定：有力** … 必要割合35%以下。日本の会社の現金以外の流動資産は"
+                 "総資産の35〜40%が普通なので、**普通の貸借なら届く**")
+        L.append("- **推定：要確認** … 必要割合60%以下。届くかは貸借次第")
+        L.append("- **推定：薄い** … それ以上。異常な貸借でないと届かない")
+        L.append("\n> この境目は私が置いた目安で、**EDINETの実測が入るまでの"
+                 "つなぎ**。実測が入った銘柄ではこの分類は使わない。"
+                 "実測がまだ無い銘柄を手で確かめる順番を決めるためのもの。")
+        L.append("> 最初は「現金−負債合計が時価総額の8割以上」を有力としていたが、"
+                 "**条件通過71件のうち該当0件**だった。現金が総資産の8割という"
+                 "貸借はほぼ存在せず、分類が情報を持っていなかったので切り直した。\n")
         _dr = ky.get("dropped") or {}
         if _dr:
             L.append("落ちた内訳: "
@@ -3846,16 +4419,27 @@ try:
         L.append("> **PBR 0.8倍以下 ⟺ 純資産÷時価総額 ≥ 1.25** なので、"
                  "この表に出た銘柄は全部「ネットキャッシュ比率が1以上になりうる」側。"
                  "流動資産と投資有価証券を足せば1を超える可能性が残っている。"
-                 "「確実」は現金だけで既に超えているもの。\n")
+                 "**ただし「なりうる」だけで、実測しないと分からない。** "
+                 "実測が0.8を下回った銘柄はこの表から落としてある。\n")
         _kr = ky.get("rows") or []
         if _kr:
-            L.append("| 順 | コード | 銘柄名 | 17業種 | 比率の確からしさ | 株主還元 | 総合 |")
-            L.append("|--:|---|---|---|:-:|:-:|--:|")
+            L.append("| 順 | コード | 銘柄名 | 17業種 | 比率(実測) | 基準日 | 推定 | 株主還元 | 総合 |")
+            L.append("|--:|---|---|---|--:|:-:|:-:|:-:|--:|")
             for r in _kr[:25]:
+                _nr = r.get("nc_real")
+                _rv = f"**{_nr:.2f}**" if isinstance(_nr, (int, float)) else "—"
+                _as = (r.get("nc_asof") or "—")[:10]
+                _es = "—" if _nr is not None else r.get("state", "")
                 L.append(f"| {r.get('rank', '')} | {r['code']} | "
                          f"{(r.get('name') or '—')[:14]} | {r.get('s17') or '—'} | "
-                         f"{r.get('state', '')} | {r.get('ret', '—')} | "
+                         f"{_rv} | {_as} | {_es} | {r.get('ret', '—')} | "
                          f"{r.get('rank_score', 0):.0f} |")
+            L.append("\n> 「比率(実測)」はEDINETの有価証券報告書・半期報告書の"
+                     "貸借対照表から計算した値。基準日は提出日。"
+                     "**四半期報告書は2024年に廃止されたので、貸借は年2回しか更新されない。**"
+                     "基準日が古い銘柄は、その後の自己株買いや増配で現金が減っている"
+                     "可能性がある。")
+            L.append(f"> {ky.get('edinet_attribution', '')}\n")
             L.append(f"\n並べ方は **{ky.get('rank_weights', '')}**。"
                      "PERを一番重視し、ネットキャッシュ比率を加え、"
                      "株主還元でバリュートラップを外す、という読み取りをそのまま使っている。\n")
@@ -3863,17 +4447,20 @@ try:
             L.append("- **「無配」は外す方向で見る。** 現金が厚いのに株主に返さない会社は"
                      "割安なまま何年も放置されうる。清原氏の言う「最終的なカタリストは"
                      "株主還元」の裏返し。")
-            L.append("- **正確なネットキャッシュ比率**は、バフェット・コードで"
+            L.append("- **「比率(実測)」が「—」の銘柄だけ**、バフェット・コードで"
                      "**流動資産**と**投資有価証券**を見て "
-                     "`(流動資産＋投資有価証券×70%−負債合計)÷時価総額` を計算する。"
-                     "負債合計と時価総額はそちらにも出ているので突き合わせに使える。")
+                     "`(流動資産＋投資有価証券×70%−負債合計)÷時価総額` を手で計算する。"
+                     "実測が入っている銘柄はこの作業は不要（同じ式で既に計算済み）。")
             L.append("- **「小型株は経営者が9割」**（清原氏）。経営者に成長させる意志があるか、"
                      "言動が一致しているか、中期経営計画が具体的か、競合に潰されないか。"
                      "**無料データに無いので、この仕組みでは判定できない。** "
                      "決算説明資料と中期経営計画を見る作業が残る。")
-            L.append("- **PER・PBR・時価総額・比率の数値はこの表に載せていない。** "
+            L.append("- **PER・PBR・時価総額の数値はこの表に載せていない。** "
                      "載せると純資産や総資産が逆算でき、J-Quantsの生の財務数値を"
-                     "公開したことになるため（利用条件）。")
+                     "公開したことになるため（利用条件）。"
+                     "**比率(実測)だけは載せている** … こちらの出所はEDINETで、"
+                     "PDL1.0（公共データ利用規約）により二次利用・再配布が"
+                     "認められているため。")
             L.append("")
             L.append("**清原枠の建て方（スイング枠とは別の規則）**")
             L.append(f"- 等ウェイトで **{KY_NAMES}銘柄程度**に分散する。ATRの損切りは使わない。")
@@ -3893,6 +4480,65 @@ try:
         pass
     except Exception as e:
         L.append(f"\n## 清原枠の候補\n\n生成に失敗: {e}")
+
+    # ── EDINETの取得状況（貸借対照表＝本物の比率の材料） ──────────
+    #   初回は CSV の実際の形（文字コード・区切り・列名）がここで分かる。
+    try:
+        _ej = json.load(open(f"{OUT}/edinet.json", encoding="utf-8"))
+        _em = (json.load(open(f"{OUT}/meta.json", encoding="utf-8"))
+               .get("edinet") or {}) if os.path.exists(f"{OUT}/meta.json") else {}
+        _rw = _ej.get("rows") or {}
+        _ca = sum(1 for v in _rw.values() if v.get("ca") is not None)
+        _iv = sum(1 for v in _rw.values() if v.get("inv") is not None)
+        L.append("\n## EDINET 貸借対照表の取得状況\n")
+        L.append(f"累計 **{len(_rw):,}銘柄**"
+                 f"（流動資産合計あり {_ca:,} / 投資有価証券あり {_iv:,}）"
+                 f"／一覧を見た日 {len(_ej.get('seen_dates') or []):,}日分\n")
+        if _em.get("skipped"):
+            L.append(f"- **今回は取りに行っていない: {_em['skipped']}**")
+            L.append("  - `EDINET_API_KEY` を GitHub Secrets に入れ、"
+                     "**`fetch.yml` の `env:` にも渡す**こと。"
+                     "Secretsに入れるだけでは Actions のジョブには見えない。")
+        else:
+            L.append(f"- 今回: 一覧 {_em.get('listed_days', 0)}日 / "
+                     f"未取得 {_em.get('todo', 0)}件のうち "
+                     f"{_em.get('downloaded', 0)}件を取得 / "
+                     f"貸借を読めた {_em.get('parsed', 0)}件 "
+                     f"（要求 {_em.get('req', 0)}回 / 429 {_em.get('n429', 0)}回）")
+            if _em.get("blocked"):
+                L.append(f"- **止まった: {_em['blocked']}** … "
+                         "鍵かレート制限。次回に持ち越す。")
+            if _em.get("enc") or _em.get("sep"):
+                L.append(f"- CSVの形: 文字コード `{_em.get('enc')}` / "
+                         f"区切り `{_em.get('sep')}`")
+            _cols = _em.get("cols") or []
+            if _cols:
+                L.append(f"- 列名: `{'` / `'.join(str(c) for c in _cols[:8])}`")
+            _err = _em.get("err") or {}
+            if _err:
+                L.append("- 失敗の内訳: "
+                         + " / ".join(f"{k} {v}" for k, v in
+                                      sorted(_err.items(), key=lambda x: -x[1])[:6]))
+        L.append("")
+        L.append("- 一度に落とす書類数と一覧日数には上限を置いてあり、"
+                 "**日々の実行で少しずつ積み上がる**（1回で全銘柄は取らない）。"
+                 "有価証券報告書は3月期決算が6月に集中するので、"
+                 "6月分を遡り終えた時点で大半が埋まる。")
+        L.append("- **四半期報告書は2024年に廃止**。貸借は有価証券報告書（年1回）と"
+                 "半期報告書（年1回）の**年2回**しか更新されない。"
+                 "比率が古くなることは構造上避けられない。")
+        L.append("- 訂正報告書（訂正有価証券報告書・訂正半期報告書）は**取っていない**。"
+                 "元の報告書の数字を使っている。")
+        L.append(f"- {_ej.get('attribution', '')}")
+        L.append("- **鍵の扱い**: EDINETは鍵をURLのクエリ文字列で渡す仕様なので、"
+                 "この仕組みではURLも例外文もログに残していない。"
+                 "`data/*.json` に対しても鍵の混入検査をかけている。")
+    except FileNotFoundError:
+        L.append("\n## EDINET 貸借対照表の取得状況\n")
+        L.append("**まだ1件も取れていない。** `data/edinet.json` が無い。"
+                 "`EDINET_API_KEY` が `fetch.yml` の `env:` に渡っているか確認すること。")
+    except Exception as e:
+        L.append(f"\n## EDINET 貸借対照表の取得状況\n\n生成に失敗: {type(e).__name__}")
 
     # ── ネットキャッシュ比率（清原式）の手作業候補 ──────────────
     try:
