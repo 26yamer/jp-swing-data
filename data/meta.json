@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-14T11:46:07.799493+09:00",
+ "fetched_at_jst": "2026-09-14T15:53:49.204759+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -98,7 +98,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 39,
+ "news_ok": 38,
  "jgb": {
   "date": "2026-09-11",
   "age_days": 3,
@@ -114,9 +114,9 @@
   "cached": true
  },
  "tdnet": {
-  "pages": 7,
-  "codes": 202,
-  "items": 353,
+  "pages": 9,
+  "codes": 320,
+  "items": 594,
   "errors": 0
  },
  "universe_source": "jpx_master",
@@ -125,39 +125,133 @@
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1701,
+  "passed": 1710,
   "named": true,
   "source": "jpx_master"
  },
- "fund": {
-  "reused": true,
-  "reason": "場中（11:46 JST）は取り直さない（大引け後の実行で更新）",
-  "age_days": 0,
-  "age_hours": 13.1,
-  "fetched_at_jst": "2026-09-13T22:38:53.892736+09:00",
-  "asof_latest_disclosure": "2026-06-18",
-  "pool": 1727,
-  "n_codes": 1648,
-  "coverage": {
-   "has": 1648,
-   "value": 1648,
-   "ep": 1568,
-   "bp": 1643,
-   "netcash": 1646,
-   "kiyohara": 1648,
-   "payout": 1646,
-   "quality": 1648,
-   "moat": 1543,
-   "revision": 1294
+ "netcash": {
+  "pool": 1715,
+  "shortlist": 60,
+  "sure": 0
+ },
+ "edinet": {
+  "codes": 481,
+  "with_ca": 481,
+  "usable": 468,
+  "bs_bad": 4,
+  "with_inv": 340,
+  "listed_days": 45,
+  "todo": 631,
+  "todo_priority": 10,
+  "priority_given": 89,
+  "downloaded": 220,
+  "parsed": 219,
+  "req": 265,
+  "n429": 0,
+  "blocked": null,
+  "enc": "utf-16",
+  "sep": "TAB",
+  "cols": [
+   "要素ID",
+   "項目名",
+   "コンテキストID",
+   "相対年度",
+   "連結・個別",
+   "期間・時点",
+   "ユニットID",
+   "単位",
+   "値"
+  ],
+  "dtypes": {
+   "120": 250,
+   "160": 231
   },
-  "span_days": 730,
+  "nomatch": {},
+  "probe": [],
+  "err": {
+   "zip:BadZipFile": 1
+  }
+ },
+ "kiyohara": {
+  "universe": 4116,
+  "passed": 38,
+  "shown": 38,
+  "sure": 0,
+  "likely": 0,
+  "no_div": 1,
+  "with_real": 28,
+  "real_ge1": 22,
+  "real_near": 6,
+  "bands": {
+   "real_ge1": 21,
+   "real_near": 7,
+   "real_lo": 0,
+   "sure": 0,
+   "likely": 0,
+   "maybe": 1,
+   "thin": 9,
+   "unknown": 0
+  },
+  "dropped": {
+   "PER>8倍": 2313,
+   "財務が引けない": 353,
+   "売買代金が薄い": 751,
+   "予想PERが出ない(赤字予想)": 290,
+   "PBR>0.8倍": 135,
+   "流動資産≤負債合計(実測)": 29,
+   "銀行・金融（式が成立しない）": 159,
+   "時価総額>500億円": 23,
+   "ネットキャッシュ比率<0.8(実測)": 22,
+   "本業が赤字": 3
+  }
+ },
+ "fund_raw": {
+  "n_bps": 4058,
+  "n_feps": 3871,
+  "n_eq": 4126,
+  "n_ta": 4126,
+  "n_cash": 4089,
+  "n_sh": 4124,
+  "n_op": 4011,
+  "n_div": 4046,
+  "n_codes": 4126
+ },
+ "fund": {
+  "asof_latest_disclosure": "2026-06-19",
+  "pool": 1715,
+  "n_codes": 1637,
+  "coverage": {
+   "has": 1637,
+   "value": 1637,
+   "ep": 1558,
+   "bp": 1631,
+   "netcash": 1634,
+   "kiyohara": 1637,
+   "payout": 1635,
+   "quality": 1637,
+   "moat": 1533,
+   "revision": 1284
+  },
+  "jq": {
+   "dates_asked": 523,
+   "dates_with_data": 484,
+   "rows": 37662,
+   "codes": 4130,
+   "req": 523,
+   "n429": 0,
+   "blocked": null,
+   "resp_key": "data",
+   "err": {
+    "HTTP 400": 3
+   }
+  },
   "holdings_added": 5
  },
  "earnings_hist": {
   "days_cached": 32,
-  "codes": 1010,
-  "fetched_now": 2,
-  "new_items": 1
+  "codes": 1094,
+  "fetched_now": 1,
+  "new_items": 85
  },
  "jpx_earnings": {
   "files": [
@@ -176,17 +270,17 @@
   "unknown": 9,
   "error": 0
  },
- "signals_appended": false,
- "skip_reason": "場中（11:46 JST）のため当日足が未確定",
- "backtest_skipped": "場中（11:46 JST）",
+ "signals_appended": true,
+ "signals_bar": "2026-09-14",
+ "backtest_skipped": "前回から0日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 0,
   "open": 39
  },
  "regime": {
-  "px": 422.8999938964844,
-  "vs200": 8.76,
-  "vs25": -1.12,
+  "px": 423.2999877929688,
+  "vs200": 8.87,
+  "vs25": -1.03,
   "above200": true,
   "breadth": "7/17",
   "breadth_pct": 41.0,
@@ -194,11 +288,7 @@
  },
  "analysis": "ok",
  "commit_guard": {
-  "raw_fields": {
-   "data/meta.json": [
-    "ta"
-   ]
-  },
+  "raw_fields": {},
   "api_key_found_in": []
  }
 }
