@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-16T11:45:48.926146+09:00",
+ "fetched_at_jst": "2026-09-16T15:53:08.283037+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1343.T": "yfinance",
@@ -54,9 +54,7 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [
-  "fetch_feed('財経新聞', 'https://www.zaikei.co.jp/rss/'): ConnectTimeout: HTTPSConnectionPool(host='www.zaikei.co.jp', port=443): Max retries exceeded with url: /rss/ (Caused by ConnectTimeoutError(<HTTPSConnection(host='www.zaikei.co.jp', port=443) at 0x7f3fe0b2b1a0>, 'Connection to www.zaikei.co.jp timed out. (connect timeout=25)'))"
- ],
+ "errors": [],
  "anomalies": [
   {
    "code": "1306.T",
@@ -117,8 +115,8 @@
  },
  "tdnet": {
   "pages": 8,
-  "codes": 345,
-  "items": 564,
+  "codes": 401,
+  "items": 636,
   "errors": 0
  },
  "universe_source": "jpx_master",
@@ -127,39 +125,156 @@
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1664,
+  "passed": 1688,
   "named": true,
   "source": "jpx_master"
  },
- "fund": {
-  "reused": true,
-  "reason": "場中（11:45 JST）は取り直さない（大引け後の実行で更新）",
-  "age_days": 0,
-  "age_hours": 19.9,
-  "fetched_at_jst": "2026-09-15T15:53:55.397972+09:00",
-  "asof_latest_disclosure": "2026-06-19",
-  "pool": 1707,
-  "n_codes": 1629,
-  "coverage": {
-   "has": 1629,
-   "value": 1629,
-   "ep": 1553,
-   "bp": 1623,
-   "netcash": 1626,
-   "kiyohara": 1629,
-   "payout": 1629,
-   "quality": 1629,
-   "moat": 1526,
-   "revision": 1283
+ "netcash": {
+  "pool": 1693,
+  "shortlist": 60,
+  "sure": 0
+ },
+ "edinet": {
+  "codes": 897,
+  "with_ca": 897,
+  "usable": 869,
+  "bs_bad": 0,
+  "with_inv": 638,
+  "listed_days": 45,
+  "todo": 210,
+  "todo_priority": 1,
+  "priority_given": 86,
+  "downloaded": 210,
+  "parsed": 207,
+  "req": 255,
+  "n429": 0,
+  "blocked": null,
+  "enc": "utf-16",
+  "sep": "TAB",
+  "cols": [
+   "要素ID",
+   "項目名",
+   "コンテキストID",
+   "相対年度",
+   "連結・個別",
+   "期間・時点",
+   "ユニットID",
+   "単位",
+   "値"
+  ],
+  "dtypes": {
+   "120": 508,
+   "160": 389
   },
-  "span_days": 730,
+  "nomatch": {
+   "120:連結と個別が混在": 1
+  },
+  "probe": [
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior2YearInstant",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_EquityAttributableToOwnersOfParentIFRSMember",
+     "Prior2YearInstant_ExchangeDifferencesOnTranslationOfForeignOperationsIFRSMember",
+     "Prior2YearInstant_NetChangeInFairValueOfEquityInstrumentsDesignatedAsMeasuredAtFairValueThroughOtherComprehensiveIncomeIFRSMember",
+     "Prior2YearInstant_NonControllingInterestsIFRSMember"
+    ],
+    "vals": {
+     "ca": 48799000000.0,
+     "liab": 50917000000.0,
+     "ta": 82370000000.0,
+     "na": 31453000000.0
+    }
+   }
+  ],
+  "err": {
+   "zip:BadZipFile": 3
+  }
+ },
+ "kiyohara": {
+  "universe": 4115,
+  "passed": 34,
+  "shown": 34,
+  "sure": 0,
+  "likely": 0,
+  "no_div": 0,
+  "with_real": 30,
+  "real_ge1": 20,
+  "real_near": 10,
+  "bands": {
+   "real_ge1": 20,
+   "real_near": 10,
+   "real_lo": 0,
+   "sure": 0,
+   "likely": 0,
+   "maybe": 1,
+   "thin": 3,
+   "unknown": 0
+  },
+  "dropped": {
+   "PER>8倍": 2297,
+   "財務が引けない": 354,
+   "売買代金が薄い": 773,
+   "予想PERが出ない(赤字予想)": 289,
+   "PBR>0.8倍": 130,
+   "流動資産≤負債合計(実測)": 31,
+   "ネットキャッシュ比率<0.8(実測)": 21,
+   "時価総額>500億円": 25,
+   "銀行・金融（式が成立しない）": 158,
+   "本業が赤字": 3
+  }
+ },
+ "fund_raw": {
+  "n_bps": 4058,
+  "n_feps": 3871,
+  "n_eq": 4126,
+  "n_ta": 4126,
+  "n_cash": 4089,
+  "n_sh": 4124,
+  "n_op": 4011,
+  "n_div": 4046,
+  "n_codes": 4126
+ },
+ "fund": {
+  "asof_latest_disclosure": "2026-06-19",
+  "pool": 1693,
+  "n_codes": 1614,
+  "coverage": {
+   "has": 1614,
+   "value": 1614,
+   "ep": 1537,
+   "bp": 1609,
+   "netcash": 1613,
+   "kiyohara": 1614,
+   "payout": 1614,
+   "quality": 1614,
+   "moat": 1512,
+   "revision": 1271
+  },
+  "jq": {
+   "dates_asked": 521,
+   "dates_with_data": 484,
+   "rows": 37662,
+   "codes": 4130,
+   "req": 521,
+   "n429": 0,
+   "blocked": null,
+   "resp_key": "data",
+   "err": {
+    "HTTP 400": 1
+   }
+  },
   "holdings_added": 5
  },
  "earnings_hist": {
   "days_cached": 34,
-  "codes": 1106,
-  "fetched_now": 2,
-  "new_items": 0
+  "codes": 1116,
+  "fetched_now": 1,
+  "new_items": 10
  },
  "jpx_earnings": {
   "files": [
@@ -178,18 +293,18 @@
   "unknown": 9,
   "error": 0
  },
- "signals_appended": false,
- "skip_reason": "場中（11:45 JST）のため当日足が未確定",
- "backtest_skipped": "場中（11:45 JST）",
+ "signals_appended": true,
+ "signals_bar": "2026-09-16",
+ "backtest_skipped": "前回から2日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 0,
   "open": 40,
   "days": 2
  },
  "regime": {
-  "px": 423.2000122070313,
-  "vs200": 8.6,
-  "vs25": -0.91,
+  "px": 423.8999938964844,
+  "vs200": 8.78,
+  "vs25": -0.76,
   "above200": true,
   "breadth": "7/17",
   "breadth_pct": 41.0,
@@ -197,11 +312,7 @@
  },
  "analysis": "ok",
  "commit_guard": {
-  "raw_fields": {
-   "data/meta.json": [
-    "ta"
-   ]
-  },
+  "raw_fields": {},
   "api_key_found_in": []
  }
 }

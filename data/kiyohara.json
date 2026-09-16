@@ -1,5 +1,5 @@
 {
- "generated_at_jst": "2026-09-15T15:53:55.397972+09:00",
+ "generated_at_jst": "2026-09-16T15:53:08.283037+09:00",
  "screen": {
   "max_per": 8.0,
   "max_pbr": 0.8,
@@ -17,8 +17,8 @@
  },
  "formula": "ネットキャッシュ＝流動資産＋投資有価証券×70%−負債合計／比率＝÷時価総額",
  "universe": 4115,
- "passed": 36,
- "shown": 36,
+ "passed": 34,
+ "shown": 34,
  "bands": {
   "real_ge1": 20,
   "real_near": 10,
@@ -26,19 +26,19 @@
   "sure": 0,
   "likely": 0,
   "maybe": 1,
-  "thin": 5,
+  "thin": 3,
   "unknown": 0
  },
  "sure": 0,
  "likely": 0,
  "maybe": 1,
- "thin": 5,
+ "thin": 3,
  "need_bands": {
   "sure": 0.0,
   "likely": 0.35,
   "maybe": 0.6
  },
- "no_div": 1,
+ "no_div": 0,
  "with_real": 30,
  "with_real_shown": 30,
  "real_ge1": 20,
@@ -46,14 +46,14 @@
  "nc_min": 0.8,
  "edinet_attribution": "出典：EDINET閲覧（提出）サイト（https://disclosure2.edinet-fsa.go.jp/）をもとに作成、PDL1.0",
  "dropped": {
-  "PER>8倍": 2307,
-  "財務が引けない": 350,
-  "売買代金が薄い": 760,
-  "予想PERが出ない(赤字予想)": 293,
+  "PER>8倍": 2297,
+  "財務が引けない": 354,
+  "売買代金が薄い": 773,
+  "予想PERが出ない(赤字予想)": 289,
   "PBR>0.8倍": 130,
-  "流動資産≤負債合計(実測)": 30,
-  "ネットキャッシュ比率<0.8(実測)": 22,
-  "時価総額>500億円": 26,
+  "流動資産≤負債合計(実測)": 31,
+  "ネットキャッシュ比率<0.8(実測)": 21,
+  "時価総額>500億円": 25,
   "銀行・金融（式が成立しない）": 158,
   "本業が赤字": 3
  },
@@ -64,39 +64,39 @@
    "code": "7236",
    "name": "ティラド",
    "s17": "自動車・輸送機",
-   "state": "実測 1.74（1以上）",
+   "state": "実測 1.72（1以上）",
    "band": "real_ge1",
    "ret": "増配／自己株買い",
    "nc_asof": "2026-06-05",
    "nc_solo": false,
-   "nc_real": 1.74,
-   "rank_score": 95.8,
+   "nc_real": 1.72,
+   "rank_score": 95.6,
    "rank": 1
   },
   {
    "code": "8046",
    "name": "丸藤シートパイル",
    "s17": "商社・卸売",
-   "state": "実測 1.21（1以上）",
+   "state": "実測 1.19（1以上）",
    "band": "real_ge1",
    "ret": "自己株買い",
    "nc_asof": "2026-06-19",
    "nc_solo": false,
-   "nc_real": 1.21,
-   "rank_score": 86.1,
+   "nc_real": 1.19,
+   "rank_score": 86.8,
    "rank": 2
   },
   {
    "code": "8011",
    "name": "三陽商会",
    "s17": "素材・化学",
-   "state": "実測 1.81（1以上）",
+   "state": "実測 1.83（1以上）",
    "band": "real_ge1",
    "ret": "増配",
    "nc_asof": "2026-05-28",
    "nc_solo": false,
-   "nc_real": 1.81,
-   "rank_score": 81.3,
+   "nc_real": 1.83,
+   "rank_score": 81.6,
    "rank": 3
   },
   {
@@ -109,20 +109,20 @@
    "nc_asof": "2026-06-26",
    "nc_solo": false,
    "nc_real": 0.97,
-   "rank_score": 79.2,
+   "rank_score": 80.1,
    "rank": 4
   },
   {
    "code": "5280",
    "name": "ヨシコン",
    "s17": "不動産",
-   "state": "実測 1.68（1以上）",
+   "state": "実測 1.69（1以上）",
    "band": "real_ge1",
    "ret": "増配／自己株買い",
    "nc_asof": "2026-06-26",
    "nc_solo": false,
-   "nc_real": 1.68,
-   "rank_score": 72.9,
+   "nc_real": 1.69,
+   "rank_score": 73.5,
    "rank": 5
   },
   {
@@ -135,33 +135,33 @@
    "nc_asof": "2026-03-26",
    "nc_solo": false,
    "nc_real": 1.41,
-   "rank_score": 72.2,
+   "rank_score": 72.1,
    "rank": 6
   },
   {
    "code": "7460",
    "name": "ヤギ",
    "s17": "商社・卸売",
-   "state": "実測 2.02（1以上）",
+   "state": "実測 2.04（1以上）",
    "band": "real_ge1",
    "ret": "配当のみ",
    "nc_asof": "2026-06-23",
    "nc_solo": false,
-   "nc_real": 2.02,
-   "rank_score": 70.5,
+   "nc_real": 2.04,
+   "rank_score": 70.6,
    "rank": 7
   },
   {
    "code": "7427",
    "name": "エコートレーディング",
    "s17": "商社・卸売",
-   "state": "実測 2.10（1以上）",
+   "state": "実測 2.08（1以上）",
    "band": "real_ge1",
    "ret": "配当のみ",
    "nc_asof": "2026-05-26",
    "nc_solo": false,
-   "nc_real": 2.1,
-   "rank_score": 68.8,
+   "nc_real": 2.08,
+   "rank_score": 68.4,
    "rank": 8
   },
   {
@@ -174,21 +174,8 @@
    "nc_asof": "2026-06-24",
    "nc_solo": false,
    "nc_real": 1.44,
-   "rank_score": 68.1,
+   "rank_score": 67.6,
    "rank": 9
-  },
-  {
-   "code": "3236",
-   "name": "プロパスト",
-   "s17": "不動産",
-   "state": "実測 1.69（1以上）",
-   "band": "real_ge1",
-   "ret": "配当のみ",
-   "nc_asof": "2026-08-28",
-   "nc_solo": false,
-   "nc_real": 1.69,
-   "rank_score": 64.2,
-   "rank": 10
   },
   {
    "code": "9193",
@@ -200,7 +187,20 @@
    "nc_asof": "2026-06-23",
    "nc_solo": false,
    "nc_real": 1.07,
-   "rank_score": 64.2,
+   "rank_score": 64.0,
+   "rank": 10
+  },
+  {
+   "code": "3236",
+   "name": "プロパスト",
+   "s17": "不動産",
+   "state": "実測 1.68（1以上）",
+   "band": "real_ge1",
+   "ret": "配当のみ",
+   "nc_asof": "2026-08-28",
+   "nc_solo": false,
+   "nc_real": 1.68,
+   "rank_score": 63.2,
    "rank": 11
   },
   {
@@ -220,40 +220,27 @@
    "code": "8891",
    "name": "ＡＭＧホールディングス",
    "s17": "不動産",
-   "state": "実測 1.61（1以上）",
+   "state": "実測 1.55（1以上）",
    "band": "real_ge1",
    "ret": "増配",
    "nc_asof": "2026-06-22",
    "nc_solo": false,
-   "nc_real": 1.61,
-   "rank_score": 61.1,
+   "nc_real": 1.55,
+   "rank_score": 57.4,
    "rank": 13
   },
   {
    "code": "6844",
    "name": "新電元工業",
    "s17": "電機・精密",
-   "state": "実測 0.99（1に近い）",
+   "state": "実測 0.97（1に近い）",
    "band": "real_near",
    "ret": "自己株買い",
    "nc_asof": "2026-06-24",
    "nc_solo": false,
-   "nc_real": 0.99,
-   "rank_score": 58.3,
+   "nc_real": 0.97,
+   "rank_score": 55.1,
    "rank": 14
-  },
-  {
-   "code": "3856",
-   "name": "Ａｂａｌａｎｃｅ",
-   "s17": "電機・精密",
-   "state": "推定：要確認",
-   "band": "maybe",
-   "ret": "配当のみ",
-   "nc_asof": null,
-   "nc_solo": null,
-   "nc_real": null,
-   "rank_score": 57.3,
-   "rank": 15
   },
   {
    "code": "6863",
@@ -265,8 +252,8 @@
    "nc_asof": "2026-06-22",
    "nc_solo": false,
    "nc_real": 1.61,
-   "rank_score": 53.8,
-   "rank": 16
+   "rank_score": 55.1,
+   "rank": 15
   },
   {
    "code": "2700",
@@ -278,21 +265,21 @@
    "nc_asof": "2026-03-25",
    "nc_solo": false,
    "nc_real": 0.99,
-   "rank_score": 51.7,
-   "rank": 17
+   "rank_score": 50.7,
+   "rank": 16
   },
   {
    "code": "3321",
    "name": "ミタチ産業",
    "s17": "商社・卸売",
-   "state": "実測 1.20（1以上）",
+   "state": "実測 1.19（1以上）",
    "band": "real_ge1",
    "ret": "増配",
    "nc_asof": "2026-08-27",
    "nc_solo": false,
-   "nc_real": 1.2,
-   "rank_score": 51.4,
-   "rank": 18
+   "nc_real": 1.19,
+   "rank_score": 50.0,
+   "rank": 17
   },
   {
    "code": "8041",
@@ -304,8 +291,8 @@
    "nc_asof": "2026-06-23",
    "nc_solo": false,
    "nc_real": 0.9,
-   "rank_score": 51.4,
-   "rank": 19
+   "rank_score": 50.0,
+   "rank": 18
   },
   {
    "code": "7991",
@@ -317,8 +304,8 @@
    "nc_asof": "2026-06-24",
    "nc_solo": false,
    "nc_real": 1.18,
-   "rank_score": 50.0,
-   "rank": 20
+   "rank_score": 48.5,
+   "rank": 19
   },
   {
    "code": "8928",
@@ -330,21 +317,21 @@
    "nc_asof": "2026-02-16",
    "nc_solo": false,
    "nc_real": 0.83,
-   "rank_score": 50.0,
-   "rank": 21
+   "rank_score": 48.5,
+   "rank": 20
   },
   {
    "code": "3320",
    "name": "クロスプラス",
    "s17": "商社・卸売",
-   "state": "実測 1.23（1以上）",
+   "state": "実測 1.22（1以上）",
    "band": "real_ge1",
    "ret": "増配",
    "nc_asof": "2026-09-11",
    "nc_solo": false,
-   "nc_real": 1.23,
-   "rank_score": 49.3,
-   "rank": 22
+   "nc_real": 1.22,
+   "rank_score": 47.8,
+   "rank": 21
   },
   {
    "code": "1420",
@@ -356,86 +343,112 @@
    "nc_asof": "2026-06-23",
    "nc_solo": false,
    "nc_real": 1.56,
-   "rank_score": 47.2,
-   "rank": 23
+   "rank_score": 46.3,
+   "rank": 22
   },
   {
    "code": "8844",
    "name": "コスモスイニシア",
    "s17": "不動産",
-   "state": "実測 0.95（1に近い）",
+   "state": "実測 0.94（1に近い）",
    "band": "real_near",
    "ret": "増配",
    "nc_asof": "2026-06-17",
    "nc_solo": false,
-   "nc_real": 0.95,
-   "rank_score": 45.1,
-   "rank": 24
+   "nc_real": 0.94,
+   "rank_score": 43.4,
+   "rank": 23
   },
   {
    "code": "4625",
    "name": "アトミクス",
    "s17": "素材・化学",
-   "state": "実測 1.23（1以上）",
+   "state": "実測 1.21（1以上）",
    "band": "real_ge1",
    "ret": "配当のみ",
    "nc_asof": "2026-06-24",
    "nc_solo": false,
-   "nc_real": 1.23,
-   "rank_score": 42.0,
-   "rank": 25
+   "nc_real": 1.21,
+   "rank_score": 41.9,
+   "rank": 24
   },
   {
    "code": "6229",
    "name": "オーケーエム",
    "s17": "機械",
-   "state": "実測 1.02（1以上）",
+   "state": "実測 1.01（1以上）",
    "band": "real_ge1",
    "ret": "自己株買い",
    "nc_asof": "2026-06-24",
    "nc_solo": false,
-   "nc_real": 1.02,
-   "rank_score": 40.3,
-   "rank": 26
+   "nc_real": 1.01,
+   "rank_score": 36.8,
+   "rank": 25
   },
   {
    "code": "6748",
    "name": "星和電機",
    "s17": "電機・精密",
-   "state": "実測 1.17（1以上）",
+   "state": "実測 1.16（1以上）",
    "band": "real_ge1",
    "ret": "自己株買い",
    "nc_asof": "2026-03-30",
    "nc_solo": false,
-   "nc_real": 1.17,
-   "rank_score": 36.8,
-   "rank": 27
+   "nc_real": 1.16,
+   "rank_score": 34.6,
+   "rank": 26
   },
   {
    "code": "2986",
    "name": "ＬＡホールディングス",
    "s17": "不動産",
-   "state": "実測 0.90（1に近い）",
+   "state": "実測 0.87（1に近い）",
    "band": "real_near",
    "ret": "配当のみ",
    "nc_asof": "2026-03-26",
    "nc_solo": false,
-   "nc_real": 0.9,
-   "rank_score": 35.8,
+   "nc_real": 0.87,
+   "rank_score": 33.8,
+   "rank": 27
+  },
+  {
+   "code": "8152",
+   "name": "ソマール",
+   "s17": "商社・卸売",
+   "state": "実測 1.13（1以上）",
+   "band": "real_ge1",
+   "ret": "配当のみ",
+   "nc_asof": "2026-06-25",
+   "nc_solo": false,
+   "nc_real": 1.13,
+   "rank_score": 30.1,
    "rank": 28
+  },
+  {
+   "code": "4728",
+   "name": "トーセ",
+   "s17": "情報通信・サービスその他",
+   "state": "推定：要確認",
+   "band": "maybe",
+   "ret": "配当のみ",
+   "nc_asof": null,
+   "nc_solo": null,
+   "nc_real": null,
+   "rank_score": 29.4,
+   "rank": 29
   },
   {
    "code": "6822",
    "name": "大井電気",
    "s17": "電機・精密",
-   "state": "実測 0.82（1に近い）",
+   "state": "実測 0.81（1に近い）",
    "band": "real_near",
    "ret": "配当のみ",
    "nc_asof": "2026-06-24",
    "nc_solo": false,
-   "nc_real": 0.82,
-   "rank_score": 34.0,
-   "rank": 29
+   "nc_real": 0.81,
+   "rank_score": 29.4,
+   "rank": 30
   },
   {
    "code": "9628",
@@ -447,34 +460,8 @@
    "nc_asof": null,
    "nc_solo": null,
    "nc_real": null,
-   "rank_score": 31.9,
-   "rank": 30
-  },
-  {
-   "code": "8152",
-   "name": "ソマール",
-   "s17": "商社・卸売",
-   "state": "実測 1.11（1以上）",
-   "band": "real_ge1",
-   "ret": "配当のみ",
-   "nc_asof": "2026-06-25",
-   "nc_solo": false,
-   "nc_real": 1.11,
-   "rank_score": 31.2,
+   "rank_score": 28.7,
    "rank": 31
-  },
-  {
-   "code": "4728",
-   "name": "トーセ",
-   "s17": "情報通信・サービスその他",
-   "state": "推定：薄い",
-   "band": "thin",
-   "ret": "配当のみ",
-   "nc_asof": null,
-   "nc_solo": null,
-   "nc_real": null,
-   "rank_score": 29.9,
-   "rank": 32
   },
   {
    "code": "8091",
@@ -486,8 +473,8 @@
    "nc_asof": "2026-06-25",
    "nc_solo": false,
    "nc_real": 0.84,
-   "rank_score": 20.8,
-   "rank": 33
+   "rank_score": 19.1,
+   "rank": 32
   },
   {
    "code": "6615",
@@ -499,34 +486,21 @@
    "nc_asof": null,
    "nc_solo": null,
    "nc_real": null,
-   "rank_score": 16.3,
-   "rank": 34
+   "rank_score": 14.7,
+   "rank": 33
   },
   {
    "code": "6430",
    "name": "ダイコク電機",
    "s17": "機械",
-   "state": "実測 0.81（1に近い）",
+   "state": "実測 0.82（1に近い）",
    "band": "real_near",
    "ret": "配当のみ",
    "nc_asof": "2026-06-22",
    "nc_solo": false,
-   "nc_real": 0.81,
-   "rank_score": 13.5,
-   "rank": 35
-  },
-  {
-   "code": "9158",
-   "name": "シーユーシー",
-   "s17": "情報通信・サービスその他",
-   "state": "推定：薄い",
-   "band": "thin",
-   "ret": "無配",
-   "nc_asof": null,
-   "nc_solo": null,
-   "nc_real": null,
-   "rank_score": 4.9,
-   "rank": 36
+   "nc_real": 0.82,
+   "rank_score": 12.5,
+   "rank": 34
   }
  ]
 }
