@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-17T11:29:21.225925+09:00",
+ "fetched_at_jst": "2026-09-17T11:45:49.097560+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -89,7 +89,7 @@
  "n_ok": 53,
  "n_total": 53,
  "holdings_ok": 7,
- "news_ok": 53,
+ "news_ok": 52,
  "jgb": {
   "date": "2026-09-16",
   "age_days": 1,
@@ -109,25 +109,19 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-09-17",
- "screen_skipped": {
-  "TypeError": {
-   "n": 1,
-   "例": "Invalid value '1644.84' for dtype 'str'. Value should be a string or missing val"
-  }
- },
  "signals_settled": 0,
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1663,
+  "passed": 1665,
   "named": true,
   "source": "jpx_master"
  },
  "fund": {
   "reused": true,
-  "reason": "場中（11:29 JST）は取り直さない（大引け後の実行で更新）",
+  "reason": "場中（11:45 JST）は取り直さない（大引け後の実行で更新）",
   "age_days": 0,
-  "age_hours": 19.6,
+  "age_hours": 19.9,
   "fetched_at_jst": "2026-09-16T15:53:08.283037+09:00",
   "asof_latest_disclosure": "2026-06-19",
   "pool": 1693,
@@ -161,16 +155,16 @@
  },
  "cand_earnings": {
   "asked": 20,
-  "ok": 11,
+  "ok": 10,
   "from_jpx": 1,
-  "from_yf": 10,
+  "from_yf": 9,
   "recent": 0,
   "estimate": 0,
-  "unknown": 9,
+  "unknown": 10,
   "error": 0
  },
  "signals_appended": false,
- "skip_reason": "場中（11:29 JST）のため当日足が未確定",
+ "skip_reason": "場中（11:45 JST）のため当日足が未確定",
  "backtest_status": {
   "file_exists": true,
   "age_days": 3,
@@ -179,19 +173,19 @@
   "min_indep": 20,
   "t_threshold": 2.8
  },
- "backtest_skipped": "場中（11:29 JST）",
+ "backtest_skipped": "場中（11:45 JST）",
  "signals": {
   "closed": 0,
   "open": 39,
   "days": 2
  },
  "regime": {
-  "px": 425.8999938964844,
-  "vs200": 9.17,
-  "vs25": -0.2,
+  "px": 426.7000122070313,
+  "vs200": 9.38,
+  "vs25": -0.02,
   "above200": true,
-  "breadth": "7/17",
-  "breadth_pct": 41.0,
+  "breadth": "8/17",
+  "breadth_pct": 47.0,
   "b_suggest": 0.7
  },
  "analysis": "ok",

@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-17T11:29:21.225925+09:00",
+ "fetched_at_jst": "2026-09-17T11:45:49.097560+09:00",
  "matched": [
   {
    "src": "日経 マーケット",
@@ -231,6 +231,12 @@
   },
   {
    "src": "Yahoo!ニュース 市況",
+   "title": "東証、午前終値43円高(共同通信)",
+   "date": "Thu, 17 Sep 2026 02:35:55",
+   "market_feed": false
+  },
+  {
+   "src": "Yahoo!ニュース 市況",
    "title": "【ヤフコメで話題】「FRBの利上げ判断と独立性」「インフレ抑制と景気維持のジレンマ」 - 米金融政策を巡る意見が交錯(Yahoo!ニュース オリジナル THE PAGE)",
    "date": "Thu, 17 Sep 2026 02:15:03",
    "market_feed": false
@@ -254,21 +260,15 @@
    "market_feed": false
   },
   {
-   "src": "Yahoo!ニュース 市況",
-   "title": "第一実業、インド「SEMICON India 2026」に出展…半導体後工程のエンド・ツー・エンドソリューション提案(レスポンス)",
-   "date": "Thu, 17 Sep 2026 01:45:02",
-   "market_feed": false
-  },
-  {
-   "src": "Yahoo!ニュース 市況",
-   "title": "8月の貿易収支1兆1056億円の赤字　4カ月連続で赤字　原油輸入額は去年の1.5倍に増加(テレビ朝日系（ANN）)",
-   "date": "Thu, 17 Sep 2026 01:34:53",
+   "src": "Yahoo!ニュース 経済",
+   "title": "米FRB 3年2カ月ぶり利上げ決定",
+   "date": "Wed, 16 Sep 2026 21:08:22",
    "market_feed": false
   },
   {
    "src": "Yahoo!ニュース 経済",
-   "title": "米FRB 3年2カ月ぶり利上げ決定",
-   "date": "Wed, 16 Sep 2026 21:08:22",
+   "title": "3カ月ごと利上げ? やや期待先行",
+   "date": "Wed, 16 Sep 2026 12:58:09",
    "market_feed": false
   }
  ],
