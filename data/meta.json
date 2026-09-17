@@ -1,18 +1,19 @@
 {
- "fetched_at_jst": "2026-09-16T15:53:08.283037+09:00",
+ "fetched_at_jst": "2026-09-17T11:29:21.225925+09:00",
  "sources": {
   "1306.T": "yfinance",
-  "1343.T": "yfinance",
   "1540.T": "yfinance",
   "1615.T": "yfinance",
-  "2559.T": "yfinance",
   "2563.T": "yfinance",
-  "2621.T": "yfinance",
   "4755.T": "yfinance",
+  "8053.T": "yfinance",
   "9432.T": "yfinance",
   "1321.T": "yfinance",
   "1699.T": "yfinance",
   "2510.T": "yfinance",
+  "1343.T": "yfinance",
+  "2559.T": "yfinance",
+  "2621.T": "yfinance",
   "8306.T": "yfinance",
   "8316.T": "yfinance",
   "8411.T": "yfinance",
@@ -76,16 +77,6 @@
    "n": 3
   },
   {
-   "code": "2559.T",
-   "col": "Adj Close",
-   "dates": [
-    "2026-06-05",
-    "2026-06-08",
-    "2026-06-09"
-   ],
-   "n": 3
-  },
-  {
    "code": "1629.T",
    "col": "Adj Close",
    "dates": [
@@ -95,151 +86,49 @@
    "n": 2
   }
  ],
- "n_ok": 55,
- "n_total": 55,
- "holdings_ok": 9,
- "news_ok": 43,
+ "n_ok": 53,
+ "n_total": 53,
+ "holdings_ok": 7,
+ "news_ok": 53,
  "jgb": {
-  "date": "2026-09-15",
+  "date": "2026-09-16",
   "age_days": 1,
-  "y2": 1.861,
-  "y10": 3.028,
-  "y30": 4.106
+  "y2": 1.852,
+  "y10": 2.998,
+  "y30": 4.075
  },
- "events_ok": 8,
- "n_anomalies": 10,
+ "events_ok": 6,
+ "n_anomalies": 7,
  "health": "ok",
  "master": {
   "count": 4247,
   "cached": true
  },
  "tdnet": {
-  "pages": 8,
-  "codes": 401,
-  "items": 636,
-  "errors": 0
+  "skipped": "TDNET_ENABLED=False（JPXがスクレイピングの自動取得を控えるよう求めており、robots.txtも拒否しているため）"
  },
  "universe_source": "jpx_master",
- "screen_last_bar": "2026-09-16",
+ "screen_last_bar": "2026-09-17",
+ "screen_skipped": {
+  "TypeError": {
+   "n": 1,
+   "例": "Invalid value '1644.84' for dtype 'str'. Value should be a string or missing val"
+  }
+ },
  "signals_settled": 0,
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1688,
+  "passed": 1663,
   "named": true,
   "source": "jpx_master"
  },
- "netcash": {
-  "pool": 1693,
-  "shortlist": 60,
-  "sure": 0
- },
- "edinet": {
-  "codes": 897,
-  "with_ca": 897,
-  "usable": 869,
-  "bs_bad": 0,
-  "with_inv": 638,
-  "listed_days": 45,
-  "todo": 210,
-  "todo_priority": 1,
-  "priority_given": 86,
-  "downloaded": 210,
-  "parsed": 207,
-  "req": 255,
-  "n429": 0,
-  "blocked": null,
-  "enc": "utf-16",
-  "sep": "TAB",
-  "cols": [
-   "要素ID",
-   "項目名",
-   "コンテキストID",
-   "相対年度",
-   "連結・個別",
-   "期間・時点",
-   "ユニットID",
-   "単位",
-   "値"
-  ],
-  "dtypes": {
-   "120": 508,
-   "160": 389
-  },
-  "nomatch": {
-   "120:連結と個別が混在": 1
-  },
-  "probe": [
-   {
-    "dtype": "120",
-    "why": "連結と個別が混在",
-    "ctx": [
-     "CurrentYearInstant",
-     "Prior1YearInstant",
-     "Prior2YearInstant",
-     "Prior2YearInstant_CapitalSurplusIFRSMember",
-     "Prior2YearInstant_EquityAttributableToOwnersOfParentIFRSMember",
-     "Prior2YearInstant_ExchangeDifferencesOnTranslationOfForeignOperationsIFRSMember",
-     "Prior2YearInstant_NetChangeInFairValueOfEquityInstrumentsDesignatedAsMeasuredAtFairValueThroughOtherComprehensiveIncomeIFRSMember",
-     "Prior2YearInstant_NonControllingInterestsIFRSMember"
-    ],
-    "vals": {
-     "ca": 48799000000.0,
-     "liab": 50917000000.0,
-     "ta": 82370000000.0,
-     "na": 31453000000.0
-    }
-   }
-  ],
-  "err": {
-   "zip:BadZipFile": 3
-  }
- },
- "kiyohara": {
-  "universe": 4115,
-  "passed": 34,
-  "shown": 34,
-  "sure": 0,
-  "likely": 0,
-  "no_div": 0,
-  "with_real": 30,
-  "real_ge1": 20,
-  "real_near": 10,
-  "bands": {
-   "real_ge1": 20,
-   "real_near": 10,
-   "real_lo": 0,
-   "sure": 0,
-   "likely": 0,
-   "maybe": 1,
-   "thin": 3,
-   "unknown": 0
-  },
-  "dropped": {
-   "PER>8倍": 2297,
-   "財務が引けない": 354,
-   "売買代金が薄い": 773,
-   "予想PERが出ない(赤字予想)": 289,
-   "PBR>0.8倍": 130,
-   "流動資産≤負債合計(実測)": 31,
-   "ネットキャッシュ比率<0.8(実測)": 21,
-   "時価総額>500億円": 25,
-   "銀行・金融（式が成立しない）": 158,
-   "本業が赤字": 3
-  }
- },
- "fund_raw": {
-  "n_bps": 4058,
-  "n_feps": 3871,
-  "n_eq": 4126,
-  "n_ta": 4126,
-  "n_cash": 4089,
-  "n_sh": 4124,
-  "n_op": 4011,
-  "n_div": 4046,
-  "n_codes": 4126
- },
  "fund": {
+  "reused": true,
+  "reason": "場中（11:29 JST）は取り直さない（大引け後の実行で更新）",
+  "age_days": 0,
+  "age_hours": 19.6,
+  "fetched_at_jst": "2026-09-16T15:53:08.283037+09:00",
   "asof_latest_disclosure": "2026-06-19",
   "pool": 1693,
   "n_codes": 1614,
@@ -255,26 +144,13 @@
    "moat": 1512,
    "revision": 1271
   },
-  "jq": {
-   "dates_asked": 521,
-   "dates_with_data": 484,
-   "rows": 37662,
-   "codes": 4130,
-   "req": 521,
-   "n429": 0,
-   "blocked": null,
-   "resp_key": "data",
-   "err": {
-    "HTTP 400": 1
-   }
-  },
-  "holdings_added": 5
+  "span_days": 730,
+  "holdings_added": 2
  },
  "earnings_hist": {
+  "skipped": "TDNET_ENABLED=False",
   "days_cached": 34,
-  "codes": 1116,
-  "fetched_now": 1,
-  "new_items": 10
+  "codes": 1116
  },
  "jpx_earnings": {
   "files": [
@@ -285,26 +161,34 @@
  },
  "cand_earnings": {
   "asked": 20,
-  "ok": 10,
+  "ok": 11,
   "from_jpx": 1,
-  "from_yf": 9,
-  "recent": 1,
+  "from_yf": 10,
+  "recent": 0,
   "estimate": 0,
   "unknown": 9,
   "error": 0
  },
- "signals_appended": true,
- "signals_bar": "2026-09-16",
- "backtest_skipped": "前回から2日（30日ごと）・設定変更なし",
+ "signals_appended": false,
+ "skip_reason": "場中（11:29 JST）のため当日足が未確定",
+ "backtest_status": {
+  "file_exists": true,
+  "age_days": 3,
+  "same_config": false,
+  "max_age_d": 30,
+  "min_indep": 20,
+  "t_threshold": 2.8
+ },
+ "backtest_skipped": "場中（11:29 JST）",
  "signals": {
   "closed": 0,
-  "open": 40,
+  "open": 39,
   "days": 2
  },
  "regime": {
-  "px": 423.8999938964844,
-  "vs200": 8.78,
-  "vs25": -0.76,
+  "px": 425.8999938964844,
+  "vs200": 9.17,
+  "vs25": -0.2,
   "above200": true,
   "breadth": "7/17",
   "breadth_pct": 41.0,
