@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-18T11:45:04.663264+09:00",
+ "fetched_at_jst": "2026-09-18T15:51:55.766819+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -55,7 +55,9 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [],
+ "errors": [
+  "fetch_feed('財経新聞', 'https://www.zaikei.co.jp/rss/'): ConnectTimeout: HTTPSConnectionPool(host='www.zaikei.co.jp', port=443): Max retries exceeded with url: /rss/ (Caused by ConnectTimeoutError(<HTTPSConnection(host='www.zaikei.co.jp', port=443) at 0x7f7d3cb67cb0>, 'Connection to www.zaikei.co.jp timed out. (connect timeout=25)'))"
+ ],
  "anomalies": [
   {
    "code": "1306.T",
@@ -89,7 +91,7 @@
  "n_ok": 53,
  "n_total": 53,
  "holdings_ok": 7,
- "news_ok": 45,
+ "news_ok": 52,
  "jgb": {
   "date": "2026-09-17",
   "age_days": 1,
@@ -113,32 +115,256 @@
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1662,
+  "passed": 1690,
   "named": true,
   "source": "jpx_master"
  },
- "fund": {
-  "reused": true,
-  "reason": "場中（11:45 JST）は取り直さない（大引け後の実行で更新）",
-  "age_days": 0,
-  "age_hours": 19.9,
-  "fetched_at_jst": "2026-09-17T15:53:08.863026+09:00",
-  "asof_latest_disclosure": "2026-06-22",
-  "pool": 1672,
-  "n_codes": 1595,
-  "coverage": {
-   "has": 1595,
-   "value": 1595,
-   "ep": 1521,
-   "bp": 1590,
-   "netcash": 1592,
-   "kiyohara": 1595,
-   "payout": 1595,
-   "quality": 1595,
-   "moat": 1493,
-   "revision": 1254
+ "netcash": {
+  "pool": 1692,
+  "shortlist": 60,
+  "sure": 0
+ },
+ "edinet": {
+  "codes": 1265,
+  "with_ca": 1219,
+  "usable": 1187,
+  "bs_bad": 0,
+  "refetch_bad": 32,
+  "with_inv": 798,
+  "listed_days": 45,
+  "todo": 395,
+  "todo_priority": 1,
+  "priority_given": 86,
+  "downloaded": 220,
+  "parsed": 219,
+  "req": 265,
+  "n429": 0,
+  "blocked": null,
+  "enc": "utf-16",
+  "sep": "TAB",
+  "cols": [
+   "要素ID",
+   "項目名",
+   "コンテキストID",
+   "相対年度",
+   "連結・個別",
+   "期間・時点",
+   "ユニットID",
+   "単位",
+   "値"
+  ],
+  "dtypes": {
+   "120": 615,
+   "160": 650
   },
-  "span_days": 730,
+  "hist_rows": 401,
+  "hist_codes": 398,
+  "hist_multi": 3,
+  "hist_from": "2025-09-25",
+  "hist_to": "2026-09-17",
+  "nomatch": {
+   "120:連結と個別が混在": 2,
+   "160:連結と個別が混在": 30
+  },
+  "probe": [
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior1YearInstant_CapitalSurplusIFRSMember",
+     "Prior1YearInstant_RetainedEarningsIFRSMember",
+     "Prior1YearInstant_ShareCapitalIFRSMember",
+     "Prior2YearInstant",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_RemeasurementsOfDefinedBenefitPlansIFRSMember"
+    ],
+    "v": {
+     "流動資産": 51526000000.0,
+     "負債合計": 23110913000000.0,
+     "資産合計": 29592153000000.0,
+     "純資産": 6481239000000.0
+    }
+   },
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior1YearInstant_CapitalSurplusIFRSMember",
+     "Prior1YearInstant_ShareCapitalIFRSMember",
+     "Prior2YearInstant",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_EquityAttributableToOwnersOfParentIFRSMember",
+     "Prior2YearInstant_NonControllingInterestsIFRSMember"
+    ],
+    "v": {
+     "流動資産": 34820000000.0,
+     "負債合計": 1136929000000.0,
+     "資産合計": 1319072000000.0,
+     "純資産": 182143000000.0
+    }
+   },
+   {
+    "dtype": "160",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "InterimInstant",
+     "Prior1InterimInstant_CapitalStockMember",
+     "Prior1InterimInstant_CapitalSurplusMember",
+     "Prior1InterimInstant_RetainedEarningsMember",
+     "Prior1InterimInstant_ShareholdersEquityMember",
+     "Prior1InterimInstant_TreasuryStockMember",
+     "Prior1YearInstant",
+     "Prior2YearInstant_CapitalStockMember"
+    ],
+    "v": {
+     "流動資産": 7788000000.0,
+     "負債合計": 10910671000000.0,
+     "資産合計": 12155790000000.0,
+     "純資産": 1245119000000.0
+    }
+   },
+   {
+    "dtype": "160",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "InterimInstant",
+     "Prior1InterimInstant_CapitalStockMember",
+     "Prior1InterimInstant_CapitalSurplusMember",
+     "Prior1InterimInstant_RetainedEarningsMember",
+     "Prior1InterimInstant_ShareholdersEquityMember",
+     "Prior1InterimInstant_TreasuryStockMember",
+     "Prior1YearInstant",
+     "Prior2YearInstant_CapitalStockMember"
+    ],
+    "v": {
+     "流動資産": 1145071000000.0,
+     "負債合計": 277681073000000.0,
+     "資産合計": 288757081000000.0,
+     "純資産": 11076007000000.0
+    }
+   },
+   {
+    "dtype": "160",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "InterimInstant",
+     "Prior1InterimInstant_CapitalSurplusIFRSMember",
+     "Prior1InterimInstant_RetainedEarningsIFRSMember",
+     "Prior1InterimInstant_ShareCapitalIFRSMember",
+     "Prior1YearInstant",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_RemeasurementsOfDefinedBenefitPlansIFRSMember",
+     "Prior2YearInstant_RetainedEarningsIFRSMember"
+    ],
+    "v": {
+     "流動資産": 302554000000.0,
+     "負債合計": 11558898000000.0,
+     "資産合計": 16356544000000.0,
+     "純資産": 4797646000000.0
+    }
+   },
+   {
+    "dtype": "160",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "InterimInstant",
+     "Prior1InterimInstant_CapitalStockMember",
+     "Prior1InterimInstant_CapitalSurplusMember",
+     "Prior1InterimInstant_RetainedEarningsMember",
+     "Prior1InterimInstant_ShareholdersEquityMember",
+     "Prior1InterimInstant_TreasuryStockMember",
+     "Prior1YearInstant",
+     "Prior2YearInstant_CapitalStockMember"
+    ],
+    "v": {
+     "流動資産": 2554481000000.0,
+     "負債合計": 290601655000000.0,
+     "資産合計": 305905915000000.0,
+     "純資産": 15304259000000.0
+    }
+   }
+  ],
+  "err": {
+   "zip:BadZipFile": 1
+  }
+ },
+ "kiyohara": {
+  "universe": 4118,
+  "passed": 29,
+  "shown": 29,
+  "sure": 0,
+  "likely": 0,
+  "no_div": 0,
+  "with_real": 28,
+  "real_ge1": 19,
+  "real_near": 9,
+  "bands": {
+   "real_ge1": 19,
+   "real_near": 9,
+   "real_lo": 0,
+   "sure": 0,
+   "likely": 0,
+   "maybe": 0,
+   "thin": 1,
+   "unknown": 0
+  },
+  "dropped": {
+   "PER>8倍": 2301,
+   "財務が引けない": 348,
+   "売買代金が薄い": 776,
+   "予想PERが出ない(赤字予想)": 291,
+   "PBR>0.8倍": 128,
+   "流動資産≤負債合計(実測)": 35,
+   "ネットキャッシュ比率<0.8(実測)": 22,
+   "時価総額>500億円": 25,
+   "銀行・金融（式が成立しない）": 160,
+   "本業が赤字": 3
+  }
+ },
+ "fund_raw": {
+  "n_bps": 4057,
+  "n_feps": 3870,
+  "n_eq": 4126,
+  "n_ta": 4126,
+  "n_cash": 4088,
+  "n_sh": 4124,
+  "n_op": 4011,
+  "n_div": 4045,
+  "n_codes": 4126
+ },
+ "fund": {
+  "asof_latest_disclosure": "2026-06-23",
+  "pool": 1692,
+  "n_codes": 1614,
+  "coverage": {
+   "has": 1614,
+   "value": 1614,
+   "ep": 1536,
+   "bp": 1609,
+   "netcash": 1611,
+   "kiyohara": 1614,
+   "payout": 1613,
+   "quality": 1614,
+   "moat": 1512,
+   "revision": 1266
+  },
+  "jq": {
+   "dates_asked": 522,
+   "dates_with_data": 484,
+   "rows": 37638,
+   "codes": 4130,
+   "req": 522,
+   "n429": 0,
+   "blocked": null,
+   "resp_key": "data",
+   "err": {
+    "HTTP 400": 2
+   }
+  },
   "holdings_added": 2
  },
  "earnings_hist": {
@@ -148,10 +374,10 @@
  },
  "jpx_earnings": {
   "files": [
-   "kessan08_0904.xlsx:420件",
+   "kessan08_0918.xlsx:444件",
    "kessan07_0904.xlsx:236件"
   ],
-  "codes": 656
+  "codes": 680
  },
  "cand_earnings": {
   "asked": 20,
@@ -163,8 +389,8 @@
   "unknown": 10,
   "error": 0
  },
- "signals_appended": false,
- "skip_reason": "場中（11:45 JST）のため当日足が未確定",
+ "signals_appended": true,
+ "signals_bar": "2026-09-18",
  "backtest_status": {
   "file_exists": true,
   "age_days": 0,
@@ -173,19 +399,19 @@
   "min_indep": 20,
   "t_threshold": 2.8
  },
- "backtest_skipped": "場中（11:45 JST）",
+ "backtest_skipped": "前回から0日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 0,
   "open": 39,
   "days": 2
  },
  "regime": {
-  "px": 425.2000122070313,
-  "vs200": 8.87,
-  "vs25": -0.26,
+  "px": 426.2999877929688,
+  "vs200": 9.15,
+  "vs25": -0.01,
   "above200": true,
-  "breadth": "7/17",
-  "breadth_pct": 41.0,
+  "breadth": "8/17",
+  "breadth_pct": 47.0,
   "b_suggest": 0.7
  },
  "analysis": "ok",
