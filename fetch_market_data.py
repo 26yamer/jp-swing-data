@@ -674,6 +674,35 @@ def pub_name(code):
     """公開して良い銘柄名。無ければ空文字（JPXの名前では埋めない）。"""
     return ED_NAMES.get(str(code)[:4], "")
 
+# ── JPX由来でpublicに置けない項目 ─────────────────────────────
+#   JPXサイト利用条件:
+#   「有料・無料を問わずJPXからの許諾を得ている場合を除き、商用目的による
+#     データ収集のほか如何なる用途に関わらず二次利用及び再配信はできません。」
+#   このリポジトリは public なので、data/ に書けば再配信に当たる。
+#   ★銘柄名は EDINET の提出者名（PDL1.0＝出典明記で再配布可）に置き換えた。
+#     name 自体は禁止語にできないので、ここでは業種・規模・市場区分を見る。
+JPX_KEYS = {"s17", "s33", "size", "market", "sector_etf"}
+
+# JPX由来のファイルそのもの。data/ に現れてはいけない。
+JPX_FILES = ("jpx_master.json",)
+
+def jpx_safe(o):
+    """書き出す直前に、JPX由来の項目を丸ごと落とす。
+
+       ★なぜ「使う側で消す」のではなく「書く直前に落とす」のか:
+         実測で漏れた。_decorate は r["s17"] を持ち回っており、
+         表からは外したのに**レコード自体は candidates.json に
+         そのまま書かれていた**（commit_guard が検出）。
+         判定に使う項目を持ち回ること自体は要るので、
+         **出口で一律に落とす**のが確実。
+       ★これは commit_guard の検査と二重化している。
+         こちらが漏らしても向こうが止める、向こうが漏らしても
+         こちらが落とす、という関係にしてある。"""
+    if isinstance(o, dict):
+        return {k: jpx_safe(v) for k, v in o.items() if k not in JPX_KEYS}
+    if isinstance(o, (list, tuple)): return [jpx_safe(v) for v in o]
+    return o
+
 def load_master():
     """コード → 銘柄名・市場区分・17業種 の対照表。"""
     try: os.makedirs(MASTER_DIR, exist_ok=True)
@@ -2524,7 +2553,8 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
                         "流動資産と投資有価証券は無料データに無いため不等式で挟んでいる。"
                         "PER・PBR・時価総額・比率の数値は利用条件により載せない。"),
                "rows": out}
-    json.dump(payload, open(KY_PATH, "w"), ensure_ascii=False, indent=1)
+    json.dump(jpx_safe(payload), open(KY_PATH, "w"),
+              ensure_ascii=False, indent=1)
     meta["kiyohara"] = {k: payload[k] for k in
                         ("universe", "passed", "shown", "sure", "likely", "no_div",
                          "with_real", "real_ge1", "real_near", "bands", "dropped")}
@@ -2607,7 +2637,8 @@ def netcash_shortlist(sc, fmap, names=None, s17=None):
                         "正確な値はバフェット・コードの 流動資産・投資有価証券・負債合計・"
                         "時価総額 で計算すること。"),
                "rows": out}
-    json.dump(payload, open(NC_PATH, "w"), ensure_ascii=False, indent=1)
+    json.dump(jpx_safe(payload), open(NC_PATH, "w"),
+              ensure_ascii=False, indent=1)
     meta["netcash"] = {k: payload[k] for k in ("pool", "shortlist", "sure")}
     print(f"[ネットキャッシュ] 手で確かめる候補 {len(out)}件"
           f"（うち下限で既に1以上 {n_sure}件）")
@@ -2852,17 +2883,6 @@ RAW_KEYS = {"bps", "feps", "eps", "sales", "op", "ta", "eq", "eqar",
             # 成長も生の伸び率は出さない（分類タグ grow だけを書く）
             "g_sales", "g_op", "g_fop"}
 
-# ── JPX由来でpublicに置けない項目 ─────────────────────────────
-#   JPXサイト利用条件:
-#   「有料・無料を問わずJPXからの許諾を得ている場合を除き、商用目的による
-#     データ収集のほか如何なる用途に関わらず二次利用及び再配信はできません。」
-#   このリポジトリは public なので、data/ に書けば再配信に当たる。
-#   ★銘柄名は EDINET の提出者名（PDL1.0＝出典明記で再配布可）に置き換えた。
-#     name 自体は禁止語にできないので、ここでは業種・規模・市場区分を見る。
-JPX_KEYS = {"s17", "s33", "size", "market", "sector_etf"}
-
-# JPX由来のファイルそのもの。data/ に現れてはいけない。
-JPX_FILES = ("jpx_master.json",)
 
 def json_safe(o):
     """NaN / Inf を null に直す。json.dump は既定で `NaN` という
@@ -2915,7 +2935,7 @@ def redact_keys(fp):
 def commit_guard():
     import glob
     bad_files, key_files = {}, []
-    jpx_fields, jpx_files = {}, []
+    jpx_fields, jpx_files, jpx_cleaned = {}, [], {}
     # ★data直下のCSV（edinet_hist.csv）も鍵の伏せ字の対象にする。
     #   ohlcv/ の数千ファイルは価格だけなので対象外にして時間を使わない。
     for fp in sorted(glob.glob(f"{OUT}/*.csv")):
@@ -2946,6 +2966,28 @@ def commit_guard():
         found = set()
         _walk_keys(o, found)
         if found: bad_files[fp] = sorted(found)
+    # ★古い実行で書かれたまま残っているファイルも掃除する。
+    #   実測で candidates.json / kiyohara.json / netcash.json に s17 が
+    #   残っていた。前2つは今回の書き出しで直るが、その回に生成されなかった
+    #   ファイル（財務が引けずスキップされた回など）は**古いまま居座る**。
+    #   見つけたらその場で落として書き戻す。
+    for fp in sorted(glob.glob(f"{OUT}/*.json")):
+        if os.path.basename(fp) in JPX_FILES: continue
+        try:
+            _o2 = json.load(open(fp, encoding="utf-8"))
+        except Exception:
+            continue
+        _jf2 = set(); _walk_jpx(_o2, _jf2)
+        if not _jf2: continue
+        try:
+            json.dump(jpx_safe(_o2), open(fp, "w"), ensure_ascii=False, indent=1)
+            jpx_cleaned[fp] = sorted(_jf2)
+            # 直したものは警告から外す（直せなかったものだけを ::error:: にする）
+            jpx_fields.pop(fp, None)
+            print(f"[見張り] {fp} からJPX由来の項目 {sorted(_jf2)} を削除しました")
+        except Exception as e:
+            meta["errors"].append(f"jpx clean {os.path.basename(fp)}: {type(e).__name__}")
+
     # JPX由来のファイルが data/ に残っていないか
     for _n in JPX_FILES:
         _fp = f"{OUT}/{_n}"
@@ -2961,7 +3003,8 @@ def commit_guard():
         _hit = sorted(_cols & JPX_KEYS)
         if _hit: jpx_fields[fp] = _hit
     res = {"raw_fields": bad_files, "api_key_found_in": key_files,
-           "jpx_fields": jpx_fields, "jpx_files": jpx_files}
+           "jpx_fields": jpx_fields, "jpx_files": jpx_files,
+           "jpx_cleaned": jpx_cleaned}
     if key_files:
         print(f"::error::APIキーが {', '.join(key_files)} に出ていたので伏せました。"
               "コードの見直しが必要です")
@@ -2969,6 +3012,9 @@ def commit_guard():
         for fp, ks in bad_files.items():
             print(f"::error::{fp} に生の財務項目 {ks} が含まれています。"
                   "J-Quantsの利用条件に反するのでコミット前に取り除いてください")
+    for fp, ks in jpx_cleaned.items():
+        print(f"::warning::{fp} に JPX由来の項目 {ks} が残っていたので削除しました"
+              "（古い実行で書かれたもの）。書き出し側も直っているか確認すること")
     for fp, ks in jpx_fields.items():
         print(f"::error::{fp} に JPX由来の項目 {ks} が含まれています。"
               "publicリポジトリへの再配信に当たるので取り除いてください"
@@ -4273,9 +4319,14 @@ def run_backtest(codes, bench="1306.T"):
     try:
         _h0 = min(BT_HOLDS)
         def _mean(kind):
+            # ★建玉は (建て日, 保有, 降り方) ごとに畳んである。
+            #   合計(sR)と件数(n)から平均を出す。
+            #   ここを畳み込みのときに直し忘れて KeyError で落ちた（実測）。
             d = [r for r in trades.get(kind, [])
                  if r["hold"] == _h0 and r.get("ex") == "2atr_3atr"]
-            return (sum(r["R"] for r in d) / len(d)) if d else None
+            _sn = sum((r.get("n") or 0) for r in d)
+            if not _sn: return None
+            return sum(r.get("sR", 0.0) for r in d) / _sn
         _mp, _mf = _mean("pool"), _mean("pool_f")
         _bchk["pool_mean_r"] = None if _mp is None else round(_mp, 4)
         _bchk["pool_f_mean_r"] = None if _mf is None else round(_mf, 4)
@@ -5746,7 +5797,7 @@ try:
                 meta["errors"].append(f"signals write: {type(e).__name__}: {e}")
             # 通過0件でも必ず書く。書かないと report 側が「未実行」と表示してしまい、
             # 「走らせたが0件だった」という事故が「まだ動かしていない」に見える。
-            json.dump(json_safe({"generated_at_jst": NOW.isoformat(),
+            json.dump(jpx_safe(json_safe({"generated_at_jst": NOW.isoformat(),
                        "universe": len(uni), "scanned": scanned, "passed": len(sc),
                        "master_count": len(MASTER),
                        "universe_source": meta.get("universe_source", "?"),
@@ -5760,8 +5811,8 @@ try:
                        # ★業種名そのものは書かない（JPX由来）。件数だけ残す。
                        "s17_unmapped_n": len(meta.get("s17_unmapped", {}) or {}),
                        "top_n": CAND_TOP_N, "ranked_by": "value",
-                       "candidates": tr}),
-                      open(f"{OUT}/candidates.json", "w"), ensure_ascii=False,
+                       "candidates": tr})),
+                                            open(f"{OUT}/candidates.json", "w"), ensure_ascii=False,
                       indent=1, default=str)
             named = sum(1 for r in tr if r["name"])
             print(f"[全銘柄] 走査{scanned} / 通過{len(sc)} / バリュー候補{len(tr)} / "
