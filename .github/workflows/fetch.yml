@@ -34,7 +34,11 @@ jobs:
       - name: Verify deps
         run: |
           python - <<'PY'
-          import importlib, sys
+          # ★`import importlib` だけでは util 副モジュールは読み込まれない。
+          # 以前は他のライブラリが先に読み込んでいて偶然通っていたが、
+          # それに依存していたので、Pythonの版が変わった瞬間に落ちた。
+          # 副モジュールは明示的に import する。
+          import importlib.util, sys
           need = ["yfinance", "pandas", "requests", "openpyxl"]
           miss = [m for m in need if importlib.util.find_spec(m) is None]
           print("installed:", [m for m in need if m not in miss])
