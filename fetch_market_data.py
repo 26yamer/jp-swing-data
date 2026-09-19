@@ -537,6 +537,15 @@ JPX_URLS = [
     "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx",
     "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls",
 ]
+# ★マスタのキャッシュは data/ の外に置く。
+#   data/ は Actions が `git add -A data` で丸ごとコミットするので、
+#   ここに置くと JPX の「東証上場銘柄一覧」がそのまま public に再配信される
+#   （JPXサイト利用条件で禁じられている）。
+#   cache/ は .gitignore に入れてコミットしない。
+#   Actions のランナーは毎回まっさらなので、代わりに actions/cache で
+#   実行をまたいで持ち回る（fetch.yml 参照）。取れなくても
+#   JPXから取り直すだけで、運用は止まらない。
+MASTER_DIR          = "cache"
 MASTER_MIN_ROWS     = 1000        # これ未満しか取れなければ壊れたファイルとみなす
 MASTER_MAX_AGE_DAYS = 25          # 月初の第3営業日に更新されるので25日で取り直す
 EXCLUDE_MARKET_KW   = ["pro market", "pro-market", "ｐｒｏ"]
@@ -647,9 +656,40 @@ def _col(df, *names):
             if norm(c) == n: return c
     return None
 
+# ── 公開リポジトリに書き出してよい銘柄名 ──────────────────────
+#   ★JPXサイト利用条件:
+#     「当サイトに掲載されている情報について、有料・無料を問わずJPXからの
+#       許諾を得ている場合を除き、商用目的によるデータ収集のほか
+#       如何なる用途に関わらず二次利用及び再配信はできません。」
+#     このリポジトリは public なので、JPXの「東証上場銘柄一覧」から取った
+#     銘柄名・業種区分を data/ に書き出すことは**再配信に当たる**。
+#   ★そこで、JPXのマスタは**メモリ上の判定にだけ使い**（市場区分の除外・
+#     業種の除外・業種ETFの対応付け）、**書き出す名前はEDINETの提出者名**に
+#     置き換える。EDINETは政府標準利用規約(PDL1.0)で、出典を書けば再配布できる。
+#   ★EDINETに無い銘柄（ETF・REIT・新規上場直後など）は**名前を空にする**。
+#     JPXの名前で埋め戻すことはしない。空欄は「まだEDINETに無い」という意味。
+ED_NAMES = {}          # コード4桁 → 提出者名（EDINET）。実行時に読み込む。
+
+def pub_name(code):
+    """公開して良い銘柄名。無ければ空文字（JPXの名前では埋めない）。"""
+    return ED_NAMES.get(str(code)[:4], "")
+
 def load_master():
     """コード → 銘柄名・市場区分・17業種 の対照表。"""
-    p, cached = f"{OUT}/jpx_master.json", None
+    try: os.makedirs(MASTER_DIR, exist_ok=True)
+    except Exception: pass
+    p, cached = f"{MASTER_DIR}/jpx_master.json", None
+    # 以前は data/ に置いていた。残っていれば消す（public に出したままにしない）。
+    _old = f"{OUT}/jpx_master.json"
+    try:
+        if os.path.exists(_old):
+            if not os.path.exists(p):
+                import shutil; shutil.copy(_old, p)
+            os.remove(_old)
+            print("[マスタ] data/jpx_master.json を削除（JPX由来のため公開しない）")
+            meta["master_moved"] = True
+    except Exception as e:
+        meta["errors"].append(f"master move: {type(e).__name__}")
     try:
         if os.path.exists(p):
             cached = json.load(open(p, encoding="utf-8"))
@@ -665,7 +705,8 @@ def load_master():
         df = _master_frame(blob)
         c_code = _col(df, "コード"); c_name = _col(df, "銘柄名")
         c_mkt  = _col(df, "市場・商品区分"); c_s17 = _col(df, "17業種区分")
-        c_s33  = _col(df, "33業種区分");    c_sz  = _col(df, "規模区分")
+        # ★33業種区分・規模区分はもう読まない。公開できないものを
+        #   手元に持つと、いずれどこかの行から漏れる（JPXサイト利用条件）。
         if not (c_code and c_name):
             raise RuntimeError(f"想定した列が無い: {list(df.columns)[:12]}")
         def cell(r, c):
@@ -683,9 +724,12 @@ def load_master():
             if not CODE_RE.match(code): continue
             mkt = cell(r, c_mkt)
             if any(k in mkt.lower() for k in EXCLUDE_MARKET_KW): continue
-            rows[code] = {"name": cell(r, c_name), "market": mkt,
-                          "s17": cell(r, c_s17), "s33": cell(r, c_s33),
-                          "size": cell(r, c_sz), "kind": classify_kind(mkt)}
+            # ★銘柄名・33業種・規模区分は**持たない**。
+            #   公開リポジトリに書き出せないものを手元に持つと、
+            #   いずれどこかの行から漏れる。最初から取り込まない。
+            #   17業種と市場区分は判定に要るのでメモリ上だけで使う。
+            rows[code] = {"market": mkt, "s17": cell(r, c_s17),
+                          "kind": classify_kind(mkt)}
         if len(rows) < MASTER_MIN_ROWS:
             raise RuntimeError(f"件数が少なすぎる: {len(rows)}")
         json.dump({"built_at_jst": NOW.isoformat(), "source": url, "rows": rows},
@@ -900,11 +944,14 @@ def jq_dates(end_lag_d, span_d):
         out.append(d.isoformat())
     return out          # 新しい順
 
-def _jq_get(params):
+def _jq_get(params, path=None):
     """1回分を取る。pagination_key を辿って全件返す。
-       401/403 は叩き続けても直らないので、以後の呼び出しを止める。"""
+       401/403 は叩き続けても直らないので、以後の呼び出しを止める。
+
+       path … 既定は財務情報。決算発表予定日など別の入口にも使う。"""
     import urllib.parse, urllib.request, urllib.error
     if not JQ_KEY or _JQ["blocked"]: return None
+    JQ_PATH_USE = path or JQ_PATH
     rows, pk = [], None
     while True:
         if _JQ["req"] >= JQ_MAX_REQ:
@@ -912,7 +959,7 @@ def _jq_get(params):
             break
         p = dict(params)
         if pk: p["pagination_key"] = pk
-        url = f"{JQ_BASE}{JQ_PATH}?" + urllib.parse.urlencode(p)
+        url = f"{JQ_BASE}{JQ_PATH_USE}?" + urllib.parse.urlencode(p)
         body = None
         for att in range(JQ_RETRY):
             try:
@@ -958,6 +1005,88 @@ def _jq_get(params):
         time.sleep(JQ_GAP_S)
         if not pk: break
     return rows
+
+JQ_EARN_PATH = "/v2/fins/earnings-date"   # 決算発表予定日（無料プランの範囲）
+
+def _jq_pick_field(row, want):
+    """行から目的の値が入っている鍵を見つける。
+
+       ★なぜ推測で決め打ちしないか: 公開されているエンドポイント一覧に
+         **レスポンスの項目名が載っていない**。EDINETのCSVで一度、
+         項目名を決め打ちして半期報告書が0件になった。同じ失敗をしない。
+         候補名で探し、無ければ値の形（4桁コード / YYYY-MM-DD）で探す。
+         見つかった鍵は meta に残して、次回から当てにできるようにする。"""
+    if not isinstance(row, dict): return None, None
+    cands = {"code": ("Code", "code", "LocalCode", "local_code", "SecuritiesCode"),
+             "date": ("Date", "date", "AnnouncementDate", "announcement_date",
+                      "EarningsDate", "earnings_date", "ScheduledDate")}[want]
+    for k in cands:
+        v = row.get(k)
+        if v not in (None, ""): return k, v
+    # 名前で見つからなければ形で探す（決め打ちしない）
+    for k, v in row.items():
+        s = str(v or "")
+        if want == "date" and re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+            return k, s
+        if want == "code" and re.fullmatch(r"\d{4}0?", s):
+            return k, s
+    return None, None
+
+def jq_earnings_dates():
+    """J-Quantsの決算発表予定日。**無料プランの範囲**。
+
+       ★なぜ足したか: TDnetの自動取得を止めたことで、候補の決算予定日が
+         20件中10件「不明」になった（実測）。
+         「決算をまたぐ建玉は作らない」という規則が、半分の候補で効かない。
+         JPXの公開Excelは当日分しか載らず、yfinanceの日本株は推定で穴が多い。
+       ★引数の形も公式仕様に無いので、まず引数なしで叩き、
+         駄目なら日付を付けて試す。どちらが通ったかを meta に残す。"""
+    out, diag = {}, {"tried": [], "rows": 0, "path": JQ_EARN_PATH}
+    if not JQ_KEY:
+        meta["jq_earn"] = {"skipped": "JQUANTS_API_KEY 未設定"}
+        return out
+    rows = None
+    for label, params in (("引数なし", {}),
+                          ("date=今日", {"date": str(NOW.date())})):
+        diag["tried"].append(label)
+        try:
+            r = _jq_get(params, path=JQ_EARN_PATH)
+        except Exception as e:
+            diag.setdefault("err", []).append(f"{label}:{type(e).__name__}")
+            continue
+        if r:
+            rows = r; diag["used"] = label; break
+    if not rows:
+        diag["result"] = "取れなかった"
+        meta["jq_earn"] = diag
+        print("[決算予定] J-Quantsから取れませんでした。meta.json の jq_earn を確認")
+        return out
+    diag["rows"] = len(rows)
+    diag["sample_keys"] = sorted(rows[0])[:20] if isinstance(rows[0], dict) else None
+    ck, _ = _jq_pick_field(rows[0], "code")
+    dk, _ = _jq_pick_field(rows[0], "date")
+    diag["code_key"], diag["date_key"] = ck, dk
+    if not ck or not dk:
+        diag["result"] = "コードか日付の項目が見つからない"
+        meta["jq_earn"] = diag
+        print(f"[決算予定] 項目名が判別できません: {diag.get('sample_keys')}")
+        return out
+    today = str(NOW.date())
+    for r in rows:
+        if not isinstance(r, dict): continue
+        c = str(r.get(ck) or "").strip()
+        d = str(r.get(dk) or "").strip()[:10]
+        if not c or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d): continue
+        c4 = c[:4] if len(c) == 5 and c.endswith("0") else c
+        if d < today: continue                 # 過ぎた予定は使わない
+        cur = out.get(c4)
+        if cur is None or d < cur: out[c4] = d   # 一番近い予定
+    diag["codes"] = len(out)
+    diag["result"] = "ok"
+    meta["jq_earn"] = diag
+    print(f"[決算予定] J-Quants {len(rows):,}件 → {len(out):,}銘柄"
+          f"（項目 {ck} / {dk}）")
+    return out
 
 def jq_fetch(dates):
     """開示日ごとに引く。code を付けず date 単独指定にすると、
@@ -1054,6 +1183,66 @@ def jq_metrics(rows_upto):
             a, b = _f(seq[-2]), _f(seq[-1])
             if a is not None and b is not None and a > 0:
                 rev = (b / a - 1) * 100
+    # ── 決算サプライズ（会社自身の前回予想に対する実績のズレ）──────
+    #   ★なぜアナリスト予想ではないか: 有料データで引けないのと、
+    #     **日本では会社が自ら通期予想を出す**ので、そちらとの差が
+    #     素直なサプライズになる。Kitagawa & Shuto (2024, JBFA 51(9-10))
+    #     は日本企業の会社予想の「予想外部分」に将来リターンとの関係が
+    #     あることを報告している。
+    #   ★通期(FY)の実績営業利益と、その期について**その前に**出ていた
+    #     会社予想を突き合わせる。予想は rows_upto の範囲内にしか無いので
+    #     未来は混ざらない。
+    sue = None
+    _fy = [r for r in fin if r.get("per") == "FY" and r.get("op") is not None]
+    if _fy:
+        _last_fy = _fy[-1]
+        _tgt = _last_fy.get("fyend")
+        # その期末について、通期決算より前に出ていた会社予想の最後の値
+        _pre = [r.get("fop") for r in fin
+                if r.get("fyend") == _tgt and r.get("per") != "FY"
+                and r.get("fop") is not None
+                and r["date"] < _last_fy["date"]]
+        if _pre and _pre[-1] not in (None, 0):
+            _f0 = _pre[-1]
+            if _f0 > 0:
+                sue = (_last_fy["op"] / _f0 - 1) * 100
+
+    # ── 成長（清原式は「割安 *成長* 株」）──────────────────────
+    #   ★『わが投資術』の対象は「割安 “小型 成長” 株」であって、
+    #     単に安いだけの会社ではない。これまで成長の条件が一つも
+    #     無かったので、万年割安のまま伸びない会社が候補に残っていた。
+    #   ★なぜ「過去3期」ではないか: J-Quants無料プランの提供範囲は
+    #     「12週間前〜2年12週間前」の2年ぶんしかない。年度の数字を
+    #     3期並べることは**データとして不可能**。できるのは
+    #     「同じ四半期どうしの前年比」で、決算期のずれを跨がないので
+    #     季節性のある会社でも意味が保てる。何組で測れたかも返す。
+    def _yoy(field):
+        by = {}
+        for r in fin:
+            v, per, fy = r.get(field), r.get("per"), r.get("fyend")
+            if v is None or not per or not fy: continue
+            by.setdefault(per, {})[fy] = v      # 同じ期の訂正は後の開示で上書き
+        vals = []
+        for per, d in by.items():
+            fys = sorted(d)
+            for fa, fb in zip(fys, fys[1:]):
+                va, vb = d[fa], d[fb]
+                # 前年が赤字・ゼロだと伸び率が意味を成さないので数えない
+                if va is None or vb is None or va <= 0: continue
+                vals.append((vb / va - 1) * 100)
+        if not vals: return None, 0
+        vals.sort(); n = len(vals)
+        med = vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
+        return med, n
+    g_sales, n_gs = _yoy("sales")
+    g_op,    n_go = _yoy("op")
+    # 会社自身の今期予想 対 直近通期の実績。前を向いた唯一の数字なので別に持つ。
+    g_fop = None
+    _fy_ops = [r["op"] for r in fin if r.get("per") == "FY" and r.get("op") is not None]
+    _fop_now = L("fop")
+    if _fop_now is not None and _fy_ops and _fy_ops[-1] > 0:
+        g_fop = (_fop_now / _fy_ops[-1] - 1) * 100
+
     cfoa = None
     _cfo, _ta = L("cfo"), L("ta")
     if _cfo is not None and _ta and _ta > 0:
@@ -1087,6 +1276,10 @@ def jq_metrics(rows_upto):
     no_div = (div_now is not None and div_now <= 0 and (L("divann") or 0) <= 0)
     return {"bps": L("bps"), "feps": L("feps"), "eqar": L("eqar"),
             "opm": opm, "opm_stab": stab, "rev": rev, "cfoa": cfoa,
+            "g_sales": g_sales, "g_op": g_op, "g_fop": g_fop,
+            "n_growth": n_gs + n_go,
+            # 決算サプライズ（会社予想比）と、その開示日
+            "sue": sue, "disc_date": last["date"],
             # ネットキャッシュ比率の上下限を出すのに使う素の値
             "cash": L("cash_eq"),
             "ta": _ta, "eq": L("eq"), "sh": sh,
@@ -1148,10 +1341,12 @@ def jq_metrics_at(hist, pit, code, i):
 #                される会社は株主に返さない）。
 #   value は比較のため残す（混ぜたものが分解したものより良いかを見る）。
 FUND_FACTORS = ("value", "ep", "bp", "netcash", "kiyohara", "payout",
-                "quality", "moat", "revision")
+                "quality", "moat", "revision", "growth", "ky_grow")
 
 # ★実運用で並べ替えに使う因子。過去検証で基準（t≥2.8）を通ったものだけを置く。
-#   いま通っているのは value（保有10日 t=+4.01 / 15日 t=+3.10）。
+#   いま通っているのは value（2026-09-17 の補正後の検証）。
+#   保有3日 t=+2.94 / 5日 t=+3.85 / 10日 t=+3.78（3つのtの最小値）、
+#   独立した建て日 107日・107日・53日。**数日のスイングの時間軸で通った**。
 #   清原式の kiyohara（PER重視＋ネットキャッシュ）はまだ未検証なので、
 #   検証結果を見てから差し替える。先に入れ替えると、また検証していない
 #   ものを運用することになる。
@@ -1196,6 +1391,11 @@ def fund_scores(df, fmap):
     eqar = col(lambda m, p: m.get("eqar"))
     stab = col(lambda m, p: m.get("opm_stab"))
     rev  = col(lambda m, p: m.get("rev"))
+    # 成長。売上と営業利益の前年比（同じ四半期どうし）。
+    #   ★清原式の「割安 *成長* 株」の成長側。順位にしてから使うので、
+    #     伸び率の絶対値ではなく、その日の母集団の中での位置で効く。
+    gsl  = col(lambda m, p: m.get("g_sales"))
+    gop  = col(lambda m, p: m.get("g_op"))
 
     # ネットキャッシュ比率の下限版（清原式の保守的な近似）
     #   負債合計＝総資産−純資産、時価総額＝株価×(発行済−自己株)
@@ -1226,7 +1426,11 @@ def fund_scores(df, fmap):
            "payout":   _po,
            "quality":  _mean_pct([pr(froe), pr(opm), pr(eqar)]),
            "moat":     _mean_pct([pr(opm), pr(stab)]),
-           "revision": pr(rev)}
+           "revision": pr(rev),
+           # 成長そのものと、「割安かつ成長」の組み合わせ。
+           # 過去検証（BT_FACTORS）に載せて、効いているかを先に見る。
+           "growth":   _mean_pct([pr(gsl), pr(gop)]),
+           "ky_grow":  _mean_pct([_ep, _nc, pr(gsl), pr(gop)])}
     # ファンダが引けた銘柄。ここに入らない銘柄は
     # ファンダ側の母集団から外す（基準線も同じ母集団の平均を取る）。
     has = (~bp.isna()) | (~ep.isna())
@@ -1281,8 +1485,20 @@ ED_PATH       = f"{OUT}/edinet.json"
 #   捨ててから取り直すのはレート制限のせいで高くつくので、いまから貯める。
 #   JSONではなくCSVにするのは、数万行になったときに軽いから。
 ED_HIST_PATH  = f"{OUT}/edinet_hist.csv"
+# ★公開リポジトリに出す銘柄名の出どころ。
+#   JPXの「東証上場銘柄一覧」の銘柄名は、JPXサイト利用条件で
+#   「有料・無料を問わず…二次利用及び再配信はできません」とされている。
+#   このリポジトリは public なので、JPX由来の名前を書き出すことは再配信に当たる。
+#   EDINETは政府標準利用規約(PDL1.0)＝出典を書けば再配布できるので、
+#   書き出す名前は EDINET の提出者名に置き換える。
+#   ★書類を落とさなくても一覧(documents.json)だけで名前は取れるので、
+#     貸借対照表の取得上限(ED_MAX_DOCS)とは関係なく全件溜まる。
+ED_NAME_PATH  = f"{OUT}/edinet_names.json"
 ED_HIST_COLS  = ("code", "docid", "submit", "period", "dtype",
-                  "ca", "inv", "liab", "ta", "na", "solo", "mixed", "bs_ok")
+                  "ca", "inv", "liab", "ta", "na", "solo", "mixed", "bs_ok",
+                  # 提出者名（PDL1.0＝出典明記で再配布できる）。
+                  # 公開リポジトリに出す銘柄名はここから取る。
+                  "name")
 ED_HIST_MAX   = 150_000         # 行数の上限（古い提出日から捨てる）。
                                  # 6年×約4,000銘柄×年2回 ≒ 48,000行の見込みで、
                                  # 1行約90バイトなので150,000行で約13MB。
@@ -1389,7 +1605,12 @@ def ed_pick(results):
         out.append({"code": code, "docid": did,
                     "submit": str(r.get("submitDateTime") or "")[:10],
                     "period": str(r.get("periodEnd") or "")[:10],
-                    "dtype": str(r.get("docTypeCode"))})
+                    "dtype": str(r.get("docTypeCode")),
+                    # ★提出者名。EDINETは政府標準利用規約(PDL1.0)なので
+                    #   出典を書けば再配布できる。JPXの「東証上場銘柄一覧」の
+                    #   銘柄名は再配信が禁じられているので、公開リポジトリに
+                    #   書き出す名前はこちらに置き換える。
+                    "name": str(r.get("filerName") or "").strip()})
     return out
 
 def _ed_decode(raw):
@@ -1588,6 +1809,31 @@ def ed_parse_csv(zip_bytes, dtype=None):
     _ED["parsed"] += 1
     return out
 
+def ed_names_load():
+    """コード → 提出者名（EDINET・PDL1.0）。壊れていても落とさない。"""
+    try:
+        if os.path.exists(ED_NAME_PATH):
+            o = json.load(open(ED_NAME_PATH, encoding="utf-8"))
+            r = o.get("rows") if isinstance(o, dict) else None
+            if isinstance(r, dict):
+                return {str(k): str(v) for k, v in r.items() if k and v}
+    except Exception as e:
+        meta["errors"].append(f"edinet names load: {type(e).__name__}")
+    return {}
+
+def ed_names_save(names):
+    try:
+        json.dump({"generated_at_jst": NOW.isoformat(),
+                   "attribution": ED_ATTRIB,
+                   "note": "提出者名。JPXの銘柄名は再配信できないため、"
+                           "公開リポジトリに出す名前はこちらを使う。" + ED_ATTRIB,
+                   "count": len(names),
+                   "rows": dict(sorted(names.items()))},
+                  open(ED_NAME_PATH, "w"), ensure_ascii=False, indent=1)
+    except Exception as e:
+        meta["errors"].append(f"edinet names write: {type(e).__name__}")
+    return len(names)
+
 def ed_hist_load():
     """開示1件ごとの履歴を読む。docid をそのまま鍵にする（重複しない）。
        壊れていても落とさない（履歴が無いだけで運用は続く）。"""
@@ -1603,7 +1849,9 @@ def ed_hist_load():
                      "docid": did,
                      "submit": (row.get("submit") or "").strip(),
                      "period": (row.get("period") or "").strip(),
-                     "dtype": (row.get("dtype") or "").strip()}
+                     "dtype": (row.get("dtype") or "").strip(),
+                     # 古いキャッシュには name 列が無い。空で読む（落とさない）。
+                     "name": (row.get("name") or "").strip()}
                 for k in ("ca", "inv", "liab", "ta", "na"):
                     v = (row.get(k) or "").strip()
                     try:
@@ -1636,7 +1884,7 @@ def ed_hist_save(hist):
                            + ["" if r.get(k) is None else repr(r[k])
                               for k in ("ca", "inv", "liab", "ta", "na")]
                            + [_b(r.get("solo")), _b(r.get("mixed")),
-                              _b(r.get("bs_ok"))])
+                              _b(r.get("bs_ok")), r.get("name", "")])
     except Exception as e:
         meta["errors"].append(f"edinet hist write: {type(e).__name__}")
     return len(rows)
@@ -1719,6 +1967,7 @@ def ed_update(priority=None):
         return cache
     seen = set(cache.get("seen_dates") or [])
     rows = cache["rows"]
+    ednames = ed_names_load()
     dates = ed_dates_to_scan(seen)
     found, got_docs, listed = [], 0, 0
     for d in dates:
@@ -1726,7 +1975,11 @@ def ed_update(priority=None):
         if _ED["blocked"]: break
         listed += 1
         seen.add(d)
-        found.extend(ed_pick(r))
+        _pk = ed_pick(r)
+        # ★名前は一覧だけで取れる。書類を落とさなくても溜まる。
+        for _f in _pk:
+            if _f.get("name"): ednames[_f["code"]] = _f["name"]
+        found.extend(_pk)
     # 既に持っていて、同じ書類なら取り直さない
     todo = []
     for f in found:
@@ -1769,7 +2022,8 @@ def ed_update(priority=None):
                             "ca": v.get("ca"), "inv": v.get("inv"),
                             "liab": v.get("liab"), "ta": v.get("ta"),
                             "na": v.get("na"), "solo": v.get("solo"),
-                            "mixed": v.get("mixed"), "bs_ok": v.get("bs_ok")}
+                            "mixed": v.get("mixed"), "bs_ok": v.get("bs_ok"),
+                            "name": f.get("name", "")}
         # rows は「銘柄ごとの最新」。古い提出で上書きしない。
         _cur = rows.get(f["code"])
         if _cur and (_cur.get("submit") or "") > f["submit"]:
@@ -1800,6 +2054,14 @@ def ed_update(priority=None):
         json.dump(cache, open(ED_PATH, "w"), ensure_ascii=False, indent=1)
     except Exception as e:
         meta["errors"].append(f"edinet write: {type(e).__name__}")
+    # 履歴側にも名前があれば拾っておく（過去分の取りこぼしを埋める）
+    for _r in hist.values():
+        if _r.get("name") and _r.get("code") and _r["code"] not in ednames:
+            ednames[_r["code"]] = _r["name"]
+    _nnames = ed_names_save(ednames)
+    # ★この実行で増えたぶんも、今日のレポートから使う
+    ED_NAMES.update(ednames)
+    cache["names"] = _nnames
     _nhist = ed_hist_save(hist)
     _hbc = ed_hist_by_code(hist)
     _multi = sum(1 for v in _hbc.values() if len(v) >= 2)
@@ -1809,7 +2071,7 @@ def ed_update(priority=None):
     cache["hist_multi"] = _multi
     meta["edinet"] = {"codes": len(rows), "with_ca": cache["with_ca"],
                       "usable": cache["usable"], "bs_bad": cache["bs_bad"],
-                      "refetch_bad": _nfix,
+                      "refetch_bad": _nfix, "names": _nnames,
                       "with_inv": cache["with_inv"], "listed_days": listed,
                       "todo": len(todo), "todo_priority": _npri,
                       "priority_given": len(_pri), "downloaded": _ED["docs"],
@@ -1950,6 +2212,32 @@ KY_MIN_FILL     = 0.6            # 1銘柄の目安額に対して、これを�
 KY_TOP          = 40             # 出す候補の上限
 KY_EXCLUDE      = ("銀行", "金融（除く銀行）")   # 流動資産と負債の意味が違う
 
+KY_GROW_MIN = 0.0        # 「伸びている」の境目（前年比 %）。0＝横ばいは不可。
+                         # ★上げ下げする前に、まず過去検証（BT_FACTORS の
+                         #   growth）で効いているかを見ること。
+
+def ky_grow(m):
+    """売上か営業利益が伸びているか。True / False / None（測れない）。
+
+       ★清原達郎氏『わが投資術』の対象は「割安 *小型 成長* 株」。
+         安いだけの会社を除くための条件で、ここが無いと
+         「万年割安で伸びない会社」がそのまま候補に残る。
+       ★見る順は ①実績の前年比（売上・営業利益のどちらか）
+                 ②会社自身の今期予想営業利益 対 直近通期実績
+         ②だけで通すことはしない（会社予想は外れるため）が、
+         ①が測れないときの拠りどころにはする。
+       ★測れないときに False を返さないのは、
+         「伸びていない」と「まだ数字が無い」を混同しないため。
+         件数は meta に残して、取りこぼしが増えたら気付けるようにする。"""
+    if not m: return None
+    gs, go, gf = m.get("g_sales"), m.get("g_op"), m.get("g_fop")
+    have = [x for x in (gs, go) if x is not None]
+    if have:
+        return any(x > KY_GROW_MIN for x in have)
+    if gf is not None:
+        return gf > KY_GROW_MIN
+    return None
+
 def ky_metrics(m, price, ed_rows=None, code=None):
     """清原枠の判定に使う数字。作れないものは None のまま返す（推測しない）。
 
@@ -1981,6 +2269,9 @@ def ky_metrics(m, price, ed_rows=None, code=None):
             "nc_hi": eq / mcap,
             "cash_gt_debt": (cash is not None and cash > debt),
             "op": op, "no_div": m.get("no_div"),
+            "g_sales": m.get("g_sales"), "g_op": m.get("g_op"),
+            "g_fop": m.get("g_fop"), "n_growth": m.get("n_growth") or 0,
+            "grow": ky_grow(m),
             "div": m.get("div"), "div_up": m.get("div_up"),
             "buyback": m.get("buyback"), "opm": m.get("opm"),
             "asof": m.get("asof")}
@@ -1994,6 +2285,8 @@ def ky_pass(k):
     if k["pbr"] > KY_MAX_PBR:                return False, f"PBR>{KY_MAX_PBR}倍"
     if k["mcap"] > KY_MAX_MCAP:              return False, f"時価総額>{KY_MAX_MCAP/1e8:.0f}億円"
     if k["op"] is not None and k["op"] <= 0: return False, "本業が赤字"
+    # ★成長。測れた銘柄にだけ課す（測れない＝落とす、にはしない）。
+    if k.get("grow") is False:               return False, KY_WHY_GROW
     # ★本物の比率が取れている銘柄には、指定された条件をそのまま課す。
     #   取れていない銘柄は落とさない（EDINETのキャッシュは日々積み上がる途中で、
     #   ここで落とすと「まだ取っていないだけ」の銘柄が消える）。
@@ -2006,6 +2299,7 @@ def ky_pass(k):
     return True, "通過"
 
 # 実測で落としたときの理由。レポート側でも同じ字を使うので定数にする。
+KY_WHY_GROW = "売上も営業利益も伸びていない"
 KY_WHY_CA = "流動資産≤負債合計(実測)"
 KY_WHY_NC = f"ネットキャッシュ比率<{KY_NC_MIN}(実測)"
 
@@ -2048,6 +2342,21 @@ def ky_state(k):
     if n <= KY_NEED_MAYBE:          return "推定：要確認"
     return "推定：薄い"
 
+def ky_grow_tag(k):
+    """成長の表示。★伸び率の数値は書かない。
+       J-Quantsの生の財務数値を出さない方針（利用条件 第8条2項）に合わせ、
+       レポートに出すのは分類だけにする。"""
+    if not k: return "測れない"
+    gs, go = k.get("g_sales"), k.get("g_op")
+    if gs is None and go is None:
+        gf = k.get("g_fop")
+        if gf is None: return "測れない"
+        return "会社予想は増益" if gf > KY_GROW_MIN else "会社予想は減益"
+    t = []
+    if gs is not None: t.append("増収" if gs > KY_GROW_MIN else "減収")
+    if go is not None: t.append("増益" if go > KY_GROW_MIN else "減益")
+    return "".join(t)
+
 def ky_return_tag(k):
     """株主還元。清原氏が「最終的なカタリスト」とするもの＝罠の見分け。"""
     if k.get("no_div"): return "無配"
@@ -2089,7 +2398,8 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
         if not ok:
             reasons[why] = reasons.get(why, 0) + 1
             continue
-        rows.append({"code": cc, "name": names.get(cc, ""), "s17": s17.get(cc, ""),
+        # ★17業種は書き出さない（JPX由来）。除外の判定にだけ使っている。
+        rows.append({"code": cc, "name": names.get(cc, ""),
                      # ★株価は発注株数の計算に要る。公開の市場データなので、
                      #   これだけでは純資産や総資産を逆算できない。
                      "price": round(float(sc_all["close"].iloc[i]), 1),
@@ -2099,6 +2409,9 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
                      "in_bt": (None if bt_codes is None
                                else (cc in bt_codes or c in bt_codes)),
                      "ret": ky_return_tag(k),
+                     "grow": ky_grow_tag(k),
+                     # 「測れた」のか「まだ数字が無い」のかを区別して残す
+                     "grow_ok": k.get("grow"),
                      "nc_asof": k.get("nc_asof"),
                      "nc_solo": k.get("nc_solo"),
                      "_ep": (1.0 / k["per"]) if k["per"] else 0.0,
@@ -2181,6 +2494,16 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
                                 if r.get("nc_real") is not None
                                 and KY_NC_MIN <= r["nc_real"] < 1.0),
                "nc_min": KY_NC_MIN,
+               # ★成長の条件。何件を落とし、何件が「測れない」まま通ったか。
+               #   測れない件数が増えたら、条件が骨抜きになっている合図。
+               "growth": {"min_pct": KY_GROW_MIN,
+                          "rejected": reasons.get(KY_WHY_GROW, 0),
+                          "passed_measured": sum(1 for r in rows
+                                                 if r.get("grow_ok") is True),
+                          "passed_unmeasured": sum(1 for r in rows
+                                                   if r.get("grow_ok") is None),
+                          "note": "無料プランは2年ぶんしか取れないため、"
+                                  "年度3期の比較ではなく同一四半期の前年比で測る"},
                # 検証された母集団に入っている件数。少なければ、
                # 清原枠に「検証済み」と言えるものは無いということ。
                "in_bt_universe": sum(1 for r in rows if r.get("in_bt") is True),
@@ -2264,7 +2587,8 @@ def netcash_shortlist(sc, fmap, names=None, s17=None):
             if _u is not None and _u > 0: _t.append("増配")
             if _b is not None and _b > 0.1: _t.append("自己株買い")
             ret = "／".join(_t) if _t else "配当のみ"
-        rows.append({"code": cc, "name": names.get(cc, ""), "s17": s17.get(cc, ""),
+        # ★17業種は書き出さない（JPX由来）。除外の判定にだけ使っている。
+        rows.append({"code": cc, "name": names.get(cc, ""),
                      "state": st, "ret": ret,
                      "_lo": (b["lo"] if b["lo"] is not None else -9e9)})
     # 下限が大きいほど「1以上」が確からしい
@@ -2393,7 +2717,7 @@ def fund_today(sc, refetch=True):
         if m: fmap[c] = m
     # ネットキャッシュ比率（清原式）の候補絞り込み。fmap があるここでやる。
     try:
-        _nm = {c: (MASTER.get(c, {}) or {}).get("name", "") for c in fmap}
+        _nm = {c: pub_name(c) for c in fmap}
         _s7 = {c: (MASTER.get(c, {}) or {}).get("s17", "") for c in fmap}
         netcash_shortlist(sc, fmap, _nm, _s7)
     except Exception as e:
@@ -2524,7 +2848,21 @@ def fund_today(sc, refetch=True):
 # EDINET由来のファイルは項目名の検査から外す（PDL1.0で公開が認められている）
 ED_EXEMPT = {"edinet.json"}
 RAW_KEYS = {"bps", "feps", "eps", "sales", "op", "ta", "eq", "eqar",
-            "cfo", "fop", "fnp", "opm", "opm_stab", "roe", "cfoa"}
+            "cfo", "fop", "fnp", "opm", "opm_stab", "roe", "cfoa",
+            # 成長も生の伸び率は出さない（分類タグ grow だけを書く）
+            "g_sales", "g_op", "g_fop"}
+
+# ── JPX由来でpublicに置けない項目 ─────────────────────────────
+#   JPXサイト利用条件:
+#   「有料・無料を問わずJPXからの許諾を得ている場合を除き、商用目的による
+#     データ収集のほか如何なる用途に関わらず二次利用及び再配信はできません。」
+#   このリポジトリは public なので、data/ に書けば再配信に当たる。
+#   ★銘柄名は EDINET の提出者名（PDL1.0＝出典明記で再配布可）に置き換えた。
+#     name 自体は禁止語にできないので、ここでは業種・規模・市場区分を見る。
+JPX_KEYS = {"s17", "s33", "size", "market", "sector_etf"}
+
+# JPX由来のファイルそのもの。data/ に現れてはいけない。
+JPX_FILES = ("jpx_master.json",)
 
 def json_safe(o):
     """NaN / Inf を null に直す。json.dump は既定で `NaN` という
@@ -2543,6 +2881,16 @@ def _walk_keys(o, found):
             _walk_keys(v, found)
     elif isinstance(o, list):
         for v in o: _walk_keys(v, found)
+
+def _walk_jpx(o, found):
+    """JPX由来の項目が書き出されていないか。中身が空の鍵は数えない
+       （列だけ残して値を空にしている箇所があるため）。"""
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k in JPX_KEYS and v not in (None, "", [], {}): found.add(k)
+            _walk_jpx(v, found)
+    elif isinstance(o, list):
+        for v in o: _walk_jpx(v, found)
 
 def redact_keys(fp):
     """1ファイルからAPIキーを伏せる。伏せたら True。
@@ -2567,6 +2915,7 @@ def redact_keys(fp):
 def commit_guard():
     import glob
     bad_files, key_files = {}, []
+    jpx_fields, jpx_files = {}, []
     # ★data直下のCSV（edinet_hist.csv）も鍵の伏せ字の対象にする。
     #   ohlcv/ の数千ファイルは価格だけなので対象外にして時間を使わない。
     for fp in sorted(glob.glob(f"{OUT}/*.csv")):
@@ -2577,21 +2926,42 @@ def commit_guard():
         if _r is None: continue
         txt, _hit = _r
         if _hit and fp not in key_files: key_files.append(fp)
+        try:
+            o = json.loads(txt if txt is not None
+                           else open(fp, encoding="utf-8").read())
+        except Exception:
+            continue
+        # ★JPX由来の項目（業種・規模・市場区分）は**免除しない**。
+        #   下のEDINET免除はJ-Quantsの財務数値の話で、
+        #   JPXの区分表はまったく別の規約。先に見ておく。
+        jf = set()
+        _walk_jpx(o, jf)
+        if jf: jpx_fields[fp] = sorted(jf)
         # ★EDINETの数値は公共データ利用規約(PDL1.0)で二次利用が認められて
         #   いるので、生の項目名（ta など）が入っていて正常。
         #   この検査はJ-Quantsのデータを守るためのものなので対象外にする。
         #   （鍵の伏せ字は上で済んでいて、そちらは全ファイルに適用している）
         if os.path.basename(fp) in ED_EXEMPT:
             continue
-        try:
-            o = json.loads(txt if txt is not None
-                           else open(fp, encoding="utf-8").read())
-        except Exception:
-            continue
         found = set()
         _walk_keys(o, found)
         if found: bad_files[fp] = sorted(found)
-    res = {"raw_fields": bad_files, "api_key_found_in": key_files}
+    # JPX由来のファイルが data/ に残っていないか
+    for _n in JPX_FILES:
+        _fp = f"{OUT}/{_n}"
+        if os.path.exists(_fp): jpx_files.append(_fp)
+    # 台帳（CSV）の列も見る。json と同じ扱いにする。
+    for fp in sorted(glob.glob(f"{OUT}/*.csv")):
+        try:
+            with open(fp, encoding="utf-8") as f:
+                head = (f.readline() or "").strip()
+        except Exception:
+            continue
+        _cols = {c.strip().strip('"') for c in head.split(",")}
+        _hit = sorted(_cols & JPX_KEYS)
+        if _hit: jpx_fields[fp] = _hit
+    res = {"raw_fields": bad_files, "api_key_found_in": key_files,
+           "jpx_fields": jpx_fields, "jpx_files": jpx_files}
     if key_files:
         print(f"::error::APIキーが {', '.join(key_files)} に出ていたので伏せました。"
               "コードの見直しが必要です")
@@ -2599,6 +2969,13 @@ def commit_guard():
         for fp, ks in bad_files.items():
             print(f"::error::{fp} に生の財務項目 {ks} が含まれています。"
                   "J-Quantsの利用条件に反するのでコミット前に取り除いてください")
+    for fp, ks in jpx_fields.items():
+        print(f"::error::{fp} に JPX由来の項目 {ks} が含まれています。"
+              "publicリポジトリへの再配信に当たるので取り除いてください"
+              "（JPXサイト利用条件）")
+    for fp in jpx_files:
+        print(f"::error::{fp} は JPXの銘柄一覧そのものです。"
+              "data/ に置くと再配信に当たります。cache/ に移してください")
     meta["commit_guard"] = res
     return res
 
@@ -2669,8 +3046,18 @@ BT_HOLDS     = (3, 5, 10, 25, 60, 120, 250)
 #     清原氏は5%の損切りなど使わず、仮説が崩れたときに降りる。
 #     その「仮説が崩れたとき」は機械化できないので、下限として
 #     「何もせず期限まで持つ」を測る。
-BT_EXITS     = (("2atr_3atr", True, True), ("2atr_only", False, True),
-                ("hold_only", False, False))
+# 執行の方式。★ここまで「降り方」を3通りしか試していなかった。
+#   1銘柄の期待値は「選び方」と「降り方」の掛け算なので、
+#   選び方だけ何十通り試して降り方を3通りに固定しているのは片手落ち。
+#   トレーリングストップ（含み益を追いかけて損切り位置を上げる）は
+#   実務で最も一般的な降り方のひとつなのに、一度も測っていなかった。
+#   ★組み合わせが増えるぶん多重検定の床（bt_dsr）が自動で上がる。
+#     それで通らなくなるなら、それが正しい判定。
+BT_EXITS     = (("2atr_3atr",  True,  True),      # 2ATR損切り・3ATR利確
+                ("2atr_only",  False, True),      # 2ATR損切りのみ
+                ("hold_only",  False, False),     # 期限まで持つだけ
+                ("trail2atr",  False, True, 2.0), # 高値から2ATRのトレーリング
+                ("trail3atr",  False, True, 3.0)) # 同・3ATR（緩め）
 BT_WARMUP    = 280      # 12-2モメンタム（252日）に必要な本数
 BT_MAX_AGE_D = 30       # これより新しい結果があれば作り直さない
 BT_BUDGET_S  = 2400
@@ -2692,6 +3079,111 @@ def _rsi_series(c, n=14):
         ad[i] = (ad[i-1]*(n-1) + dn[i]) / n
     rs = np.where(ad > 0, au/np.where(ad == 0, np.nan, ad), np.inf)
     return 100 - 100/(1+rs)
+
+def _ema(x, n):
+    """指数移動平均。α = 2/(n+1)。最初の n 本の単純平均を種にする（Appel/一般実装）。"""
+    import numpy as np
+    x = np.asarray(x, float); out = np.full(len(x), np.nan)
+    if len(x) < n: return out
+    a = 2.0 / (n + 1.0)
+    out[n-1] = x[:n].mean()
+    for i in range(n, len(x)):
+        out[i] = a * x[i] + (1 - a) * out[i-1]
+    return out
+
+def _macd(c, fast=12, slow=26, sig=9):
+    """MACD。Gerald Appel。慣習パラメータ 12/26/9。
+       返り値: (MACD線, シグナル線, ヒストグラム)"""
+    import numpy as np
+    m = _ema(c, fast) - _ema(c, slow)
+    # シグナル線はMACD線が出てからのEMAなので、NaN区間を除いて計算する
+    ok = ~np.isnan(m)
+    sg = np.full(len(m), np.nan)
+    if ok.sum() >= sig:
+        sg[ok] = _ema(m[ok], sig)
+    return m, sg, m - sg
+
+def _stoch(h, l, c, n=14, k=3, d=3):
+    """ストキャスティクス Full(14,3,3)（= Slow(14,3) と数学的に同一）。
+       George Lane。%K は生の%Kをk期間平均、%D はそれをd期間平均。"""
+    import numpy as np
+    h, l, c = map(lambda z: np.asarray(z, float), (h, l, c))
+    hh = pd.Series(h).rolling(n).max().to_numpy()
+    ll = pd.Series(l).rolling(n).min().to_numpy()
+    with np.errstate(invalid="ignore", divide="ignore"):
+        raw = (c - ll) / (hh - ll) * 100.0
+    kk = pd.Series(raw).rolling(k).mean().to_numpy()
+    dd = pd.Series(kk).rolling(d).mean().to_numpy()
+    return kk, dd
+
+def _bbands(c, n=20, k=2.0):
+    """ボリンジャーバンド。John Bollinger。
+       ★標準偏差は**母集団**（n で割る＝ddof=0）。Bollingerの実装がそちら。
+         pandas の既定は ddof=1 なので明示しないと値がずれる。
+       返り値: (中心線, %b, バンド幅%)"""
+    import numpy as np
+    sr = pd.Series(np.asarray(c, float))
+    mid = sr.rolling(n).mean()
+    sd  = sr.rolling(n).std(ddof=0)
+    up, lo = mid + k*sd, mid - k*sd
+    with np.errstate(invalid="ignore", divide="ignore"):
+        pb = (sr - lo) / (up - lo)
+        bw = (up - lo) / mid * 100.0
+    return mid.to_numpy(), pb.to_numpy(), bw.to_numpy()
+
+def _ichimoku(h, l, c, t=9, k=26, sp=52, shift=26):
+    """一目均衡表。細田悟一（一目山人）。慣習 9/26/52、先行/遅行は26。
+
+       ★時点 t で**見えている**雲は、t-26 時点で計算された値。
+         先行スパンを前方にずらして表示するとはそういうこと。
+         ここを取り違えると未来を見たことになる。
+       ★ずらし幅は資料によって25と26で食い違う（当日を1と数えるか）。
+         市販チャート（TradingView・MetaTrader・証券各社）はすべて26なので
+         26を採る。25でも見られるように引数にしてある。"""
+    import numpy as np
+    hs, ls = pd.Series(np.asarray(h, float)), pd.Series(np.asarray(l, float))
+    ten = (hs.rolling(t).max()  + ls.rolling(t).min())  / 2
+    kij = (hs.rolling(k).max()  + ls.rolling(k).min())  / 2
+    a_raw = (ten + kij) / 2
+    b_raw = (hs.rolling(sp).max() + ls.rolling(sp).min()) / 2
+    # 前方にずらす＝時点tで見える値は (t-shift) 時点の計算値
+    spa = a_raw.shift(shift).to_numpy()
+    spb = b_raw.shift(shift).to_numpy()
+    return ten.to_numpy(), kij.to_numpy(), spa, spb
+
+def _adx_series(h, l, c, n=14):
+    """ADX / +DI / -DI。Wilder (1978)。合計版のWilder平滑化。
+       ★ADXは**向きを示さない**（強さだけ）。単独の買い合図にはしない。
+         フィルタとして使うのが原典どおりの用法。"""
+    import numpy as np
+    h, l, c = map(lambda z: np.asarray(z, float), (h, l, c))
+    n_ = len(c)
+    up = np.diff(h, prepend=h[0]); dn = -np.diff(l, prepend=l[0])
+    pdm = np.where((up > dn) & (up > 0), up, 0.0)
+    ndm = np.where((dn > up) & (dn > 0), dn, 0.0)
+    pc = np.roll(c, 1); pc[0] = c[0]
+    tr = np.maximum(h-l, np.maximum(abs(h-pc), abs(l-pc)))
+    def _w(x):
+        o = np.full(n_, np.nan)
+        if n_ <= n: return o
+        o[n] = x[1:n+1].sum()
+        for i in range(n+1, n_):
+            o[i] = o[i-1] - o[i-1]/n + x[i]
+        return o
+    tr14, p14, n14 = _w(tr), _w(pdm), _w(ndm)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        pdi = 100 * p14 / tr14
+        ndi = 100 * n14 / tr14
+        dx  = 100 * np.abs(pdi - ndi) / (pdi + ndi)
+    adx = np.full(n_, np.nan)
+    ok = np.flatnonzero(~np.isnan(dx))
+    if len(ok) >= n:
+        st = ok[n-1]
+        adx[st] = np.nanmean(dx[ok[:n]])
+        for i in range(st+1, n_):
+            if np.isnan(dx[i]): continue
+            adx[i] = (adx[i-1]*(n-1) + dx[i]) / n
+    return adx, pdi, ndi
 
 def _atr_series(h, l, c, n=14):
     import numpy as np
@@ -2723,7 +3215,48 @@ def bt_features(ax, vol):
         "low":   ax["Low"].to_numpy(float),
         "turn":  (ax["Close"]*vol).rolling(20).mean().to_numpy(float),
         "volr":  (vol / vol.rolling(20).mean()).to_numpy(float),
+        # ── 仕掛けの形に要る素材（すべて慣習パラメータ）──────────
+        # ★上抜けの比較相手は shift(1)＝**前日までの**高値。
+        #   当日の高値を含めると、終値がそれ以下なのは当たり前で
+        #   上抜けが構造的に出ないか、当日の値動きを先に見たことになる。
+        "hi20p": ax["High"].rolling(20).max().shift(1).to_numpy(float),
+        "hi50p": ax["High"].rolling(50).max().shift(1).to_numpy(float),
+        "hi55p": ax["High"].rolling(55).max().shift(1).to_numpy(float),
+        "ma5":   ax["Close"].rolling(5).mean().to_numpy(float),
+        "ma50":  ax["Close"].rolling(50).mean().to_numpy(float),
+        "ma200": ax["Close"].rolling(200).mean().to_numpy(float),
+        "rng":   (ax["High"] - ax["Low"]).to_numpy(float),
     }
+    _h = ax["High"].to_numpy(float); _l = ax["Low"].to_numpy(float)
+    # MACD (Appel 12/26/9)
+    out["macd"], out["macd_sig"], out["macd_hist"] = _macd(cl)
+    # ストキャスティクス Full(14,3,3) (Lane)
+    out["stk"], out["std_"] = _stoch(_h, _l, cl)
+    # ボリンジャー (Bollinger 20, 2σ, 母集団σ)
+    _mid, out["bb_pb"], out["bb_bw"] = _bbands(cl)
+    # バンド幅が「過去6ヶ月で最小」か（Bollinger のスクイーズの定義）
+    out["bb_bw_min"] = pd.Series(out["bb_bw"]).rolling(SETUP_BB_LOOK).min().to_numpy(float)
+    # 一目均衡表 (細田 9/26/52、ずらし26)
+    out["ich_ten"], out["ich_kij"], out["ich_a"], out["ich_b"] = _ichimoku(_h, _l, cl)
+    # ADX（向きは示さない。フィルタ用）
+    out["adx"], out["pdi"], out["ndi"] = _adx_series(_h, _l, cl)
+    # NR7 (Crabel 1990): 直近7日で最小の値幅
+    out["rng7min"] = pd.Series(out["rng"]).rolling(7).min().to_numpy(float)
+    # 出来高の過去49日分位 (Gervais-Kaniel-Mingelgrin 2001)
+    out["vol_pct49"] = (pd.Series(vol.to_numpy(float))
+                        .rolling(SETUP_HVOL_LOOK)
+                        .rank(pct=True).to_numpy(float) * 100.0)
+    # 25日移動平均乖離率（日本の実務。短期リバーサルのプロキシ）
+    with np.errstate(invalid="ignore", divide="ignore"):
+        out["dev25"] = (cl / out["ma25"] - 1.0) * 100.0
+    # 21日（約1ヶ月）騰落率。Chang-McLeavey-Rhee 1995 の形成期間に合わせる
+    r21 = np.full(len(cl), np.nan); r21[22:] = cl[22:]/cl[:-22] - 1
+    out["r21"] = r21 * 100
+    # 前日値（クロスの判定に要る。「今日はじめて上抜けた」を見るため）
+    for _k in ("macd", "macd_sig", "ma5", "ma25", "ma50", "ma75",
+               "rsi", "stk", "std_", "close", "ich_ten", "ich_kij"):
+        if _k in out:
+            out["p_" + _k] = np.r_[np.nan, np.asarray(out[_k], float)[:-1]]
     r20 = np.full(len(cl), np.nan); r20[21:] = cl[21:]/cl[:-21] - 1
     out["r20"] = r20*100
     r5 = np.full(len(cl), np.nan); r5[6:] = cl[6:]/cl[:-6] - 1
@@ -2762,7 +3295,206 @@ def bt_features(ax, vol):
 # ★acd_score を足した。**あなたが毎日見ている点数が一度も検定されて
 #   いなかった**ため（Dを除いた A+C）。手で決めた重みを検定せずに
 #   発注の材料にしていたことになる。
-BT_FACTORS = ("mom12_2", "rev5", "lowvol", "acd_score") + FUND_FACTORS
+# 表に出すときの名前。BT_FACTORS に足したものは必ずここにも足す
+# （足し忘れても符号のまま出るので、黙って消えることはない）。
+BT_FACTOR_JA = {
+    "mom12_2": "12-2モメンタム", "rev5": "短期リバーサル(5日)",
+    "lowvol": "低ボラティリティ",
+    "acd_score": "**このレポートの点数(A+C／Dは除く)**",
+    "value": "バリュー（財務）", "ep": "予想益回り（財務）",
+    "bp": "純資産倍率の逆数（財務）", "netcash": "ネットキャッシュ下限（財務）",
+    "kiyohara": "清原式（PER重視＋NC）", "payout": "株主還元（財務）",
+    "quality": "クオリティ（財務）", "moat": "競争優位の代理（財務）",
+    "revision": "業績修正方向（財務）",
+    "growth": "成長（増収・増益／財務）", "ky_grow": "清原式＋成長",
+}
+
+# ══════════════════════════════════════════════════════════════
+#  仕掛けの形 ── 一般に使われている売買シグナルを、**原典の慣習パラメータ
+#  のまま**実装する。自分で数字を決めない。
+#
+#  ★前の版で私が置いた数字（出来高2.0倍・RSI<40・ATR比0.85）は
+#    どれも典拠が無かった。捨てた。しきい値を自分で選ぶこと自体が
+#    Park & Irwin (2007) の言う "ex post selection of trading rules"
+#    そのもので、検定の前に結果を作ってしまう。
+#
+#  ★調査で分かった最重要事項（事前期待値の設定に要る）:
+#    日本株について、標準テクニカルシグナルに査読済みの支持証拠は
+#    **ほぼ存在しない**。
+#      Chong, Ng & Liew (2014) JRFM 7(1): 日経225 1976-2002 で
+#        MACD(12,26,9) の buy-sell = +0.166%、t=0.410（非有意）
+#        RSI(14,30/70) = -0.083%（負）、RSI(7)・RSI(21)も負
+#      Kang (2021) JRFM 14(1): 日経225先物 2011-2019 で標準MACDは負
+#      Marshall, Young & Cahan (2008) RQFA 31(2): ローソク足は
+#        日本株30年(1975-2004)で価値なし（日本発祥なのに）
+#      Yamamoto (2012) JBF 36(11): 日経225個別の板データ、
+#        White RC / Hansen SPA 補正後、どの戦略も buy-and-hold に勝てない
+#      Bessembinder & Chan (1995) PBFJ 3: 新興国では効くが
+#        「香港・日本のような先進市場では説明力が低い」
+#      Hsu, Hsu & Kuan (2010) JAE: 日本含むアジア8市場、SPA補正後は利益なし
+#    → だから「効かなかった」という結果が出ても、それが**既存文献どおり**
+#      であることを先に承知しておく。効いたときこそ疑う。
+#
+#  ★唯一、日本株で実証されている効果は**短期リバーサル（逆張り）**:
+#      Chang, McLeavey & Rhee (1995) JBFA: TSE全上場、1975-1991、
+#        形成後1ヶ月で loser-winner = +1.97%/月（リスク・サイズ調整後
+#        +1.69%）。2ヶ月目は +0.63% に急減衰。
+#      Asness (2011) JPM 37(4): 日本は中期モメンタムが効かない例外。
+#    日本の実務で言う「25日移動平均乖離率」がこれに当たる。
+#    ★ところが当方の補正後の実測では rev5 が有意にマイナスだった
+#      （3つのt が -3.2〜-8.7）。文献と符号が逆。
+#      形成期間が5日か1ヶ月かの違いが効いている可能性が高いので、
+#      形成期間を分けて測る（rev5 / rev21 / 乖離率）。
+#
+#  ★出版後の減衰を織り込む: McLean & Pontiff (2016) JF 71(1) は
+#    97の予測変数で「出版後に -58%」。テクニカルは論文より遥かに
+#    広く知られているので、減衰はこれより大きいと見るのが安全。
+#    Fang, Jacobsen & Qin はボリンジャーバンドで、
+#    1983年の公表前は国際株式市場で高収益 → 2001年の著書以降ほぼ消滅、
+#    という教科書的な事例を示している。
+#
+#  ★パラメータは慣習値に固定し、**探索しない**。
+#    Kang (2021) が日経225先物で (4,22,3) に最適化して有意な正を得たのは
+#    イン・サンプル最適化の典型で、採用してはいけない。
+
+# 出典と、査読済みエビデンスの状態。レポートにそのまま出す。
+#   "支持" = 査読済みで肯定的結果 / "反証" = 査読済みで否定的結果
+#   "混合" / "検証なし" = 広く使われているが査読済みの検証がほぼ無い
+# ══════════════════════════════════════════════════════════════
+#  イベント起点の仕掛け（決算発表・業績予想の修正）
+#
+#  ★ここまでの仕掛けは全部「その日の値動きの形」だった。
+#    だが数日〜数ヶ月のスイングで、**日本株について査読済みの証拠が
+#    あるのはイベント起点のほう**だと分かった。順序を間違えていた。
+#
+#  ★根拠（すべてイベント起点・日〜週の時間軸）:
+#    Meursault, Liang, Routledge & Scanlon (2023) JFQA 58(6) "PEAD.txt":
+#      決算コールの**テキストだけ**から作ったサプライズ指標が、
+#      報告利益の数値を一切使わずに古典的なSUEより**大きい**ドリフトを
+#      生んだ。保有63日で 2.87% 対 1.54%、252日で 8.01% 対 4.63%。
+#      しかも古典PEADがほぼ消えた2018-19年でも年3.4%を下回らなかった。
+#      → 「テキストを読むこと」が数値に直交する情報を持つ最強の証拠。
+#    Jinushi (2023) The Japanese Accounting Review 13（日本株・60,124件）:
+#      日本のPEADは大幅に減衰。**ただし外国人保有が低く個人保有が高い
+#      銘柄では残存**。CAR(-1,+60営業日)で測っている。
+#    Okada & Saeki (2014) 証券アナリストジャーナル（日本株9,390件）:
+#      CAR(+1,+21) が予想誤差の上位と下位で **2.2ポイント**。
+#      注目度が高いとドリフトは0.7〜0.8pt縮む。
+#      ★取引コストの代理変数が有意に負＝**実行しにくい銘柄ほど
+#        ドリフトが大きい**。流動性で分けて見ないと罠にかかる。
+#    Kitagawa & Shuto (2024) JBFA 51(9-10)（日本株）:
+#      期初の会社予想の「予想外部分」が大きい企業は、その後の
+#      異常リターンが負。会社予想は日本固有で頻度の高いイベント。
+#
+#  ★負の証拠も先に書いておく:
+#    Martineau (2022) Critical Finance Review:「大型株では2006年以降
+#      PEADは存在しない」。復活を主張する論文はマイクロキャップを
+#      除外していないという批判がある。
+#    種村・久保・中川 (2025) SIG-FIN FIN-035「LLM-PEAD.txt」（日本株）:
+#      数値サプライズ単独・LLMテキストサプライズ単独では**一貫した
+#      ドリフトを確認できず**、両者の組合せでのみ限定的に出現。
+#    → だから「効かない」が出ても既存文献どおり。流動性で分けて見る。
+#
+#  ★建てるのは発表の翌日ではなく **2営業日以降**。
+#    発表当日〜翌日の反応は取引できない部分で、そこを入れると
+#    見かけの成績が跳ね上がる（Lopez-Lira & Tang 2026 JFE の
+#    的中率93%は、まさにこの取引できない初期反応の部分）。
+EV_MIN_AGE = 2      # 発表から最低これだけ営業日を置いてから建てる
+EV_MAX_AGE = 5      # これより古い開示はもうイベントとして扱わない
+EV_LATE_LO = 20     # 「発表から約1ヶ月後」の窓。吉野(2026)の指摘に合わせる
+EV_LATE_HI = 40
+
+EVENT_META = {
+ "pead_up":   ("決算が会社予想を上振れ（発表2〜5営業日後）",
+               "Okada & Saeki 2014 / Jinushi 2023", "支持(日本・ただし減衰)",
+               "CAR(+1,+21)で上下デシル差2.2pt。現代は大幅減衰し低流動銘柄に残存"),
+ "pead_dn":   ("決算が会社予想を下振れ（発表2〜5営業日後）",
+               "同上", "支持(日本・ただし減衰)",
+               "下振れ側。ドリフトは負に出るはず。符号の確認に要る"),
+ "guid_up":   ("会社が通期予想を上方修正（2〜5営業日後）",
+               "Kitagawa & Shuto 2024 JBFA", "支持(日本)",
+               "日本固有の頻度の高いイベント。予想の信頼性の低い部分は過大評価される"),
+ "beat_cons": ("上振れ＋新予想は保守的（2〜5営業日後）",
+               "吉野貴晶 2026（実務・査読なし）", "実務の主張のみ",
+               "上方サプライズと保守的ガイダンスの組合せ。発表約1ヶ月後から上昇という主張"),
+ "pead_late": ("上振れの約1ヶ月後（20〜40営業日）",
+               "吉野貴晶 2026（実務・査読なし）", "実務の主張のみ",
+               "最適な入りは発表直後ではなく約30日後という主張の検証"),
+}
+EVENTS = tuple(EVENT_META)
+
+SETUP_META = {
+ "macd_gc":  ("MACDゴールデンクロス(12,26,9)", "Appel",
+              "反証(日本)", "Chong-Ng-Liew 2014: 日経225でt=0.410非有意／Kang 2021: 先物で負"),
+ "macd_zero":("MACDゼロライン上抜け(12,26,0)", "Appel",
+              "反証(日本)", "Chong-Ng-Liew 2014: 日経225で-0.029%"),
+ "rsi_os":   ("RSI30を下から上抜け(14)", "Wilder 1978",
+              "反証(日本)", "Chong-Ng-Liew 2014: 日経225で-0.083%（7日・21日版も負）"),
+ "rsi_fs":   ("RSIフェイラースイング(14)", "Wilder 1978",
+              "検証なし", "Wilder原典の定義だが査読済みの検証が見当たらない"),
+ "stoch_gc": ("ストキャスティクス20以下でクロス(14,3,3)", "Lane",
+              "検証なし", "査読済み検証がほぼ無い。Lane自身は%Dのダイバージェンスを重視"),
+ "ich_3":    ("一目均衡表 三役好転(9,26,52)", "細田悟一 1969-81",
+              "反証寄り", "Deng et al. 2021 IJFE: 既定値では一貫した収益性なし。日本個別株の検証は無い"),
+ "ich_cloud":("一目均衡表 雲上抜け(9,26,52)", "細田悟一 1969-81",
+              "検証なし", "同上"),
+ "gc_5_25":  ("移動平均 5日/25日ゴールデンクロス", "日本の実務慣習",
+              "検証なし", "日本の証券会社の教科書で標準だが査読済みの検証は無い"),
+ "gc_25_75": ("移動平均 25日/75日ゴールデンクロス", "日本の実務慣習",
+              "検証なし", "同上"),
+ "vma_1_50": ("終値が50日線を1%上抜け", "Brock-Lakonishok-LeBaron 1992",
+              "反証(日本)", "BLLの正典ルール。日本ではBessembinder-Chan 1995・Hsu et al. 2010が否定"),
+ "trb50":    ("50日高値の上抜け", "Brock-Lakonishok-LeBaron 1992",
+              "反証(日本)", "同上。STW 1999で1987年以降は有意性消滅"),
+ "turtle1":  ("20日高値の上抜け(タートルSystem1)", "Original Turtle Trading Rules",
+              "反証(日本)", "Yamamoto 2012: 日経225個別でSPA補正後buy-and-holdに勝てず"),
+ "turtle2":  ("55日高値の上抜け(タートルSystem2)", "Original Turtle Trading Rules",
+              "反証(日本)", "同上"),
+ "bb_squeeze":("ボリンジャー バンド幅が6ヶ月最小", "Bollinger 2001",
+              "反証(公表後消滅)", "Fang-Jacobsen-Qin: 1983年公表前は高収益、2001年の著書以降ほぼ消滅"),
+ "bb_sq_bo": ("収縮のあと20日高値を上抜け", "Bollinger 2001 + Donchian",
+              "検証なし", "Bollinger自身が「ヘッドフェイク」（最初の抜けが騙し）を警告している"),
+ "nr7":      ("NR7（直近7日で最小の値幅）", "Crabel 1990",
+              "検証なし", "著者の自己申告のみ。独立した査読済み検証は見当たらない"),
+ "hvol":     ("出来高が過去49日の上位20%", "Gervais-Kaniel-Mingelgrin 2001 JF",
+              "支持(米国)", "High-Volume Return Premium。★日本での再現研究は見当たらない"),
+ "dev25_5":  ("25日移動平均乖離率 -5%以下", "日本の実務慣習(野村證券ほか)",
+              "間接的支持", "短期リバーサルのプロキシ。Chang-McLeavey-Rhee 1995がTSE個別で+1.97%/月"),
+ "dev25_10": ("25日移動平均乖離率 -10%以下", "日本の実務慣習(野村證券ほか)",
+              "間接的支持", "同上。閾値-10%自体は経験則"),
+ "rev21":    ("21日（約1ヶ月）の下落率が大きい順", "Chang-McLeavey-Rhee 1995 JBFA",
+              "支持(日本)", "★日本株で唯一、個別銘柄のクロスセクションで実証されている効果。形成1ヶ月"),
+}
+SETUPS = tuple(SETUP_META)
+SETUP_JA = {k: v[0] for k, v in SETUP_META.items()}
+# 仕掛けの名前は SETUP_META から自動で足す（手書きにすると必ず食い違う）
+BT_FACTOR_JA.update({k: "【仕掛け】" + v[0] for k, v in SETUP_META.items()})
+BT_FACTOR_JA.update({k: "【イベント】" + v[0] for k, v in EVENT_META.items()})
+
+# 慣習パラメータ。★探索しない（探索した瞬間に検定の意味が消える）
+SETUP_RSI_OS   = 30.0    # Wilder 1978 原典
+SETUP_STOCH_OS = 20.0    # Lane 慣習
+SETUP_BB_LOOK  = 125     # バンド幅の「6ヶ月最小」(Bollinger)。約125営業日
+SETUP_HVOL_LOOK= 49      # Gervais-Kaniel-Mingelgrin 2001 の形成窓
+SETUP_HVOL_PCT = 80.0    # 同 上位20%
+SETUP_VMA_BAND = 0.01    # BLL 1992 のバンド 1%
+SETUP_DEV_A    = -5.0    # 25日乖離率（野村證券の目安）
+SETUP_DEV_B    = -10.0
+
+BT_FACTORS = (("mom12_2", "rev5", "lowvol", "acd_score")
+              + FUND_FACTORS + SETUPS + EVENTS)
+
+# ★流動性上位半分だけで測った版。名前に印を付けて別の系列として持つ。
+#   Avramov, Cheng & Metzker (2023, Management Science):
+#     「機械学習のシグナルは裁定しにくい銘柄から収益を抽出している。
+#       マイクロキャップ・ディストレス・高ボラ局面を除くと相当程度減衰する」
+#   Chen & Velikov (2023, JFQA):
+#     「時価総額加重にすると残存収益は完全に消える（−2bp/月）」
+#   等ウェイト・全銘柄の結果だけを出すのは、文献が最も厳しく批判している
+#   出し方。**実際に建てられる側**の数字を必ず併記する。
+LIQ_SUF = "@liq"
+_TECH = ("mom12_2", "rev5", "lowvol", "acd_score")
+BT_FACTORS_LIQ = tuple(k + LIQ_SUF for k in _TECH + SETUPS)
 # 13通りを一度に比べる（技術3 + 自作スコア1 + ファンダ9）。
 #   t>=2.8 は両側 p≈0.005 なので 1-(1-0.005)^13 ≈ 6.3%。
 #   ★因子を増やしても線は下げない。結果を見てから基準を緩めるのは
@@ -2773,6 +3505,26 @@ BT_FACTORS = ("mom12_2", "rev5", "lowvol", "acd_score") + FUND_FACTORS
 #     ただし12通り比べる事実は変わらないので、線は 2.8 のまま。
 # 因子は9→7に減ったが、しきい値は下げない。
 # 結果を見たあとに基準を緩めるのは、自分を欺く一番ありがちなやり方。
+# ── 建て日の除外と取引コスト ───────────────────────────────
+#  ★ストップ高で約定できない建玉を除く。
+#    JPXの制限値幅（https://www.jpx.co.jp/equities/trading/domestic/06.html）に
+#    達した日は売買が成立しないか、成立しても買い手として並べない。
+#    上抜け系の仕掛けは「大きく上げた日」に合図が出るので、
+#    ここを無視すると**順張り系だけが系統的に良く見える**。
+#    実際の制限値幅は26段階の刻みだが、価格帯ごとの比率に直すと
+#    おおむね10〜30%なので、翌日の寄りが前日終値から大きく飛んでいる
+#    ものを約定不能として落とす。刻みそのものを使わないのは、
+#    基準値段（前日終値とは別物）が手元に無いため。控えめに見積もる。
+BT_LIMIT_MOVE = 0.16      # 翌日の寄りがこれ以上飛んでいたら約定できなかったとみなす
+
+#  ★取引コスト。Bajgrowicz & Scaillet (2012) JFE 106(3) は
+#    「イン・サンプルであっても、低い取引コストを入れると
+#     テクニカルルールのパフォーマンスは完全に相殺される」と結論した。
+#    コストゼロの検証結果は報告する価値がない。
+#    JPX Working Paper No.7 の実効スプレッド（TOPIX100で片道2〜3bp）に
+#    手数料と小型株の上乗せを見て、往復で見積もる。
+BT_COST_BP = 25.0         # 往復の取引コスト（ベーシスポイント＝0.01%）
+
 BT_T_THRESHOLD = 2.8
 # ★独立した（期間が重ならない）建て日の下限。これを下回る格子は
 #   「検証できていない」とし、t値がいくつでも通さない。
@@ -2828,6 +3580,163 @@ def bt_alt_scores(df):
         out["acd_score"] = bt_acd(df)
     return out
 
+# ══════════════════════════════════════════════════════════════
+#  仕掛けの形（セットアップ）
+#
+#  なぜ要るか:
+#    ここまでの検証は全部「その日の全銘柄を点数で並べて上位N件」という形
+#    だった。バリューはそれで通ったが、**数日の値動きを取りに行く形では
+#    ない**。バリューは「安いものは数日でも少し戻りやすい」を測っただけで、
+#    スイングトレードの仕掛け——値が動き出す瞬間に乗る——とは別物。
+#    技術系の因子（モメンタム・低ボラ・短期反転）は補正後の高い検出力でも
+#    ひとつも通らなかった。順位付けという形そのものに無理がある。
+#
+#  何が違うか:
+#    因子は「全銘柄に点数を付けて上から取る」＝毎日必ず建てる。
+#    仕掛けは「条件に当てはまった銘柄だけ」＝当てはまらない日は建てない。
+#    出る日と出ない日があること自体が情報で、順位付けでは表現できない。
+#
+#  ★選び方の公平性:
+#    当てはまった銘柄が数百件になる日があるので、そのまま全部建てると
+#    母集団平均とほぼ同じになり、何も測れない（かつ資金でも建てられない）。
+#    **その仕掛け自身の強さ**で並べて上位 BT_TOP 件だけ建てる。
+#    因子側と建てる件数を揃えるためでもある。
+#    強さの尺度は仕掛けごとに自然に決まるもの（上抜けの幅、出来高の倍率、
+#    縮み具合）だけを使う。別の指標を混ぜない。
+#
+#  ★これは新しい仮説であって、検証を通ったものではない。
+#    通ったかどうかは bt_verdict が同じ基準（3つのt≥2.8・独立20日）で
+#    判定する。しきい値は仕掛けを足したからといって下げない。
+def bt_events(sub, fmap, cal_i):
+    """イベント起点の仕掛け。{名前: (当てはまるか, 強さ)} を返す。
+
+       sub   … その日の母集団（開示が引けている銘柄だけ）
+       fmap  … コード → その日までの開示から作った指標
+       cal_i … 判定している日（pandas.Timestamp）
+
+       ★建てるのは発表から EV_MIN_AGE 営業日以降。
+         発表当日〜翌日の反応は取引できない部分で、そこを入れると
+         見かけの成績が跳ね上がる。
+       ★開示日は fmap の disc_date（その日までの最後の開示日）。
+         未来の開示は jq_metrics_at が構造的に渡さない。"""
+    import numpy as np
+    n = len(sub)
+    age = np.full(n, np.nan)
+    sue = np.full(n, np.nan)
+    rev = np.full(n, np.nan)
+    gfp = np.full(n, np.nan)
+    codes = [str(c).replace(".T", "") for c in sub["code"].tolist()]
+    for k, c in enumerate(codes):
+        m = fmap.get(c)
+        if not m: continue
+        d = m.get("disc_date")
+        if d:
+            try:
+                # 営業日の数え方は持っていないので暦日で数え、
+                # 週末ぶんを差し引いた概算にする（5/7を掛ける）。
+                _dd = (cal_i - pd.Timestamp(d)).days
+                if _dd >= 0: age[k] = _dd * 5.0 / 7.0
+            except Exception:
+                pass
+        if m.get("sue") is not None:   sue[k] = m["sue"]
+        if m.get("rev") is not None:   rev[k] = m["rev"]
+        if m.get("g_fop") is not None: gfp[k] = m["g_fop"]
+    def B(x): return np.nan_to_num(np.asarray(x, dtype=float), nan=0.0).astype(bool)
+    fresh = B((age >= EV_MIN_AGE) & (age <= EV_MAX_AGE))
+    late  = B((age >= EV_LATE_LO) & (age <= EV_LATE_HI))
+    out = {}
+    # ① 会社予想を上振れ。強さ＝上振れの大きさ
+    out["pead_up"]   = (fresh & B(sue > 0), sue)
+    # ② 下振れ。強さ＝下振れの大きさ（符号を反転して上位に）
+    out["pead_dn"]   = (fresh & B(sue < 0), -sue)
+    # ③ 通期予想の上方修正
+    out["guid_up"]   = (fresh & B(rev > 0), rev)
+    # ④ 上振れ＋新しい会社予想は保守的（増益を見込んでいない）
+    out["beat_cons"] = (fresh & B(sue > 0) & B(gfp <= 0), sue)
+    # ⑤ 上振れの約1ヶ月後（発表直後ではなく遅れて入る）
+    out["pead_late"] = (late & B(sue > 0), sue)
+    return out
+
+def bt_setups(df):
+    """仕掛けの形。{名前: (当てはまるか, その仕掛け自身の強さ)} を返す。
+
+       ★すべて原典の慣習パラメータ。数字をこちらで選ばない。
+       ★すべて i 日までに確定している値だけで作る。
+       ★「クロス」は前日との比較で**その日はじめて**起きたものだけを取る。
+         状態（上にいる）と事象（上抜けた）を混同すると、
+         合図が何日も出続けて独立した建て日が水増しされる。"""
+    import numpy as np
+    def g(k):
+        return (df[k].to_numpy(float) if k in df.columns
+                else np.full(len(df), np.nan))
+    c, a = g("close"), g("atr")
+    def B(x): return np.nan_to_num(np.asarray(x, dtype=float), nan=0.0).astype(bool)
+    def cross_up(now, prev, ref_now, ref_prev):
+        """今日はじめて上抜けた（前日は下、今日は上）。"""
+        return B((prev <= ref_prev) & (now > ref_now))
+    out = {}
+
+    # ① MACD シグナルラインのゴールデンクロス (Appel 12/26/9)
+    out["macd_gc"] = (cross_up(g("macd"), g("p_macd"), g("macd_sig"), g("p_macd_sig")),
+                      g("macd_hist"))
+    # ② MACD ゼロライン上抜け (12,26,0)
+    _z = np.zeros(len(df))
+    out["macd_zero"] = (cross_up(g("macd"), g("p_macd"), _z, _z), g("macd"))
+    # ③ RSI が30を下から上抜け (Wilder 1978)
+    _r = np.full(len(df), SETUP_RSI_OS)
+    out["rsi_os"] = (cross_up(g("rsi"), g("p_rsi"), _r, _r), -g("rsi"))
+    # ④ RSI フェイラースイング（Wilder 原典の定義）
+    #    「30を割った後、30を割らずに押し戻し、直前のRSI高値を抜く」。
+    #    日足の断面では完全再現できないので、原典のうち**確認できる部分**
+    #    ——直近14日に30割れがあり、いま30より上で、RSIが前日を上回る——
+    #    だけを取る。原典そのものではないことを名前の説明に書いてある。
+    out["rsi_fs"] = (B((g("rsi") > SETUP_RSI_OS) & (g("p_rsi") <= g("rsi"))
+                       & (g("dev25") < 0)), -g("rsi"))
+    # ⑤ ストキャスティクス: 20以下から %K が %D を上抜け (Lane)
+    out["stoch_gc"] = (cross_up(g("stk"), g("p_stk"), g("std_"), g("p_std_"))
+                       & B(g("p_stk") <= SETUP_STOCH_OS), -g("stk"))
+    # ⑥⑦ 一目均衡表 (細田 9/26/52)
+    _cloud_hi = np.fmax(g("ich_a"), g("ich_b"))
+    _p_cloud_hi = np.fmax(g("ich_a"), g("ich_b"))   # 雲は26日前確定なので当日と同値で可
+    _three = (B(g("ich_ten") > g("ich_kij"))            # ①転換線＞基準線
+              & B(c > _cloud_hi)                        # ②終値が雲の上
+              & B(c > g("p_close")))                    # ③遅行線好転の代理
+    out["ich_3"] = (_three & ~B((g("p_ich_ten") > g("p_ich_kij"))
+                                & (g("p_close") > _p_cloud_hi)),
+                    (c - _cloud_hi) / a)
+    out["ich_cloud"] = (cross_up(c, g("p_close"), _cloud_hi, _p_cloud_hi),
+                        (c - _cloud_hi) / a)
+    # ⑧⑨ 移動平均のゴールデンクロス（日本の実務慣習）
+    out["gc_5_25"]  = (cross_up(g("ma5"), g("p_ma5"), g("ma25"), g("p_ma25")),
+                       (g("ma5") / g("ma25") - 1) * 100)
+    out["gc_25_75"] = (cross_up(g("ma25"), g("p_ma25"), g("ma75"), g("p_ma75")),
+                       (g("ma25") / g("ma75") - 1) * 100)
+    # ⑩ BLL 1992 の正典: 終値が50日線を1%上抜け
+    _b50 = g("ma50") * (1 + SETUP_VMA_BAND)
+    out["vma_1_50"] = (cross_up(c, g("p_close"), _b50, g("p_ma50") * (1 + SETUP_VMA_BAND)),
+                       (c / g("ma50") - 1) * 100)
+    # ⑪⑫⑬ 高値の上抜け（BLL の TRB / タートル System1・System2）
+    out["trb50"]   = (B(c > g("hi50p")), (c - g("hi50p")) / a)
+    out["turtle1"] = (B(c > g("hi20p")), (c - g("hi20p")) / a)
+    out["turtle2"] = (B(c > g("hi55p")), (c - g("hi55p")) / a)
+    # ⑭ ボリンジャーのスクイーズ: バンド幅が過去6ヶ月で最小 (Bollinger 2001)
+    _sq = B(g("bb_bw") <= g("bb_bw_min"))
+    out["bb_squeeze"] = (_sq, -g("bb_bw"))
+    # ⑮ 収縮のあとの上抜け（Bollinger 自身が「ヘッドフェイク」を警告）
+    out["bb_sq_bo"] = (_sq & B(c > g("hi20p")), (c - g("hi20p")) / a)
+    # ⑯ NR7: 直近7日で最小の値幅 (Crabel 1990)
+    out["nr7"] = (B((g("rng") <= g("rng7min")) & (g("rng") > 0)), -g("rng") / c)
+    # ⑰ 出来高が過去49日の上位20% (Gervais-Kaniel-Mingelgrin 2001)
+    out["hvol"] = (B(g("vol_pct49") >= SETUP_HVOL_PCT), g("vol_pct49"))
+    # ⑱⑲ 25日移動平均乖離率（日本の実務。短期リバーサルのプロキシ）
+    out["dev25_5"]  = (B(g("dev25") <= SETUP_DEV_A),  -g("dev25"))
+    out["dev25_10"] = (B(g("dev25") <= SETUP_DEV_B),  -g("dev25"))
+    # ⑳ 形成1ヶ月の下落率（Chang-McLeavey-Rhee 1995 に合わせた唯一の順位系）
+    #    ★これだけは「全銘柄に順位を付けて下位から取る」形。
+    #      文献がその形で測っているので、同じ形で測らないと比較にならない。
+    out["rev21"] = (B(~np.isnan(g("r21"))), -g("r21"))
+    return out
+
 def bt_score_at(f, i):
     """日 i 時点の特徴量。i より後のデータは一切使わない。"""
     import numpy as np
@@ -2840,14 +3749,61 @@ def bt_score_at(f, i):
     atr_pct = a/c*100
     mm = f["mom12_2"][i]
     if not (mm == mm): return None          # 12-2が出ない銘柄は全因子から外す
+    def _v(k):
+        """無い期間は NaN のまま返す（0で埋めない。埋めると偽の合図が出る）。"""
+        x = f.get(k)
+        return float("nan") if x is None else float(x[i])
     return dict(close=c, atr=a, atr_pct=atr_pct, rsi=f["rsi"][i],
                 vs25=(c/m25-1)*100, vs75=(c/m75-1)*100,
                 pos60=(c-f["lo60"][i])/rngw*100, r20=f["r20"][i],
                 r5=f["r5"][i], mom12_2=mm,
                 volr=f["volr"][i] if f["volr"][i] == f["volr"][i] else 1.0,
-                turn=f["turn"][i])
+                turn=f["turn"][i],
+                # 仕掛けの形の材料。すべて i 日までの値しか使っていない。
+                # ★前日値(p_*)はクロスの判定に要る。「今日はじめて上抜けた」を
+                #   見ないと、上抜けたあと何日も合図が出続けてしまう。
+                hi20p=_v("hi20p"),
+                hi50p=_v("hi50p"),
+                hi55p=_v("hi55p"),
+                ma5=_v("ma5"),
+                ma50=_v("ma50"),
+                ma200=_v("ma200"),
+                rng=_v("rng"),
+                rng7min=_v("rng7min"),
+                macd=_v("macd"),
+                macd_sig=_v("macd_sig"),
+                macd_hist=_v("macd_hist"),
+                stk=_v("stk"),
+                std_=_v("std_"),
+                bb_pb=_v("bb_pb"),
+                bb_bw=_v("bb_bw"),
+                bb_bw_min=_v("bb_bw_min"),
+                ich_ten=_v("ich_ten"),
+                ich_kij=_v("ich_kij"),
+                ich_a=_v("ich_a"),
+                ich_b=_v("ich_b"),
+                adx=_v("adx"),
+                pdi=_v("pdi"),
+                ndi=_v("ndi"),
+                vol_pct49=_v("vol_pct49"),
+                dev25=_v("dev25"),
+                r21=_v("r21"),
+                p_macd=_v("p_macd"),
+                p_macd_sig=_v("p_macd_sig"),
+                p_ma5=_v("p_ma5"),
+                p_ma25=_v("p_ma25"),
+                p_ma50=_v("p_ma50"),
+                p_ma75=_v("p_ma75"),
+                p_rsi=_v("p_rsi"),
+                p_stk=_v("p_stk"),
+                p_std_=_v("p_std_"),
+                p_close=_v("p_close"),
+                p_ich_ten=_v("p_ich_ten"),
+                p_ich_kij=_v("p_ich_kij"),
+                ma25=m25, ma75=m75)
 
-def bt_simulate(f, i, entry, atr, hold, use_target=True, use_stop=True):
+def bt_simulate(f, i, entry, atr, hold, use_target=True, use_stop=True,
+                trail=None):
     """i+1 以降の実際の高安で決着させる。窓は寄値で約定。
 
        use_target=False は「利確しない（損切りと期限だけ）」。
@@ -2856,6 +3812,10 @@ def bt_simulate(f, i, entry, atr, hold, use_target=True, use_stop=True):
        同じ選び方・同じ損切りで、利確の有無だけを変えて比べる。"""
     stop, tgt = entry - 2*atr, entry + 3*atr
     n = len(f["close"])
+    # トレーリングストップのときは、建てたあとの最高値を追いかける。
+    # ★当日の高値は当日の判定に使わない（同じ足の中で高値を見てから
+    #   安値を判定したことになる）。前日までの最高値を使う。
+    runmax = entry
     def _r(fill, k, how):
         # R は初期リスク(2ATR)基準、Rp は%リターン。
         # 等ウェイトの枠（清原枠）では%が正しい単位なので両方返す。
@@ -2864,16 +3824,24 @@ def bt_simulate(f, i, entry, atr, hold, use_target=True, use_stop=True):
                 k-i, how)
     for k in range(i+1, min(i+1+hold, n)):
         op, hi, lo = f["open"][k], f["high"][k], f["low"][k]
-        if use_stop and lo <= stop:
+        if trail is not None:
+            lvl = runmax - trail*atr
+            if lo <= lvl:
+                fill = min(op, lvl) if op == op else lvl
+                return _r(fill, k, "stop")
+        elif use_stop and lo <= stop:
             fill = min(op, stop) if op == op else stop
             return _r(fill, k, "stop")
         if use_target and hi >= tgt:
             fill = max(op, tgt) if op == op else tgt
             return _r(fill, k, "target")
+        if trail is not None and hi == hi and hi > runmax:
+            runmax = hi
     k = min(i+hold, n-1)
     return _r(f["close"][k], k, "timeout")
 
-def bt_simulate_many(M, rows, i, entry, atr, hold, use_target=True, use_stop=True):
+def bt_simulate_many(M, rows, i, entry, atr, hold, use_target=True, use_stop=True,
+                     trail=None):
     """上と同じ決着を、その日の母集団まとめて一度に出す。
 
        なぜ要るか:
@@ -2898,7 +3866,26 @@ def bt_simulate_many(M, rows, i, entry, atr, hold, use_target=True, use_stop=Tru
     stop = entry - 2 * atr
     tgt = entry + 3 * atr
     big = H.shape[1] + 10
-    if use_stop:
+    if trail is not None:
+        # ★トレーリングストップ。建てたあとの**その日までの最高値**から
+        #   trail×ATR 下がったところで降りる。含み益を追いかけて
+        #   損切り位置を上げていく、実務で最も一般的な降り方のひとつ。
+        #   ★当日の高値を当日の損切り判定に使わない。前日までの最高値を
+        #     使う（当日の高値で当日の損切り位置を決めると、
+        #     同じ足の中で高値を見てから安値を判定したことになる）。
+        _rm = np.maximum.accumulate(H, axis=1)
+        _rm = np.concatenate([np.full((H.shape[0], 1), np.nan), _rm[:, :-1]], axis=1)
+        _base = np.fmax(_rm, entry[:, None])      # 建値は下限（初日は建値基準）
+        _lvl = _base - trail * atr[:, None]
+        s_any = L <= _lvl
+        s_k = np.where(s_any.any(1), s_any.argmax(1), big)
+        # 降りる値段はその日のトレーリング水準（窓が空いたら寄値）
+        _slvl = np.where(s_any.any(1),
+                         _lvl[np.arange(len(rows)),
+                              np.where(s_any.any(1), s_any.argmax(1), 0)],
+                         np.nan)
+        stop = np.where(np.isnan(_slvl), stop, _slvl)
+    elif use_stop:
         s_any = L <= stop[:, None]
         s_k = np.where(s_any.any(1), s_any.argmax(1), big)
     else:
@@ -3048,8 +4035,17 @@ def run_backtest(codes, bench="1306.T"):
          for k in ("open", "high", "low", "close")}
     print(f"[検証] 決着用の行列 {M['close'].shape[0]}銘柄 × {M['close'].shape[1]}営業日")
 
-    trades = {k: [] for k in BT_FACTORS + ("pool", "pool_f")}
+    trades = {k: [] for k in BT_FACTORS + BT_FACTORS_LIQ
+              + ("pool", "pool_f", "pool_liq")}
     n_dates, n_dates_f = 0, 0
+    # 仕掛けが1日に何件当てはまったか。0件の日も数える。
+    # ★「めったに出ない形」と「毎日ほぼ全銘柄に出る形」を区別するのに要る。
+    #   後者は母集団平均と同じものを測っているだけで、仕掛けとは言えない。
+    _setup_n = {}
+    _pool_n = []      # その日の母集団の銘柄数（仕掛けの出やすさを割る分母）
+    _n_limit = [0]    # ストップ高で約定できず落とした建玉の数
+    _breadth = {}     # 建て日 → 母集団のうち直近5日が上げている割合(%)
+    _brd_hist = []
     # ★最長の保有期間ぶんを一律に切り落とすと、短い保有の標本まで減ってしまう。
     #   建て日は最短の保有期間で決め、各保有期間ごとに「足りる日か」を見る。
     for i in range(BT_WARMUP, nbar - min(BT_HOLDS) - 1, BT_STEP):
@@ -3063,6 +4059,26 @@ def run_backtest(codes, bench="1306.T"):
             s["code"] = c; pool.append(s)
         if len(pool) < 50: continue
         n_dates += 1
+        _pool_n.append(len(pool))
+        # ★市場の広がり（騰落レシオに相当）。自分が走査している母集団から
+        #   直接数えるので、JPXの公表値を取ってくる必要がない
+        #   （価格から導いた自分の計算なので再配信の問題も起きない）。
+        #   「相場全体が上がっている日の合図」と「下がっている日の合図」を
+        #   混ぜて平均すると、局面で符号が反転する仕掛けを見落とす。
+        _adv = sum(1 for x in pool if (x.get("r5") or 0) > 0)
+        _brd = 100.0 * _adv / len(pool)
+        _breadth[i] = _brd
+        _brd_hist.append(_brd)
+        # ★流動性の上位半分だけの母集団も作る。
+        #   Avramov, Cheng & Metzker (2023, Management Science) の中心的な
+        #   批判は「機械学習の優位は**裁定しにくい銘柄**（小型・低流動・
+        #   高ボラ）から出ている。それを除くと相当程度減衰する」。
+        #   Chen & Velikov (2023, JFQA) も「時価総額加重にすると残存収益は
+        #   完全に消える（期待リターン −2bp/月）」と報告している。
+        #   等ウェイト・全銘柄の結果だけを出すのは、文献が最も厳しく
+        #   批判している出し方。**実際に建てられる側**でも測る。
+        _tv = sorted(float(x["turn"]) for x in pool)
+        _med_turn = _tv[len(_tv)//2]
         df = pd.DataFrame(pool)
         # ★対TOPIXの20日相対力。レポートのC（位置）がこれを使っているので、
         #   検証でも同じものを作る。指数の20日騰落を引くだけ。
@@ -3072,11 +4088,36 @@ def run_backtest(codes, bench="1306.T"):
         except Exception:
             _b20 = 0.0
         df["rs20"] = df["r20"] - _b20
+        # 流動性上位半分の行番号（基準線と各選び方の両方で使う）
+        _liq = np.flatnonzero(df["turn"].to_numpy(float) >= _med_turn)
         picks = {}
         # 文献由来の因子。同じ母集団・同じ執行ルールで比べる
         alt = bt_alt_scores(df)
         for name, sc in alt.items():
             order = np.argsort(-sc)[:BT_TOP]
+            picks[name] = [df.iloc[k] for k in order]
+        # ★流動性上位半分でも同じ選び方をする（実際に建てられる側）
+        if _liq.size >= 30:
+            _sub = df.iloc[_liq].reset_index(drop=True)
+            for _nm, _sc in bt_alt_scores(_sub).items():
+                _o = np.argsort(-_sc)[:BT_TOP]
+                picks[_nm + LIQ_SUF] = [_sub.iloc[k] for k in _o]
+            for _nm, (_mk, _st) in bt_setups(_sub).items():
+                _ix = np.flatnonzero(np.asarray(_mk, dtype=bool))
+                if _ix.size == 0: continue
+                _s2 = np.asarray(_st, dtype=float)[_ix]
+                _s2 = np.where(np.isnan(_s2), -np.inf, _s2)
+                picks[_nm + LIQ_SUF] = [_sub.iloc[k]
+                                        for k in _ix[np.argsort(-_s2)[:BT_TOP]]]
+        # ── 仕掛けの形。当てはまった銘柄だけ。出ない日は建てない ──────
+        for name, (mask, strength) in bt_setups(df).items():
+            idx = np.flatnonzero(np.asarray(mask, dtype=bool))
+            _setup_n.setdefault(name, []).append(int(idx.size))
+            if idx.size == 0:
+                continue                      # 合図が出なかった日。建てない
+            st = np.asarray(strength, dtype=float)[idx]
+            st = np.where(np.isnan(st), -np.inf, st)
+            order = idx[np.argsort(-st)[:BT_TOP]]
             picks[name] = [df.iloc[k] for k in order]
         # 基準線は「同じ母集団の全銘柄を等ウェイトで建てたときの平均」。
         # 以前は乱数で10件を5回抽出してその平均を取っていたが、
@@ -3085,6 +4126,8 @@ def run_backtest(codes, bench="1306.T"):
         # （建てる値段・決着はどちらの場合も実際に付いた高安だけを使っている。
         #   価格を作り出す種類のシミュレーションは一度も入っていない）
         picks["pool"] = [df.iloc[k] for k in range(len(df))]
+        if _liq.size >= 30:
+            picks["pool_liq"] = [df.iloc[k] for k in _liq]
         # ファンダ側。母集団は「その日までに財務が開示されている銘柄」だけ。
         # 基準線(pool_f)も必ず同じ母集団から取る。
         if jpit:
@@ -3106,6 +4149,20 @@ def run_backtest(codes, bench="1306.T"):
                     picks[name] = [sub.iloc[k] for k in order if ok[k]]
                 # ファンダ側の基準線も同じ母集団の全銘柄平均
                 picks["pool_f"] = [sub.iloc[k] for k in range(len(sub))]
+                # ★イベント起点の仕掛け。開示が引けている母集団で判定する。
+                #   合図が出ない日は建てない（イベントが無い日がある）。
+                try:
+                    _sub2 = sub.reset_index(drop=True)
+                    for _en, (_em, _es) in bt_events(_sub2, fmap, cal[i]).items():
+                        _ei = np.flatnonzero(np.asarray(_em, dtype=bool))
+                        _setup_n.setdefault(_en, []).append(int(_ei.size))
+                        if _ei.size == 0: continue
+                        _ev = np.asarray(_es, dtype=float)[_ei]
+                        _ev = np.where(np.isnan(_ev), -np.inf, _ev)
+                        picks[_en] = [_sub2.iloc[k]
+                                      for k in _ei[np.argsort(-_ev)[:BT_TOP]]]
+                except Exception as _e:
+                    meta.setdefault("bt_event_err", str(_e)[:120])
         for kind, rows in picks.items():
             if not rows: continue
             # 母集団平均は全銘柄なので、1日の重みを採用件数(BT_TOP)に揃える。
@@ -3114,18 +4171,99 @@ def run_backtest(codes, bench="1306.T"):
             ridx = np.array([_row[r["code"]] for r in rows])
             ent = np.array([float(r["close"]) for r in rows])
             atv = np.array([float(r["atr"]) for r in rows])
+            # ★ストップ高で約定できなかった建玉を落とす。
+            #   上抜け系の合図は「大きく上げた日」に出るので、
+            #   ここを無視すると順張り系だけが系統的に良く見える。
+            if i + 1 < nbar:
+                _nxo = M["open"][ridx, i + 1]
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    _gap = np.abs(_nxo / ent - 1.0)
+                _ok = ~(_gap > BT_LIMIT_MOVE)          # NaN は通す（寄値欠損）
+                if not _ok.all():
+                    _n_limit[0] += int((~_ok).sum())
+                    _keep = np.flatnonzero(_ok)
+                    if _keep.size == 0: continue
+                    rows = [rows[k] for k in _keep]
+                    ridx, ent, atv = ridx[_keep], ent[_keep], atv[_keep]
             up_i = above.get(i)
+            brd_i = _breadth.get(i)
             for hold in BT_HOLDS:
                 if i + hold >= nbar: continue      # その保有期間には足りない日
-                for exname, use_t, use_s in BT_EXITS:
+                for _ex in BT_EXITS:
+                    exname, use_t, use_s = _ex[0], _ex[1], _ex[2]
+                    trail = _ex[3] if len(_ex) > 3 else None
                     R, Rp, bars, how = bt_simulate_many(M, ridx, i, ent, atv,
-                                                        hold, use_t, use_s)
-                    for j in range(len(rows)):
-                        trades[kind].append({"i": i, "hold": hold, "ex": exname,
-                                             "R": float(R[j]),
-                                             "Rp": float(Rp[j]),
-                                             "bars": int(bars[j]),
-                                             "how": str(how[j]), "w": w, "up": up_i})
+                                                        hold, use_t, use_s,
+                                                        trail=trail)
+                    # ★1建玉ずつ辞書に積まない。**(日付, 保有, 降り方) ごとに
+                    #   合計と件数へ畳む。**
+                    #   検定に要るのは「その日の平均」と「全体の合計」だけで、
+                    #   個別の建玉は一度も参照していない。
+                    #   畳まないと、基準線(pool系)だけで
+                    #   3母集団 × 約1,700銘柄 × 35(保有×降り方) × 188日
+                    #   ≒ 3,300万個の辞書になり、GitHub Actions の
+                    #   メモリ(7GB)で確実に落ちる。畳めば約44万レコード。
+                    _R = np.asarray(R, float); _Rp = np.asarray(Rp, float)
+                    _ok = ~np.isnan(_R)
+                    _n = int(_ok.sum())
+                    if _n == 0: continue
+                    _hw = np.asarray(how, dtype=object)
+                    trades[kind].append({
+                        "i": i, "hold": hold, "ex": exname,
+                        "up": up_i, "brd": brd_i, "w": w,
+                        "n": _n,
+                        "sR": float(np.nansum(_R)),
+                        "sRp": float(np.nansum(_Rp)),
+                        "win": int((_R[_ok] > 0).sum()),
+                        "n_target": int((_hw == "target").sum()),
+                        "n_stop": int((_hw == "stop").sum()),
+                        "n_timeout": int((_hw == "timeout").sum()),
+                    })
+    # 仕掛けの出やすさ。これが読めないと t 値の意味が分からない。
+    #   ★出やすさは t 値の読み方を決める。めったに出ない形は標本が少なく、
+    #     毎日ほぼ全銘柄に出る形は母集団平均そのものを測っているだけ。
+    #     どちらも「効く仕掛け」ではないので、必ず併記する。
+    _sn = {}
+    _pm = sorted(_pool_n) if _pool_n else [0]
+    _pool_med = _pm[len(_pm)//2]
+    _ALL_JA = dict(SETUP_JA)
+    _ALL_JA.update({k: v[0] for k, v in EVENT_META.items()})
+    for k, v in (_setup_n or {}).items():
+        if not v: continue
+        v2 = sorted(v)
+        _med = v2[len(v2)//2]
+        _share = (100.0 * _med / _pool_med) if _pool_med else None
+        _sn[k] = {"名前": _ALL_JA.get(k, k),
+                  "出た日": sum(1 for x in v if x > 0), "検証日": len(v),
+                  "1日の中央値": _med, "1日の最大": max(v),
+                  "母集団の中央値": _pool_med,
+                  "母集団比_pct": (None if _share is None else round(_share, 1))}
+        # 自分で気付けるようにする。実データはActionsでしか回せないので、
+        # 「出なさすぎ」「出すぎ」を実行そのものに報告させる。
+        _nd = _sn[k]["出た日"]
+        if _nd < BT_MIN_INDEP:
+            _sn[k]["警告"] = f"合図が出た日が{_nd}日しかない＝検証できない"
+            print(f"::warning::仕掛け {k}（{_ALL_JA.get(k,k)}）は"
+                  f"{len(v)}日中{_nd}日しか出ていません。条件が厳しすぎます")
+        elif _share is not None and _share >= 50.0:
+            _sn[k]["警告"] = f"母集団の{_share:.0f}%に出ている＝仕掛けとして働いていない"
+            print(f"::warning::仕掛け {k}（{_ALL_JA.get(k,k)}）は母集団の"
+                  f"{_share:.0f}%に出ています。母集団平均を測っているのと同じです")
+    # 市場の広がりの分布。局面別の集計の境目をここから決める。
+    if _brd_hist:
+        _bh = sorted(_brd_hist)
+        meta["backtest_breadth"] = {
+            "検証日": len(_bh),
+            "下位3分の1の境目": round(_bh[len(_bh)//3], 1),
+            "上位3分の1の境目": round(_bh[2*len(_bh)//3], 1),
+            "中央値": round(_bh[len(_bh)//2], 1),
+            "note": "母集団のうち直近5日が上げている銘柄の割合(%)。"
+                    "自分の走査から直接数えている（JPXの公表値は使っていない）"}
+    meta["backtest_setups"] = _sn
+    # ストップ高で約定できず落とした建玉。上抜け系の見かけを左右する。
+    meta["backtest_limit_skipped"] = _n_limit[0]
+    if _n_limit[0]:
+        print(f"[検証] ストップ高等で約定できない建玉 {_n_limit[0]:,}件を除外")
     meta["backtest_dates"] = n_dates
     meta["backtest_dates_fund"] = n_dates_f
     # ★基準線どうしの整合検査。これが無かったために、壊れた pool と
@@ -3169,6 +4307,188 @@ def run_backtest(codes, bench="1306.T"):
           f"延べ {sum(len(v) for v in trades.values()):,}件")
     return trades, n_dates, len(feats), str(cal[0].date()), str(cal[-1].date()), cov, n_dates_f
 
+def bt_fdr(cells, q=0.10):
+    """多重検定の補正（Benjamini-Hochberg の False Discovery Rate）。
+
+       なぜ要るか:
+         いま何十通りもの選び方を一度に測っている。しきい値 t≥2.8 は
+         1つの検定に対する基準で、**試す数が増えれば偶然2.8を超えるものが
+         必ず出る**。Park & Irwin (2007) が技術的分析の文献の
+         最大の欠陥として挙げた "data snooping" がこれ。
+       ★日本株を扱った既存研究は例外なくこの補正を行っている:
+         Yamamoto (2012) JBF、Hsu-Hsu-Kuan (2010) JAE は White の
+         Reality Check と Hansen の SPA、Bajgrowicz & Scaillet (2012)
+         JFE は本関数と同じ Benjamini-Hochberg の FDR を使っている。
+         補正しない結果は、既存文献と比較できない。
+       ★BH を選んだ理由: RC/SPA はブートストラップに元の収益系列が要り、
+         この仕組みは建て日ごとの差しか持ち回っていない。BH は p 値だけで
+         でき、Bajgrowicz-Scaillet が同じ目的で使った実績がある。
+
+       cells: [(鍵, t値, 自由度)] / q: 許容する偽発見の割合
+       返り値: {鍵: {"p", "p_adj", "ok"}}。ok が BH を通ったもの。"""
+    import math
+    def _p_two(t, df):
+        """両側 p 値。t分布。scipy を入れずに済ませる。"""
+        if t is None or df is None or df < 1: return None
+        t = abs(float(t)); df = float(df)
+        # 正則化不完全ベータ関数で t分布の裾を出す
+        x = df / (df + t * t)
+        return _betainc(df / 2.0, 0.5, x)
+    def _betacf(a, b, x):
+        MAXIT, EPS, FPMIN = 200, 3e-16, 1e-300
+        qab, qap, qam = a + b, a + 1.0, a - 1.0
+        c = 1.0; d = 1.0 - qab * x / qap
+        if abs(d) < FPMIN: d = FPMIN
+        d = 1.0 / d; h = d
+        for m in range(1, MAXIT + 1):
+            m2 = 2 * m
+            aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+            d = 1.0 + aa * d
+            if abs(d) < FPMIN: d = FPMIN
+            c = 1.0 + aa / c
+            if abs(c) < FPMIN: c = FPMIN
+            d = 1.0 / d; h *= d * c
+            aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+            d = 1.0 + aa * d
+            if abs(d) < FPMIN: d = FPMIN
+            c = 1.0 + aa / c
+            if abs(c) < FPMIN: c = FPMIN
+            d = 1.0 / d; de = d * c; h *= de
+            if abs(de - 1.0) < EPS: break
+        return h
+    def _betainc(a, b, x):
+        if x <= 0.0: return 0.0
+        if x >= 1.0: return 1.0
+        lb = (math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+              + a * math.log(x) + b * math.log(1.0 - x))
+        if x < (a + 1.0) / (a + b + 2.0):
+            return math.exp(lb) * _betacf(a, b, x) / a
+        return 1.0 - math.exp(lb) * _betacf(b, a, 1.0 - x) / b
+    ps = []
+    for key, t, df in cells:
+        p = _p_two(t, df)
+        if p is not None: ps.append((key, p))
+    out = {k: {"p": None, "p_adj": None, "ok": False} for k, _, _ in cells}
+    if not ps: return out
+    ps.sort(key=lambda z: z[1])
+    m = len(ps)
+    # BH の手続き: p_(k) ≤ k/m × q を満たす最大の k まで採択
+    kmax = 0
+    for k, (_, p) in enumerate(ps, start=1):
+        if p <= k / m * q: kmax = k
+    # 調整p値（単調にする）
+    prev = 1.0
+    adj = [None] * m
+    for k in range(m, 0, -1):
+        prev = min(prev, ps[k-1][1] * m / k)
+        adj[k-1] = prev
+    for k, (key, p) in enumerate(ps, start=1):
+        out[key] = {"p": round(p, 6), "p_adj": round(adj[k-1], 6), "ok": k <= kmax}
+    return out
+
+BT_FDR_Q = 0.10        # 許容する偽発見の割合。Bajgrowicz-Scaillet と同じ水準
+
+# ══════════════════════════════════════════════════════════════
+#  検定群の分け方（2026-09-19に本人が決定：B案）
+#
+#  なぜ分けるか:
+#    多重検定の補正は「たくさん試すほど基準を上げる」という考え方で、
+#    2,240通りを1つの山として数えると実効しきい値が約3.45まで上がる。
+#    だが、その2,240通りの中身は性質が2つに分かれている。
+#      ・ほとんどは「有名だから試した」もの（20日高値の上抜け、RSI30割れ…）。
+#        日本株で効くという根拠は測る前には無く、むしろ否定されていた。
+#        これは総当たりの探索であって、厳しく数えるのが正しい。
+#      ・一部は「測る前から日本株の査読済み論文に根拠があった」もの。
+#        先に仮説があって、それを確かめに行っている。
+#        総当たりと同じ袋に入れて数えるのは過剰に厳しい。
+#
+#  ★線引きを固定する理由:
+#    「結果を見てから、良かったものを別枠に移す」のが最悪の操作で、
+#    それをやると補正の意味が消える。だからここに**定数として凍結**し、
+#    **結果を見てから足さない**。足すときは、足す理由と査読済みの出典を
+#    先に書いてから、測り直す。
+#
+#  ★この3つに絞った理由（当初は「イベント5つ全部」としていたのを狭めた）:
+#    残り2つ（上振れ＋保守的ガイダンス／上振れの1ヶ月後）の根拠は
+#    実務家の記事であって査読論文ではない。根拠の強さが違うものを
+#    同じ枠に入れると、線引きが「自分に都合のよい方」に寄る。
+BT_PRIOR_ARMS = {
+    # 決算が会社予想を上振れ／下振れしたあとのドリフト
+    #   Okada & Saeki (2014) 証券アナリストジャーナル（日本株9,390件）:
+    #     CAR(+1,+21) が予想誤差の上下デシルで 2.2ポイント
+    #   Jinushi (2023) The Japanese Accounting Review 13（60,124件）:
+    #     大幅に減衰したが、外国人保有が低い銘柄では残存
+    "pead_up": "Okada & Saeki 2014 / Jinushi 2023",
+    "pead_dn": "Okada & Saeki 2014 / Jinushi 2023",
+    # 会社が通期予想を上方修正したあと
+    #   Kitagawa & Shuto (2024) JBFA 51(9-10)（日本企業）:
+    #     期初予想の「予想外部分」と将来リターンの関係
+    "guid_up": "Kitagawa & Shuto 2024 JBFA",
+}
+
+def bt_family(arm):
+    """その腕がどちらの検定群か。
+       "prior" … 測る前から日本株の査読済み論文に根拠があったもの
+       "search" … それ以外（有名だから試した、の総当たり）"""
+    base = arm.split(LIQ_SUF)[0] if LIQ_SUF in arm else arm
+    return "prior" if base in BT_PRIOR_ARMS else "search"
+
+def bt_dsr(t_obs, n_obs, n_trials):
+    """試行回数で割り引いた有意性（Deflated Sharpe Ratio の考え方）。
+
+       なぜ要るか:
+         内山朋規・瀧澤秀明・菊川匡 (2020)「資産リターンの予測可能性と
+         機械学習」（オペレーションズ・リサーチ 2020年7月号）は、日本株で
+         **予測力がゼロの乱数データ**を使い、変数選択とモデル選択を経た
+         t 統計量の分布を1万回のシミュレーションで出した。
+         結果は **5%の臨界値が t=5.41**。つまり「50個の候補変数から
+         選んだモデルの t=3.96」は、**偶然の範囲**だった。
+         さらに「回帰木やk近傍法のほうが線形回帰より変数マイニングの
+         影響が深刻」とも報告している。
+       ★これは当方の BT_T_THRESHOLD=2.8 を直撃する。2.8 は
+         「1つの検定」に対する基準で、何百通りも試した後の基準ではない。
+         BH法（bt_fdr）と、この試行回数の割引の両方で見る。
+
+       やること:
+         N 回の独立な試行で観測される t 値の最大値の期待値を出し、
+         実際の t がそれをどれだけ上回っているかを返す。
+         Bailey & Lopez de Prado の Deflated Sharpe Ratio と同じ考え方
+         （シャープレシオの代わりに t 値でやっている）。
+
+       返り値: {"t_expected_max", "beats_luck", "n_trials"}"""
+    import math
+    if t_obs is None or n_trials is None or n_trials < 2 or not n_obs or n_obs < 3:
+        return None
+    # 独立なN回の標準正規の最大値の期待値（Gumbel 近似）
+    g = 0.5772156649015329          # オイラー・マスケローニ定数
+    N = float(n_trials)
+    def _z(p):
+        """標準正規の分位点（Acklam の有理近似）。scipy を入れずに済ませる。"""
+        a_ = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+              1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00]
+        b_ = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+              6.680131188771972e+01, -1.328068155288572e+01]
+        c_ = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+              -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00]
+        d_ = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+              3.754408661907416e+00]
+        pl = 0.02425
+        if p < pl:
+            q = math.sqrt(-2 * math.log(p))
+            return (((((c_[0]*q+c_[1])*q+c_[2])*q+c_[3])*q+c_[4])*q+c_[5]) / \
+                   ((((d_[0]*q+d_[1])*q+d_[2])*q+d_[3])*q+1)
+        if p > 1 - pl:
+            q = math.sqrt(-2 * math.log(1 - p))
+            return -(((((c_[0]*q+c_[1])*q+c_[2])*q+c_[3])*q+c_[4])*q+c_[5]) / \
+                    ((((d_[0]*q+d_[1])*q+d_[2])*q+d_[3])*q+1)
+        q = p - 0.5; r = q*q
+        return (((((a_[0]*r+a_[1])*r+a_[2])*r+a_[3])*r+a_[4])*r+a_[5])*q / \
+               (((((b_[0]*r+b_[1])*r+b_[2])*r+b_[3])*r+b_[4])*r+1)
+    emax = (1 - g) * _z(1 - 1.0/N) + g * _z(1 - 1.0/(N * math.e))
+    return {"t_expected_max": round(emax, 2),
+            "beats_luck": bool(abs(t_obs) > emax),
+            "n_trials": int(n_trials)}
+
 def bt_verdict(rec, thr=None, min_indep=None):
     """その格子を「使える」と言ってよいかの判定。★ここが安全弁の本体。
 
@@ -3184,6 +4504,15 @@ def bt_verdict(rec, thr=None, min_indep=None):
        独立観測が2日しかない保有250日の格子が t=+4.28 で通っていた。"""
     thr = BT_T_THRESHOLD if thr is None else thr
     min_indep = BT_MIN_INDEP if min_indep is None else min_indep
+    # ★試行回数で床を上げる。**下げることはしない。**
+    #   何百通りも試せば、中身が空でも最大t はそれなりの値になる。
+    #   実測: 300通りなら偶然でも最大 t≒2.90 が出る。つまり
+    #   しきい値2.8は**試行回数に対して低すぎた**。
+    #   内山・瀧澤・菊川 (2020) は日本株の乱数実験で、変数選択と
+    #   モデル選択を経た t の5%臨界値が **5.41** に達すると報告している。
+    _ds = rec.get("dsr")
+    if isinstance(_ds, dict) and _ds.get("t_expected_max"):
+        thr = max(thr, float(_ds["t_expected_max"]))
     md = rec.get("mean_diff")
     n_ind = rec.get("n_nonoverlap") or 0
     ts = [rec.get(k) for k in ("t_dates", "t_nonoverlap", "t_nw")]
@@ -3210,9 +4539,38 @@ def bt_verdict(rec, thr=None, min_indep=None):
         return {"ok": False,
                 "why": f"誤差の範囲（t={t_use:+.2f} < {thr}）。情報があるとは言えない",
                 "t_used": t_use, "n_indep": n_ind}
+    # ④ 多重検定の補正（Benjamini-Hochberg）。何百通りも同時に測っている
+    #    ので、t≥2.8 だけでは偶然通るものが必ず出る。
+    #    ★fdr が入っていない古い backtest.json では ④ を課さない
+    #      （無いものを「落ちた」と扱うと、全部が偽陰性になる）。
+    fd = rec.get("fdr")
+    if isinstance(fd, dict) and fd.get("p_adj") is not None and not fd.get("ok"):
+        return {"ok": False,
+                "why": f"多重検定の補正で落ちる（補正後p={fd['p_adj']:.3f}）。"
+                       f"何百通りも試せば偶然これくらいは出る",
+                "t_used": t_use, "n_indep": n_ind}
+    _fdr_txt = ("／多重検定の補正も通過" if isinstance(fd, dict) and fd.get("ok")
+                else "／★多重検定の補正は未実施（古い検証データ）")
+    if isinstance(_ds, dict) and _ds.get("n_trials"):
+        _fdr_txt += (f"／{_ds['n_trials']}通り試した中で、"
+                     f"偶然の最大t {_ds['t_expected_max']} も超えている")
     return {"ok": True, "why": f"3つのtが全て{thr}以上（最小 t={t_use:+.2f}）"
-                               f"／独立した建て日{n_ind}日",
+                               f"／独立した建て日{n_ind}日" + _fdr_txt,
             "t_used": t_use, "n_indep": n_ind}
+
+def bt_base_for(k):
+    """その選び方を比べる相手（基準線）。★母集団が違うものを比べない。
+       ファンダ側は「財務が引けた銘柄」だけ、流動性版は「流動性上位半分」
+       だけで戦っているので、基準線も必ず同じ母集団から取る。
+       違う母集団の平均と比べると、母集団が変わった効果を
+       その選び方の優位性として報告してしまう。"""
+    if k.endswith(LIQ_SUF): return "pool_liq"
+    # ★イベント起点の仕掛けは、開示が引けている銘柄だけで戦っているので
+    #   基準線も必ずその母集団（pool_f）から取る。全銘柄平均と比べると、
+    #   「開示が引けている銘柄」に絞った効果をイベントの効果として
+    #   報告してしまう。
+    if k in EVENTS: return "pool_f"
+    return "pool_f" if k in FUND_FACTORS else "pool"
 
 def bt_clustered(trades, hold, regime=None, ex="2atr_3atr"):
     """建て日ごとに束ねてから差を検定する。
@@ -3232,15 +4590,20 @@ def bt_clustered(trades, hold, regime=None, ex="2atr_3atr"):
          さらに保有期間ぶん間隔を空けた部分標本でも出し、期間の重なりも消す。
          採否の判断にはこの厳しい方（t_nonoverlap）を使う。"""
     import numpy as np
+    # ★建玉は (日付, 保有, 降り方) ごとに畳んである（合計と件数）。
+    #   ここで要るのは「その日の平均」だけなので、合計÷件数で復元する。
+    #   畳む前と同じ値になることはテストで確かめてある。
     per, perp = {}, {}
     for kind, rows in trades.items():
         for r in rows:
             if r["hold"] != hold: continue
             if r.get("ex", "2atr_3atr") != ex: continue
             if regime is not None and r["up"] != regime: continue
-            per.setdefault(r["i"], {}).setdefault(kind, []).append(r["R"])
-            if r.get("Rp") is not None:
-                perp.setdefault(r["i"], {}).setdefault(kind, []).append(r["Rp"])
+            _n = r.get("n") or 0
+            if _n <= 0: continue
+            per.setdefault(r["i"], {})[kind] = r["sR"] / _n
+            if r.get("sRp") is not None:
+                perp.setdefault(r["i"], {})[kind] = r["sRp"] / _n
     gap = max(1, -(-hold // BT_STEP))      # 期間が重ならない間隔（切り上げ）
     def _t_nw(xs, lag):
         """重なりを捨てずに、重なったぶんだけ標準誤差を膨らませる（Newey-West）。
@@ -3278,13 +4641,16 @@ def bt_clustered(trades, hold, regime=None, ex="2atr_3atr"):
         ds = []
         for i in sorted(src):
             a, b = src[i].get(k), src[i].get(bk)
-            if not a or not b: continue
-            ds.append(float(np.mean(a)) - float(np.mean(b)))
+            # ★None かどうかで見る。`not a` にすると**平均がちょうど 0.0 の日**を
+            #   取りこぼす（畳む前はリストだったので「空か」で正しかったが、
+            #   いまは数値なので 0.0 が偽になる）。
+            if a is None or b is None: continue
+            ds.append(float(a) - float(b))
         return ds
 
     out = {}
-    for k in BT_FACTORS:
-        bk = "pool_f" if k in FUND_FACTORS else "pool"
+    for k in BT_FACTORS + BT_FACTORS_LIQ:
+        bk = bt_base_for(k)
         ds = _diffs(per, k, bk)
         if len(ds) < 8: continue
         t_all, n_all = _t(ds)
@@ -3310,30 +4676,61 @@ def bt_clustered(trades, hold, regime=None, ex="2atr_3atr"):
         out[k] = rec
     return out
 
-def bt_summary(trades, hold, regime=None, ex="2atr_3atr"):
+def bt_summary(trades, hold, regime=None, ex="2atr_3atr",
+               brd_min=None, brd_max=None):
+    """その保有期間・執行方式の集計。
+
+       regime … TOPIXが200日線の上か下か
+       brd_min / brd_max … 市場の広がり（母集団のうち直近5日が上げている
+         割合）で建て日を絞る。★局面で符号が反転する仕掛けを、
+         全期間の平均で打ち消して見落とさないため。"""
     out = {}
     for kind, rows in trades.items():
         d = [r for r in rows if r["hold"] == hold
              and r.get("ex", "2atr_3atr") == ex
-             and (regime is None or r["up"] == regime)]
+             and (regime is None or r["up"] == regime)
+             and (brd_min is None or (r.get("brd") is not None
+                                      and r["brd"] >= brd_min))
+             and (brd_max is None or (r.get("brd") is not None
+                                      and r["brd"] <= brd_max))]
         if not d: continue
-        w = sum(r["w"] for r in d)
+        # ★建玉は畳んである。1レコードは n 件ぶんで、各件の重みは w。
+        #   重みの合計は n*w、Rの重み付き合計は w*sR になる。
+        w = sum((r.get("n") or 0) * r["w"] for r in d)
         if w <= 0: continue
-        sR = sum(r["R"]*r["w"] for r in d)
-        win = sum(r["w"] for r in d if r["R"] > 0)
+        sR = sum(r["sR"] * r["w"] for r in d)
+        win = sum(r["win"] * r["w"] for r in d)
+        # ★%リターンと取引コスト。
+        #   Bajgrowicz & Scaillet (2012) は「低いコストを入れるだけで
+        #   イン・サンプルでも優位が完全に消える」と示した。
+        #   コスト前の数字だけを見てはいけない。
+        #   ★ただし**母集団平均との差**にはコストは効かない。
+        #     どちらの側も同じ往復コストを払うので引き算で消える。
+        #     コストが決めるのは「そもそも儲かるのか」という絶対値のほう。
+        _sw = sum((r.get("n") or 0) * r["w"] for r in d if r.get("sRp") is not None)
+        _arp = ((sum(r["sRp"] * r["w"] for r in d if r.get("sRp") is not None) / _sw)
+                if _sw > 0 else None)
         out[kind] = {"n": round(w, 1), "avg_r": round(sR/w, 4),
+                     "avg_rp_pct": (None if _arp is None else round(_arp*100, 4)),
+                     # コスト差引後。往復 BT_COST_BP ベーシスポイント
+                     "avg_rp_net_pct": (None if _arp is None else
+                                        round(_arp*100 - BT_COST_BP/100.0, 4)),
+                     # 損益がゼロになる往復コスト（bp）。文献と比較できる形
+                     #   STW 1999: 0.27%/回、Bessembinder-Chan 1995: 往復1.57%
+                     "breakeven_bp": (None if _arp is None else round(_arp*10000, 1)),
+                     "cost_bp": BT_COST_BP,
                      "win_pct": round(win/w*100, 1),
-                     "target": round(sum(r["w"] for r in d if r["how"] == "target")/w*100, 1),
-                     "stop": round(sum(r["w"] for r in d if r["how"] == "stop")/w*100, 1),
-                     "timeout": round(sum(r["w"] for r in d if r["how"] == "timeout")/w*100, 1)}
+                     "target": round(sum(r["n_target"]*r["w"] for r in d)/w*100, 1),
+                     "stop": round(sum(r["n_stop"]*r["w"] for r in d)/w*100, 1),
+                     "timeout": round(sum(r["n_timeout"]*r["w"] for r in d)/w*100, 1)}
     # 母集団平均との差が、順位付けが生んでいる値。
     # ★ファンダ側は「財務が引けた銘柄」だけの母集団で戦っているので、
     #   全銘柄の平均と比べてはいけない。同じ母集団から取った
     #   pool_f と比べる。そうしないと、ETFが母集団から抜けた効果を
     #   ファンダの優位性として報告してしまう。
-    for k in BT_FACTORS:
+    for k in BT_FACTORS + BT_FACTORS_LIQ:
         if k not in out: continue
-        bk = "pool_f" if k in FUND_FACTORS else "pool"
+        bk = bt_base_for(k)
         base = out.get(bk, {}).get("avg_r")
         if base is None: continue
         out[k]["base"] = bk
@@ -3391,7 +4788,10 @@ MIN_CASH_RATIO   = 0.20     # 現金比率の下限（総額比）。これを�
 SIG_PATH      = f"{OUT}/signals.csv"
 SIG_TOP_N     = 10       # 各サイドの上位何件を台帳に載せるか
 SIG_MAX_HOLD  = 15       # これを超えたら時間切れとして手仕舞う（営業日）
-SIG_COLS = ["date", "kind", "rank", "code", "name", "s17", "score",
+# ★17業種の列を外した。JPXの「東証上場銘柄一覧」由来で、
+#   public リポジトリへの再配信に当たるため（JPXサイト利用条件）。
+#   判定には引き続きメモリ上で使う。name は EDINET の提出者名（PDL1.0）。
+SIG_COLS = ["date", "kind", "rank", "code", "name", "score",
             "entry", "atr", "stop", "target", "adjf",
             "status", "exit_date", "exit", "r_multiple", "bars"]
 
@@ -3480,7 +4880,7 @@ def append_signals(sig, recs, kind, today):
         if not (entry > 0 and atr > 0): continue
         have_open.add(code)
         add.append({"date": today, "kind": kind, "rank": i, "code": code,
-                    "name": r.get("name", ""), "s17": r.get("s17", ""),
+                    "name": r.get("name", ""),      # EDINET(PDL1.0)
                     "score": score, "entry": round(entry, 2), "atr": round(atr, 2),
                     "stop": round(entry - 2*atr, 2), "target": round(entry + 3*atr, 2),
                     "adjf": r.get("adjf", 1.0),
@@ -3676,10 +5076,25 @@ def rank_value(df):
     """バリューの断面順位で並べる。これが唯一の選び方。
 
        なぜ自作の順張り/逆張りを消したのか:
-         5年・184回の建て日で、同じ母集団の全銘柄平均と比べた点推定が
-         すべての保有期間でマイナスだった。有意ではないので「有害」ではなく
-         「情報があるとは言えない」。一方バリューは建て日で束ねた厳しい
-         検定でも 保有10日 t=+4.01 / 15日 t=+3.10 で、しきい値2.8を超えた。
+         ★2026-09-17、基準線の不具合を直したうえで測り直した。
+           以前は yfinance の調整係数の乱れ（1306が1/10、1629が約1/500）が
+           基準線側だけに入っていて、全銘柄平均が +1.085R と嘘の高さになり、
+           何を比べても負けて見えていた。repair() を検証側にも通し、
+           1日で60%以上動く銘柄を外したら、基準線は +0.049R に落ち着いた
+           （全銘柄平均とファンダが引ける母集団の比が 11倍 → 1.09倍）。
+         ★その結果、自作スコアは「情報があるとは言えない」ではなく
+           **有意にマイナス**だと分かった。独立した建て日188日で、
+           2atr_only・保有3日 差-0.059R（t=-3.01/-3.01/-3.02）、
+           保有5日 差-0.069R（t=-3.07/-3.07/-3.08）。
+           3つのtが全て2.8を超えてマイナス側＝**使ってはいけない**。
+           勝率も48%台で母集団を下回る。消したのは正しかった。
+         ★文献由来の因子も同じ母集団で測り直したが、
+           モメンタム(mom12_2)と低ボラ(lowvol)は |t|<1 でほぼゼロ、
+           短期反転(rev5)は有意にマイナス（t=-3.2〜-8.7）。
+           技術系で基準を通ったものは**ひとつも無い**。
+         一方バリューは建て日で束ねた厳しい検定でも
+           保有3日 t=+2.94 / 5日 t=+3.85 / 10日 t=+3.78（3つのtの最小値）
+         で、しきい値2.8を超えた。独立した建て日は107日・107日・53日。
          検証を通った選び方だけを使う。
 
        ★並べる条件は過去検証と同じでなければいけない。
@@ -3932,6 +5347,7 @@ EARN_BUDGET_S = 240        # 候補の決算日照会に使ってよい秒数
 EARN_SOON_DAYS = 7         # これ以内なら「決算跨ぎ」として扱う
 
 JPX_EARN = {}
+JQ_EARN = {}      # J-Quantsの決算発表予定日（コード4桁 → YYYY-MM-DD）
 EHIST = {}
 
 def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
@@ -3946,8 +5362,17 @@ def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
     import yfinance as yf
     out, t0, today = {}, time.time(), str(NOW.date())
     n_ok = n_none = n_err = n_jpx = n_recent = n_est = 0
+    n_jq = 0
     for c in sorted(codes):
-        # ① JPX（公式の予定日）。確度が最も高い。
+        # ① J-Quants（公式の予定日・全銘柄ぶんが1回の照会で取れる）。
+        #    TDnetを止めたぶんをここで埋める。JPXのExcelより網羅が広い。
+        q = JQ_EARN.get(str(c)[:4])
+        if q and q >= today:
+            out[c] = {"status": "ok", "src": "jquants", "next": q,
+                      "days": int((pd.Timestamp(q) - pd.Timestamp(today)).days)}
+            n_ok += 1; n_jq += 1
+            continue
+        # ② JPX の公開Excel（当日更新ぶん）。
         j = JPX_EARN.get(str(c)[:4])
         if j and j >= today:
             out[c] = {"status": "ok", "src": "jpx", "next": j,
@@ -3987,10 +5412,12 @@ def next_earnings_for(codes, budget_s=EARN_BUDGET_S):
             out[c] = {"status": "error", "why": type(e).__name__}
             n_err += 1
         time.sleep(0.15)                            # 連続照会でのレート制限を避ける
-    meta["cand_earnings"] = {"asked": len(codes), "ok": n_ok, "from_jpx": n_jpx,
-                             "from_yf": n_ok - n_jpx, "recent": n_recent,
+    meta["cand_earnings"] = {"asked": len(codes), "ok": n_ok,
+                             "from_jquants": n_jq, "from_jpx": n_jpx,
+                             "from_yf": n_ok - n_jpx - n_jq, "recent": n_recent,
                              "estimate": n_est, "unknown": n_none, "error": n_err}
-    print(f"[決算] 候補{len(codes)}銘柄: 確定{n_ok}（JPX {n_jpx} / yfinance {n_ok-n_jpx}）"
+    print(f"[決算] 候補{len(codes)}銘柄: 確定{n_ok}"
+          f"（J-Quants {n_jq} / JPX {n_jpx} / yfinance {n_ok-n_jpx-n_jq}）"
           f" 発表済{n_recent} 推定{n_est} 不明{n_none} 失敗{n_err}")
     return out
 
@@ -4017,6 +5444,10 @@ MASTER = {}
 try:
     MASTER = load_master()
     HELD_S17 = held_sectors(HOLDINGS, MASTER)
+    # ★公開して良い銘柄名（EDINET・PDL1.0）。EDINETの取得より前に読む。
+    #   まだ溜まっていなければ空＝名前は空欄になる。
+    #   JPXの銘柄名で埋め戻すことはしない（public への再配信になるため）。
+    ED_NAMES.update(ed_names_load())
 except Exception as e:
     meta["errors"].append(f"master outer: {type(e).__name__}: {e}")
 
@@ -4039,10 +5470,10 @@ def _decorate(recs):
     for r in recs:
         c4 = str(r["code"])[:4]
         m = MASTER.get(c4, {})
-        r["name"]   = m.get("name", "")
-        r["s17"]    = m.get("s17", "")
+        r["name"]   = pub_name(c4)        # EDINET（PDL1.0）。無ければ空
+        r["s17"]    = m.get("s17", "")     # ★書き出さない。表示と判定にだけ使う
         r["kind"]   = m.get("kind", "")
-        r["size"]   = m.get("size", "")
+        r["size"]   = ""                   # JPXの規模区分は持たない
         s17 = m.get("s17", "")
         etf = s17_etf(s17)
         if s17 and not etf:
@@ -4050,7 +5481,11 @@ def _decorate(recs):
             # 実際に「情報通信・サービスその他」を1文字違いで書いていて全滅した。
             meta.setdefault("s17_unmapped", {})
             meta["s17_unmapped"][s17] = meta["s17_unmapped"].get(s17, 0) + 1
-        r["sector_etf"] = etf[:4]
+        # ★業種ETFの列は無くした。17業種と1対1に対応しているので、
+        #   銘柄ごとに書き出すと JPX の業種区分がそのまま復元できてしまう。
+        #   「同じ業種を既に持っているか」(overlap) は自分の保有の話なので残す。
+        #   業種ETF自体のセクター物色の表は、ETFの株価から作っていて
+        #   JPXの区分表に由来しないのでそのまま。
         r["news"]   = DISC.get(c4, [])[:3]
         # 既に同じ業種を持っているかどうか。持っているなら同じ賭けの上乗せ。
         r["overlap"] = HELD_S17.get(s17, []) if s17 else []
@@ -4114,6 +5549,13 @@ try:
                 except Exception as e:
                     meta["errors"].append(f"jpx_earnings: {type(e).__name__}: {e}")
                 try:
+                    # ★J-Quantsの決算発表予定日。1回の照会で全銘柄ぶん取れる。
+                    #   TDnetを止めたぶんの穴をここで埋める。
+                    JQ_EARN = jq_earnings_dates()
+                except Exception as e:
+                    meta["errors"].append(f"jq_earn: {type(e).__name__}")
+                    meta["jq_earn"] = {"error": type(e).__name__}
+                try:
                     CAND_EARN = next_earnings_for({r["code"] for r in tr0})
                 except Exception as e:
                     meta["errors"].append(f"cand_earnings: {type(e).__name__}: {e}")
@@ -4144,7 +5586,7 @@ try:
                 # 執行ルールのどれかが変われば、古い結果は比較できない。
                 _cfg = {"period": BT_PERIOD, "step": BT_STEP, "top": BT_TOP,
                         "holds": list(BT_HOLDS), "warmup": BT_WARMUP,
-                        "exits": [e for e, _t, _s in BT_EXITS],
+                        "exits": [e[0] for e in BT_EXITS],
                         "factors": list(BT_FACTORS),
                         # ★判定規則を変えたので指紋も上げる。上げないと
                         #   古い backtest.json（判定が入っていない）が
@@ -4184,6 +5626,9 @@ try:
                 if BT_ENABLED and session_complete() and (_age >= BT_MAX_AGE_D or not _same_cfg):
                     print(f"[検証] 過去検証を実行（前回から{_age}日）")
                     tk, nd, nf, d0, d1, cov, ndf = run_backtest(uni)
+                    _bm = meta.get("backtest_breadth") or {}
+                    _brd_cut = (_bm.get("下位3分の1の境目"),
+                                _bm.get("上位3分の1の境目"))
                     bt = {"generated_at_jst": NOW.isoformat(),
                           "from": d0, "to": d1, "tickers": nf, "entry_dates": nd,
                           "entry_dates_fund": ndf, "coverage_pct": cov,
@@ -4194,15 +5639,92 @@ try:
                                       "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
                           "config": _cfg, "t_threshold": BT_T_THRESHOLD,
                           "factors": list(BT_FACTORS),
-                          "exits": [e for e, _t, _s in BT_EXITS],
+                          "exits": [e[0] for e in BT_EXITS],
                           "all": {e: {str(h): bt_summary(tk, h, ex=e) for h in BT_HOLDS}
-                                  for e, _t, _s in BT_EXITS},
+                                  for e in [x[0] for x in BT_EXITS]},
                           "clustered": {e: {str(h): bt_clustered(tk, h, ex=e) for h in BT_HOLDS}
-                                        for e, _t, _s in BT_EXITS},
+                                        for e in [x[0] for x in BT_EXITS]},
                           "regime": {"above200": bt_summary(tk, 25, True),
-                                     "below200": bt_summary(tk, 25, False)}}
+                                     "below200": bt_summary(tk, 25, False)},
+                          # ★市場の広がりで分けた集計。局面で符号が反転する
+                          #   仕掛けを、平均で打ち消して見落とさないため。
+                          "breadth": {
+                              "cut": list(_brd_cut),
+                              "wide": bt_summary(tk, 25, brd_min=_brd_cut[1]),
+                              "narrow": bt_summary(tk, 25, brd_max=_brd_cut[0])}}
+                    # ── 多重検定の補正（Benjamini-Hochberg）────────────
+                    #   いま何百通りもの格子を一度に測っている。
+                    #   t≥2.8 は1つの検定に対する基準なので、
+                    #   試す数が増えれば偶然2.8を超えるものが必ず出る。
+                    #   日本株を扱った既存研究（Yamamoto 2012、
+                    #   Hsu-Hsu-Kuan 2010、Bajgrowicz-Scaillet 2012）は
+                    #   例外なくこの補正を行っている。
+                    _cells = []
+                    for _e, _bh in bt["clustered"].items():
+                        for _h, _bf in _bh.items():
+                            for _k, _c in _bf.items():
+                                if not isinstance(_c, dict): continue
+                                if _k.startswith("pool"): continue
+                                _ts = [_c.get(x) for x in
+                                       ("t_dates", "t_nonoverlap", "t_nw")]
+                                _ts = [x for x in _ts if x is not None]
+                                _n = _c.get("n_nonoverlap") or 0
+                                if not _ts or _n < 2: continue
+                                # 一番弱いtで代表させる（緩い側に倒さない）
+                                _cells.append((f"{_e}|{_h}|{_k}",
+                                               min(_ts, key=abs), _n - 1))
+                    # ★検定群を2つに分ける（本人の決定・B案）。
+                    #   群ごとに別々に補正し、群ごとに試行回数を数える。
+                    #   「測る前から査読済みの根拠があった3つ」と
+                    #   「有名だから試した総当たり」を同じ袋で数えない。
+                    _fam = {}
+                    for _c3 in _cells:
+                        _arm = _c3[0].split("|")[-1]
+                        _fam.setdefault(bt_family(_arm), []).append(_c3)
+                    _fd, _ntr_by = {}, {}
+                    for _fk, _cl3 in _fam.items():
+                        _fd.update(bt_fdr(_cl3, q=BT_FDR_Q))
+                        _ntr_by[_fk] = len(_cl3)
+                    _ntr = len(_cells)
+                    bt["dsr"] = {"n_trials": _ntr, "by_family": {}}
+                    for _fk in ("prior", "search"):
+                        _n3 = _ntr_by.get(_fk)
+                        if not _n3: continue
+                        _d3 = bt_dsr(3.0, 100, max(_n3, 2)) or {}
+                        bt["dsr"]["by_family"][_fk] = {
+                            "n_trials": _n3,
+                            "t_expected_max": _d3.get("t_expected_max"),
+                            "t_threshold_used": max(BT_T_THRESHOLD,
+                                                    _d3.get("t_expected_max") or 0)}
+                    bt["families"] = {
+                        "prior": sorted(BT_PRIOR_ARMS),
+                        "note": "prior＝測る前から日本株の査読済み論文に根拠が"
+                                "あった腕。結果を見てから足さない（凍結）",
+                        "sources": dict(BT_PRIOR_ARMS)}
+                    bt["fdr"] = {"q": BT_FDR_Q, "n_tested": len(_cells),
+                                 "n_passed": sum(1 for v in _fd.values() if v["ok"]),
+                                 "cells": _fd}
+                    for _e, _bh in bt["clustered"].items():
+                        for _h, _bf in _bh.items():
+                            for _k, _c in _bf.items():
+                                if isinstance(_c, dict):
+                                    _c["fdr"] = _fd.get(f"{_e}|{_h}|{_k}")
+                                    _tt = [_c.get(x) for x in
+                                           ("t_dates", "t_nonoverlap", "t_nw")]
+                                    _tt = [x for x in _tt if x is not None]
+                                    # ★試行回数はその腕が属する群のぶんだけ数える
+                                    _nt2 = _ntr_by.get(bt_family(_k), _ntr)
+                                    _c["family"] = bt_family(_k)
+                                    _c["dsr"] = (bt_dsr(min(_tt, key=abs),
+                                                        _c.get("n_nonoverlap"),
+                                                        _nt2) if _tt else None)
+                    bt["cost_bp"] = BT_COST_BP
+                    bt["limit_move"] = BT_LIMIT_MOVE
+                    bt["limit_skipped"] = meta.get("backtest_limit_skipped", 0)
                     json.dump(bt, open(_btp, "w"), ensure_ascii=False, indent=1)
                     meta["backtest"] = {"tickers": nf, "dates": nd,
+                                        "fdr_tested": len(_cells),
+                                        "fdr_passed": bt["fdr"]["n_passed"],
                                         "main": bt["all"]["2atr_3atr"][str(25)]}
                     print("[検証] backtest.json を生成")
             except Exception as e:
@@ -4211,6 +5733,11 @@ try:
                 print("[検証] 失敗:", e); traceback.print_exc()
 
             try:
+                # ★過去の行に残っているJPX由来の銘柄名を、書き出す直前に
+                #   EDINETの提出者名で入れ直す。EDINETに無い銘柄は空にする。
+                #   列を消すだけでは、既にコミット済みの行が直らない。
+                if "name" in SIG.columns and len(SIG):
+                    SIG["name"] = [pub_name(str(c)) for c in SIG["code"]]
                 SIG.to_csv(SIG_PATH, index=False)
                 meta["signals"] = signal_summary(SIG)
                 print(f"[台帳] {len(SIG)}件 / 決着済 {meta['signals'].get('closed', 0)} "
@@ -4230,7 +5757,8 @@ try:
                        "earnings_hist": meta.get("earnings_hist", {}),
                        "filters": {"min_turnover": MIN_TURNOVER, "min_price": MIN_PRICE,
                                    "min_atr_pct": MIN_ATR_PCT, "max_atr_pct": MAX_ATR_PCT},
-                       "s17_unmapped": meta.get("s17_unmapped", {}),
+                       # ★業種名そのものは書かない（JPX由来）。件数だけ残す。
+                       "s17_unmapped_n": len(meta.get("s17_unmapped", {}) or {}),
                        "top_n": CAND_TOP_N, "ranked_by": "value",
                        "candidates": tr}),
                       open(f"{OUT}/candidates.json", "w"), ensure_ascii=False,
@@ -4761,11 +6289,13 @@ try:
         #   過去に2回、見出しだけ増やして最後の列が黙って消えた。
         L.append("| 選び方 | 件数 | 勝率 | 平均R | 基準 | 母集団平均との差 | 粗いt値 | 利確% | 損切% | 時間切れ% |")
         L.append("|---|--:|--:|--:|:--|--:|--:|--:|--:|--:|")
-        _labels = [("mom12_2", "12-2モメンタム"), ("rev5", "短期リバーサル(5日)"),
-                   ("lowvol", "低ボラティリティ"),
-                   ("acd_score", "**このレポートの点数(A+C／Dは除く)**"),
-                   ("value", "バリュー（財務）"), ("quality", "クオリティ（財務）"),
-                   ("moat", "競争優位の代理（財務）"), ("revision", "業績修正方向（財務）")]
+        # ★表に出す選び方は BT_FACTORS から**自動で**作る。
+        #   以前はここに手書きで並べていたため、あとから足した
+        #   ep・bp・netcash・kiyohara・payout が**検定されているのに
+        #   表には一度も出ていなかった**（実測で value/ep/bp が基準を
+        #   通っていたのに、ep と bp が誰の目にも触れていなかった）。
+        #   名前が無いものは符号のまま出す。黙って消さない。
+        _labels = [(k, BT_FACTOR_JA.get(k, k)) for k in bt.get("factors", BT_FACTORS)]
         _bases = [("pool", "**母集団の全銘柄平均（基準）**"),
                   ("pool_f", "**母集団の全銘柄平均（財務あり・基準）**")]
         _bname = {"pool": "全銘柄平均", "pool_f": "財務あり平均"}
@@ -4832,10 +6362,189 @@ try:
                          f"{('—' if _pc is None else f'{_pc*100:+.2f}%')} | "
                          f"{_f(c.get('t_dates'))} | {_f(c.get('t_nonoverlap'))} | "
                          f"{_f(c.get('t_nw'))} | {c.get('n_nonoverlap', 0)} | {_mk} |")
+            # ── 仕掛けの出典とエビデンス。ここが読めないと数字が読めない ──
+            L.append("\n**仕掛けの出典と、査読済みエビデンスの状態**\n")
+            L.append("> ★**一般に使われている売買シグナルを、原典の慣習パラメータの"
+                     "まま実装している。しきい値をこちらで選んでいない。**"
+                     "選んだ瞬間に、検定の前に結果を作ってしまう"
+                     "（Park & Irwin 2007 が技術的分析の文献の最大の欠陥として"
+                     "挙げた \"ex post selection of trading rules\"）。\n")
+            L.append("| 仕掛け | 出典 | 査読済みエビデンス | 中身 |")
+            L.append("|---|---|:-:|---|")
+            for _k in SETUPS:
+                _m = SETUP_META.get(_k)
+                if not _m: continue
+                L.append(f"| {_m[0]} | {_m[1]} | **{_m[2]}** | {_m[3]} |")
+            L.append("")
+            L.append("**イベント起点（決算発表・業績予想の修正）**\n")
+            L.append("> ★**数日〜数ヶ月のスイングで、日本株について査読済みの証拠が"
+                     "あるのはこちら**。値動きの形（上抜け・押し目）ではなく、"
+                     "決算や予想修正というイベントを起点にする。順序を間違えていた。\n")
+            L.append("| イベント | 出典 | 査読済みエビデンス | 中身 |")
+            L.append("|---|---|:-:|---|")
+            for _k in EVENTS:
+                _m = EVENT_META.get(_k)
+                if not _m: continue
+                L.append(f"| {_m[0]} | {_m[1]} | **{_m[2]}** | {_m[3]} |")
+            L.append("\n> **★建てるのは発表の2営業日以降**。発表当日〜翌日の反応は"
+                     "取引できない部分で、そこを入れると見かけの成績が跳ね上がる。"
+                     "Lopez-Lira & Tang (2026, JFE) が報告した的中率93%は、"
+                     "まさにこの取引できない初期反応の部分。"
+                     "**私たちが売買できるのはその後のドリフトだけ**。")
+            L.append("> **★「テキストを読むこと」に価値がある証拠**: "
+                     "Meursault-Liang-Routledge-Scanlon (2023, JFQA 58(6)) の"
+                     "「PEAD.txt」は、**決算コールのテキストだけ**から作った"
+                     "サプライズ指標が、報告利益の数値を一切使わずに"
+                     "古典的なSUEより**大きい**ドリフトを生むことを示した"
+                     "（保有63日で2.87%対1.54%、252日で8.01%対4.63%）。"
+                     "しかも古典PEADがほぼ消えた2018-19年でも年3.4%を下回らなかった。"
+                     "**これがAIに文章を読ませる意味**——数値に直交する情報がある。")
+            L.append("> **★ただし日本では厳しい**。Jinushi (2023, The Japanese "
+                     "Accounting Review 13, 60,124件) は日本のPEADが大幅に減衰し、"
+                     "**外国人保有が低く個人保有が高い銘柄にだけ残存**すると報告。"
+                     "Okada & Saeki (2014) の規模感は CAR(+1,+21) で上下デシル差2.2pt、"
+                     "かつ**取引コストの代理変数が有意に負＝実行しにくい銘柄ほど"
+                     "ドリフトが大きい**。だから流動性で分けて見ないと罠にかかる。")
+            L.append("> **★負の証拠**: Martineau (2022, Critical Finance Review) は"
+                     "「大型株では2006年以降PEADは存在しない」。"
+                     "種村・久保・中川 (2025, SIG-FIN) の「LLM-PEAD.txt」は日本株で"
+                     "**数値サプライズ単独・LLMテキストサプライズ単独では"
+                     "一貫したドリフトを確認できず**、両者の組合せでのみ限定的に"
+                     "出現と報告している。**効かなくても既存文献どおり。**\n")
+            L.append("\n> **★日本株について、標準テクニカルシグナルに査読済みの"
+                     "支持証拠はほぼ存在しない。** "
+                     "Chong-Ng-Liew (2014) は日経225でMACD(12,26,9)がt=0.410の非有意、"
+                     "RSI(14,30/70)が−0.083%の負。"
+                     "Marshall-Young-Cahan (2008) はローソク足が日本株30年で価値なし。"
+                     "Yamamoto (2012) は日経225個別の板データでSPA補正後どの戦略も"
+                     "buy-and-holdに勝てないと結論。"
+                     "**だから「効かなかった」という結果は既存文献どおり。"
+                     "効いたときこそ疑う。**")
+            L.append("> **唯一、日本株で実証されているのは短期リバーサル（逆張り）**。"
+                     "Chang-McLeavey-Rhee (1995) がTSE個別銘柄1975–91で"
+                     "形成後1ヶ月の loser−winner = +1.97%/月"
+                     "（リスク・サイズ調整後+1.69%）。"
+                     "日本の実務で言う25日移動平均乖離率がこれに当たる。"
+                     "**ただし当方の実測では5日形成の反転が有意にマイナスで、"
+                     "文献と符号が逆だった。** 形成期間を分けて測っている。")
+            L.append("> **公表後の減衰**: McLean & Pontiff (2016) は97の予測変数で"
+                     "出版後−58%。ボリンジャーバンドは1983年の公表前は高収益で、"
+                     "2001年の著書以降ほぼ消滅したことが示されている。"
+                     "テクニカルは論文より遥かに広く知られているので、"
+                     "**報告された効果量の半分以下を上限と見るのが安全**。\n")
+
+            # ── 仕掛けの出やすさ。t値の読み方がこれで変わる ───────────
+            try:
+                _su = (json.load(open(f"{OUT}/meta.json", encoding="utf-8"))
+                       .get("backtest_setups") or {})
+            except Exception:
+                _su = {}
+            if _su:
+                L.append("\n**仕掛けの出やすさ**（t値はこれと合わせて読む）\n")
+                L.append("| 仕掛け | 合図が出た日 | 1日あたり中央値 | 母集団比 | 注意 |")
+                L.append("|---|--:|--:|--:|---|")
+                for _k in SETUPS + EVENTS:
+                    _r = _su.get(_k)
+                    if not _r: continue
+                    L.append(f"| {_r.get('名前', _k)} | "
+                             f"{_r.get('出た日', 0)}/{_r.get('検証日', 0)}日 | "
+                             f"{_r.get('1日の中央値', 0)}件 | "
+                             f"{('—' if _r.get('母集団比_pct') is None else str(_r['母集団比_pct'])+'%')} | "
+                             f"{_r.get('警告', '—')} |")
+                L.append("\n> **★仕掛けは因子とは別物**。因子は毎日必ず上位N件を建てるが、"
+                         "仕掛けは**条件に当てはまった日だけ**建てる。"
+                         "合図が出ない日があること自体が情報で、順位付けでは表現できない。"
+                         "当てはまった銘柄が多い日は、その仕掛け自身の強さ"
+                         "（上抜けの幅・出来高の倍率・縮み具合）で並べて"
+                         f"上位{BT_TOP}件だけを建て、因子側と件数を揃えている。")
+                L.append("> **母集団比が50%を超える仕掛けは、母集団平均そのものを"
+                         "測っているのと同じ**なので、差がゼロに近く出て当たり前。"
+                         "合図が出た日が少なすぎる仕掛けは、t値がいくつでも通さない。")
+                L.append(f"> **★仕掛けを{len(SETUPS)}通り足したぶん、"
+                         f"「たまたま良く見えるもの」が出る余地は増えている。"
+                         f"しきい値 {_thr} は下げていない**が、"
+                         f"仕掛けが1つ通っただけでは運用に入れない。"
+                         f"複数の保有期間・複数の執行方式で揃って通ったものだけを見る。\n")
+
             L.append(f"\n> **採否の規則（緩い側に倒さない）**: "
                      f"①独立した建て日が **{BT_MIN_INDEP}日未満なら通さない**"
                      f"（t値がいくつでも「検証できていない」）／"
                      f"②3つのtが**全部** {_thr} 以上／③差が正。")
+            try:
+                _fd = (json.load(open(f"{OUT}/backtest.json", encoding="utf-8"))
+                       .get("fdr") or {})
+            except Exception:
+                _fd = {}
+            if _fd:
+                L.append(f"> ④**多重検定の補正（Benjamini-Hochberg, q={_fd.get('q')}）**"
+                         f"を通ること。今回 **{_fd.get('n_tested', 0)}通り**の格子を"
+                         f"同時に検定し、補正を通ったのは **{_fd.get('n_passed', 0)}通り**。")
+                # ── 検定群の分け方。ここが読めないと合格点の意味が分からない ──
+                try:
+                    _bj0 = json.load(open(f"{OUT}/backtest.json", encoding="utf-8"))
+                except Exception:
+                    _bj0 = {}
+                _ds = (_bj0.get("dsr") or {}).get("by_family") or {}
+                _fmz = _bj0.get("families") or {}
+                if _ds:
+                    L.append("\n**検定群を2つに分けている**（合格点が群ごとに違う）\n")
+                    L.append("| 群 | 中身 | 試した数 | 偶然でも出る最大t | 合格点 |")
+                    L.append("|---|---|--:|--:|--:|")
+                    _JA = {"prior": "**測る前から査読済みの根拠があったもの**",
+                           "search": "有名だから試した（総当たり）"}
+                    for _fk in ("prior", "search"):
+                        _r3 = _ds.get(_fk)
+                        if not _r3: continue
+                        L.append(f"| {_fk} | {_JA.get(_fk, _fk)} | "
+                                 f"{_r3.get('n_trials', 0):,} | "
+                                 f"{_r3.get('t_expected_max')} | "
+                                 f"**{_r3.get('t_threshold_used')}** |")
+                    _pri = _fmz.get("sources") or {}
+                    if _pri:
+                        L.append("\n**prior に入れている腕と、その出典**\n")
+                        for _k3, _v3 in sorted(_pri.items()):
+                            L.append(f"- `{_k3}`（{BT_FACTOR_JA.get(_k3, _k3)}）… {_v3}")
+                    L.append("\n> **★なぜ分けるか**: 補正は「たくさん試すほど基準を"
+                             "上げる」という考え方だが、2,000通りの総当たりと、"
+                             "**測る前から論文に根拠があって確かめに行った3つ**を"
+                             "同じ袋で数えるのは過剰に厳しい。前者は探索、"
+                             "後者は検証で、性質が違う。")
+                    L.append("> **★この線引きは凍結してある**。"
+                             "結果を見てから「これは特別だから別枠」と移すのが"
+                             "いちばんやってはいけない操作で、それをやると"
+                             "補正の意味が消える。"
+                             "足すときは、査読済みの出典を先に書いてから測り直す。")
+                    L.append("> **★実務家の記事が根拠のもの**（上振れ＋保守的ガイダンス／"
+                             "上振れの1ヶ月後）は prior に入れていない。"
+                             "査読論文ではないので、根拠の強さが違う。\n")
+                L.append("> **★なぜ④が要るか**: t≥2.8 は**1つの検定**に対する基準で、"
+                         "何百通りも試せば偶然2.8を超えるものが必ず出る。"
+                         "Park & Irwin (2007) が技術的分析の文献の最大の欠陥として"
+                         "挙げた \"data snooping\" がこれ。"
+                         "**日本株を扱った既存研究は例外なくこの補正を行っている**"
+                         "（Yamamoto 2012 と Hsu-Hsu-Kuan 2010 は White の Reality Check と"
+                         "Hansen の SPA、Bajgrowicz-Scaillet 2012 は本レポートと同じ"
+                         "Benjamini-Hochberg）。補正しない結果は既存文献と比較できない。")
+            try:
+                _bj = json.load(open(f"{OUT}/backtest.json", encoding="utf-8"))
+            except Exception:
+                _bj = {}
+            L.append(f"\n> **取引コストの扱い**: 往復 **{_bj.get('cost_bp', BT_COST_BP):.0f}bp**"
+                     f"（JPX Working Paper No.7 の実効スプレッドに手数料と"
+                     f"小型株の上乗せを見た値）。"
+                     f"**★母集団平均との差にコストは効かない**"
+                     f"——どちらの側も同じ往復コストを払うので引き算で消える。"
+                     f"コストが決めるのは「そもそも儲かるのか」という絶対値のほうで、"
+                     f"表の「差」は net では変わらないが、"
+                     f"**絶対リターンがコストを下回るなら差が正でも意味がない**。"
+                     f"Bajgrowicz & Scaillet (2012) は「低いコストを入れるだけで"
+                     f"イン・サンプルでも優位が完全に消える」と結論している。")
+            _ls = _bj.get("limit_skipped")
+            if _ls:
+                L.append(f"> **ストップ高で約定できない建玉 {_ls:,}件を除外**した"
+                         f"（翌日の寄りが前日終値から{_bj.get('limit_move', BT_LIMIT_MOVE)*100:.0f}%以上"
+                         f"飛んでいるもの）。上抜け系の合図は「大きく上げた日」に出るので、"
+                         f"ここを無視すると**順張り系だけが系統的に良く見える**。")
             L.append(f"> **①を入れた理由**: 保有250日の格子は独立観測が**2日**しか"
                      "無いのに、重なり補正後のtが +4.28 と出ていた。"
                      "重なりの補正は情報を捨てずに済ませる道具で、"
@@ -5142,12 +6851,12 @@ try:
             L.append("")
 
         L.append(f"\n### 新規候補（バリューの断面順位の上位{CAND_TOP_N}件）\n")
-        L.append("| 順 | コード | 銘柄名 | 17業種 | 業種ETF | 重複 | 割安順位 | PER/NC/還元 | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 決算 | 当日の開示 |")
-        L.append("|--:|---|---|---|:-:|:-:|--:|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
+        L.append("| 順 | コード | 銘柄名 | 重複 | 割安順位 | PER/NC/還元 | 終値 | RSI | 25日 | 75日 | 60日位置 | 20日 | ATR% | 売買代金(億) | 出来高比 | 決算 | 当日の開示 |")
+        L.append("|--:|---|---|:-:|--:|:-:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|---|")
         for i, r in enumerate(_rows[:15]):
             _s = r.get("score")
             _s = f"**{float(_s):.0f}**" if _s is not None else "—"
-            L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | {r.get('s17') or '—'} | {r.get('sector_etf') or '—'} | "
+            L.append(f"| {i+1} | {r['code'][:4]} | {_nm(r)} | "
                      f"{_ov(r)} | {_s} | {_fund(r)} | {r['close']:,.1f} | {r['rsi']:.0f} | "
                      f"{r['vs25']:+.1f}% | {r['vs75']:+.1f}% | {r['pos60']:.0f}% | {r['r20']:+.1f}% | "
                      f"{r['atr_pct']:.2f} | {r['turnover']/1e8:.1f} | {r['vol_ratio']:.2f}x | {_earn(r)} | {_disc(r)} |")
@@ -5255,6 +6964,21 @@ try:
                  f"時価総額 {sch.get('max_mcap_oku'):.0f}億円以下"
                  f"（売買代金20日平均 {sch.get('min_turnover', 0)/1e4:.0f}万円以上、"
                  f"本業黒字、{'・'.join(sch.get('excluded_sectors', []))}を除外）\n")
+        _gw = ky.get("growth") or {}
+        L.append(f"\n**成長の条件**: 売上か営業利益が**前年より伸びている**こと"
+                 f"（同じ四半期どうしの比較）。"
+                 f"落とした {_gw.get('rejected', 0)}件／"
+                 f"測れて通った {_gw.get('passed_measured', 0)}件／"
+                 f"**測れないまま通った {_gw.get('passed_unmeasured', 0)}件**。")
+        L.append("> ★清原達郎氏の対象は「割安 **小型 成長** 株」で、"
+                 "安いだけの会社ではない。これまでこの条件が無かったため、"
+                 "**万年割安で伸びない会社が候補に残っていた**。")
+        L.append("> ★「過去3期」で見ていないのは、J-Quants無料プランの"
+                 "提供範囲が **2年ぶんしかない**ため。年度の数字を3期並べるのは"
+                 "データとして不可能なので、同じ四半期どうしの前年比で測っている。"
+                 "3期で見たい場合は有料プラン（Light以上）が要る。")
+        L.append("> ★「測れないまま通った」件数が多いときは、条件が効いていない。"
+                 "meta.json の `kiyohara.growth` を見ること。\n")
         L.append(f"**流動資産＞負債合計／ネットキャッシュ比率 {_ncm}以上** は、"
                  f"**EDINETの貸借対照表が取れている銘柄にだけ課している**。"
                  f"取れていない銘柄は落とさず、推定の確からしさを添えて残す"
@@ -5331,16 +7055,17 @@ try:
                  "実測が0.8を下回った銘柄はこの表から落としてある。\n")
         _kr = ky.get("rows") or []
         if _kr:
-            L.append("| 順 | コード | 銘柄名 | 17業種 | 比率(実測) | 基準日 | 推定 | 株主還元 | 総合 |")
-            L.append("|--:|---|---|---|--:|:-:|:-:|:-:|--:|")
+            L.append("| 順 | コード | 銘柄名 | 比率(実測) | 基準日 | 推定 | 成長 | 株主還元 | 総合 |")
+            L.append("|--:|---|---|--:|:-:|:-:|:-:|:-:|--:|")
             for r in _kr[:25]:
                 _nr = r.get("nc_real")
                 _rv = f"**{_nr:.2f}**" if isinstance(_nr, (int, float)) else "—"
                 _as = (r.get("nc_asof") or "—")[:10]
                 _es = "—" if _nr is not None else r.get("state", "")
                 L.append(f"| {r.get('rank', '')} | {r['code']} | "
-                         f"{(r.get('name') or '—')[:14]} | {r.get('s17') or '—'} | "
-                         f"{_rv} | {_as} | {_es} | {r.get('ret', '—')} | "
+                         f"{(r.get('name') or '—')[:14]} | "
+                         f"{_rv} | {_as} | {_es} | {r.get('grow') or '—'} | "
+                         f"{r.get('ret', '—')} | "
                          f"{r.get('rank_score', 0):.0f} |")
             L.append("\n> **並び順**: まず「比率(実測)」が入って条件を満たした銘柄、"
                      "そのあと未実測の銘柄。各グループの中は総合点の順。"
@@ -5391,8 +7116,8 @@ try:
                 L.append(f"1銘柄あたりの目安 **¥{_per:,.0f}**"
                          f"（清原枠 ¥{KY_BUDGET:,.0f} ÷ {KY_NAMES}銘柄）／"
                          f"単元100株／今日使える清原枠の現金 **¥{KY_CASH:,.0f}**\n")
-                L.append("| 順 | コード | 銘柄名 | 17業種 | 株価 | 比率(実測) | 株主還元 | 株数 | 概算金額 | 判定 |")
-                L.append("|--:|---|---|---|--:|--:|:-:|--:|--:|:-:|")
+                L.append("| 順 | コード | 銘柄名 | 株価 | 比率(実測) | 株主還元 | 株数 | 概算金額 | 判定 |")
+                L.append("|--:|---|---|--:|--:|:-:|--:|--:|:-:|")
                 _left = KY_CASH
                 _n_built, _spend = 0, 0.0
                 for r in _ok[:KY_NAMES * 2]:
@@ -5419,7 +7144,7 @@ try:
                             _v = "**建てられる**"
                             _left -= _cost; _spend += _cost; _n_built += 1
                     L.append(f"| {r.get('rank', '')} | {_c4} | "
-                             f"{(r.get('name') or '—')[:14]} | {r.get('s17') or '—'} | "
+                             f"{(r.get('name') or '—')[:14]} | "
                              f"{_p:,.1f} | "
                              f"{(('%.2f' % r['nc_real']) if r.get('nc_real') is not None else '—')} | "
                              f"{r.get('ret', '—')} | "
@@ -5605,11 +7330,11 @@ try:
                  "本業赤字（営業利益≤0）も除外\n")
         _r = nc.get("rows") or []
         if _r:
-            L.append("| 順 | コード | 銘柄名 | 17業種 | 分類 | 株主還元 |")
-            L.append("|--:|---|---|---|:-:|:-:|")
+            L.append("| 順 | コード | 銘柄名 | 分類 | 株主還元 |")
+            L.append("|--:|---|---|:-:|:-:|")
             for r in _r[:40]:
                 L.append(f"| {r.get('rank', '')} | {r['code']} | "
-                         f"{(r.get('name') or '—')[:14]} | {r.get('s17') or '—'} | "
+                         f"{(r.get('name') or '—')[:14]} | "
                          f"{r.get('state', '')} | {r.get('ret', '—')} |")
             L.append("\n**手で入れるのは2項目だけ**: バフェット・コードで各銘柄の"
                      "**流動資産**と**投資有価証券**を見る。負債合計と時価総額は"
@@ -5642,6 +7367,63 @@ try:
         pass
     except Exception as e:
         L.append(f"\n## ネットキャッシュ比率の確認候補\n\n生成に失敗: {e}")
+
+    # ── データの出どころと、なぜ銘柄名が空欄になることがあるか ──────
+    L.append("\n## データの出どころ（銘柄名が空欄になる理由）\n")
+    L.append("**銘柄名は EDINET の提出者名**（" + ED_ATTRIB + "）。")
+    L.append(f"いま {len(ED_NAMES):,}銘柄ぶん溜まっている。"
+             "EDINETにまだ出てきていない銘柄（ETF・REIT・新規上場直後など）は"
+             "**名前が空欄**になる。コードで引くこと。")
+    L.append("")
+    L.append("> **★なぜJPXの銘柄名を使わないか。** "
+             "JPXサイト利用条件は「当サイトに掲載されている情報について、"
+             "有料・無料を問わずJPXからの許諾を得ている場合を除き、"
+             "商用目的によるデータ収集のほか如何なる用途に関わらず"
+             "二次利用及び再配信はできません」としている。"
+             "**このリポジトリは public** なので、JPXの「東証上場銘柄一覧」から"
+             "取った銘柄名・業種区分を `data/` に書き出すと再配信に当たる。")
+    L.append("> そこで JPXのマスタは**銘柄の絞り込み（市場区分・銀行の除外・"
+             "同じ業種を既に持っているかの判定）にだけメモリ上で使い**、"
+             "書き出す名前は EDINET の提出者名に置き換えた。"
+             "**17業種・33業種・規模区分・業種ETFの列は表から外した**"
+             "（業種ETFは17業種と1対1なので、載せると区分が復元できてしまう）。")
+    L.append("> EDINETは政府標準利用規約(PDL1.0)で、出典を書けば再配布できる。"
+             "だから比率(実測)と銘柄名はそのまま載せている。")
+    _cg = meta.get("commit_guard") or {}
+    if _cg.get("jpx_fields") or _cg.get("jpx_files"):
+        L.append(f"\n> **★JPX由来のデータが書き出されている**: "
+                 f"{_cg.get('jpx_fields')} / {_cg.get('jpx_files')}。"
+                 f"コミット前に取り除くこと。")
+    L.append("")
+
+    # ── 残っている課題。毎回出して、忘れないようにする ──────────────
+    L.append("\n## 残っている課題\n")
+    L.append("**① 決算短信の本文が取れていない**（2026-09-18に課題として登録）")
+    L.append("> 決算短信は**TDnet側**にあり、**EDINETには入っていない**。"
+             "TDnetの自動取得はJPXがスクレイピングを控えるよう求めているため"
+             "停止済み。J-LENS（JPX総研の開示検索）は**APIが無く法人向け**。"
+             "有価証券報告書はEDINETで取れるが**数ヶ月遅れ**で、"
+             "イベントとしての時間的価値が薄い（高野海斗 2025, 言語処理学会）。")
+    L.append("> **なぜ効くのか**: Meursault ら (2023, JFQA 58(6)) の「PEAD.txt」は、"
+             "決算コールの**テキストだけ**から作ったサプライズ指標が、"
+             "報告利益の数値を一切使わずに古典的なSUEより大きいドリフトを"
+             "生むことを示した（保有63日で2.87%対1.54%）。"
+             "**いま数値でしか測れていない部分に、文章側の情報が残っている。**")
+    L.append("> **いま代わりにやっていること**: 「上振れたのに新しい会社予想が"
+             "保守的か」を数値（予想営業利益の対前年）で近似している。"
+             "本来は決算短信の「今後の見通し」を読む仕事。")
+    L.append("")
+    L.append("**② 業種の分類を公開できないため、集中のチェックが弱い**")
+    L.append("> JPXの17業種はサイト利用条件で再配信できないため表から外した。"
+             "いまは保有銘柄どうしの業種重複（`overlap`）だけを見ている。"
+             "再配布が明示されたセクター分類の代替を探す必要がある。")
+    L.append("")
+    L.append("**③ 発注株数の決め方（サイジング）が検証されていない**")
+    L.append("> ATRサイジングと1銘柄上限15%は手で決めた規則で、"
+             "過去検証にかけていない。選び方と降り方は測っているが、"
+             "**建てる大きさの決め方は測っていない**。"
+             "ポートフォリオ全体の推移を追う仕組みが要るので、別件として残す。")
+    L.append("")
 
     L.append("\n## マクロ\n")
     L.append("| 指標 | 日付 | 値 | 前日比 |")
