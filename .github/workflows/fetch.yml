@@ -60,7 +60,15 @@ jobs:
           restore-keys: |
             jpx-master-
 
+      # ★APIキーはここで渡す。env が無いと本体は
+      #   「JQUANTS_API_KEY 未設定」として財務情報もEDINETも取りに行かず、
+      #   バリュー系の因子と清原枠が丸ごと空のまま静かに完走する（実測）。
+      #   GitHub Secrets に置くのはAPIキーだけ。
+      #   メールアドレスとパスワードは置かない。
       - name: Fetch
+        env:
+          JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
+          EDINET_API_KEY: ${{ secrets.EDINET_API_KEY }}
         run: python fetch_market_data.py
 
       - name: Commit
