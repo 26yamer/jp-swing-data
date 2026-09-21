@@ -1,5 +1,5 @@
 {
- "generated_at_jst": "2026-09-19T21:27:41.594866+09:00",
+ "generated_at_jst": "2026-09-21T15:53:58.570058+09:00",
  "screen": {
   "max_per": 8.0,
   "max_pbr": 0.8,
@@ -17,8 +17,8 @@
  },
  "formula": "ネットキャッシュ＝流動資産＋投資有価証券×70%−負債合計／比率＝÷時価総額",
  "universe": 4118,
- "passed": 24,
- "shown": 24,
+ "passed": 23,
+ "shown": 23,
  "bands": {
   "real_ge1": 15,
   "real_near": 8,
@@ -26,13 +26,13 @@
   "sure": 0,
   "likely": 0,
   "maybe": 0,
-  "thin": 1,
+  "thin": 0,
   "unknown": 0
  },
  "sure": 0,
  "likely": 0,
  "maybe": 0,
- "thin": 1,
+ "thin": 0,
  "need_bands": {
   "sure": 0.0,
   "likely": 0.35,
@@ -47,14 +47,14 @@
  "growth": {
   "min_pct": 0.0,
   "rejected": 12,
-  "passed_measured": 24,
+  "passed_measured": 23,
   "passed_unmeasured": 0,
   "note": "無料プランは2年ぶんしか取れないため、年度3期の比較ではなく同一四半期の前年比で測る"
  },
  "in_bt_universe": 5,
  "bt_universe_known": true,
- "real_checked": 73,
- "real_failed": 50,
+ "real_checked": 74,
+ "real_failed": 51,
  "edinet_attribution": "出典：EDINET閲覧（提出）サイト（https://disclosure2.edinet-fsa.go.jp/）をもとに作成、PDL1.0",
  "dropped": {
   "PER>8倍": 2301,
@@ -63,7 +63,7 @@
   "予想PERが出ない(赤字予想)": 291,
   "PBR>0.8倍": 128,
   "流動資産≤負債合計(実測)": 32,
-  "ネットキャッシュ比率<0.8(実測)": 18,
+  "ネットキャッシュ比率<0.8(実測)": 19,
   "時価総額>500億円": 25,
   "銀行・金融（式が成立しない）": 160,
   "売上も営業利益も伸びていない": 12,
@@ -85,7 +85,7 @@
    "nc_asof": "2026-06-05",
    "nc_solo": false,
    "nc_real": 1.71,
-   "rank_score": 96.9,
+   "rank_score": 96.7,
    "rank": 1
   },
   {
@@ -101,7 +101,7 @@
    "nc_asof": "2026-06-19",
    "nc_solo": false,
    "nc_real": 1.18,
-   "rank_score": 84.4,
+   "rank_score": 83.7,
    "rank": 2
   },
   {
@@ -117,7 +117,7 @@
    "nc_asof": "2026-06-26",
    "nc_solo": false,
    "nc_real": 0.99,
-   "rank_score": 78.1,
+   "rank_score": 77.2,
    "rank": 3
   },
   {
@@ -133,7 +133,7 @@
    "nc_asof": "2026-06-26",
    "nc_solo": false,
    "nc_real": 1.64,
-   "rank_score": 74.0,
+   "rank_score": 72.8,
    "rank": 4
   },
   {
@@ -149,12 +149,12 @@
    "nc_asof": "2026-06-23",
    "nc_solo": false,
    "nc_real": 2.02,
-   "rank_score": 70.8,
+   "rank_score": 70.1,
    "rank": 5
   },
   {
    "code": "7425",
-   "name": "",
+   "name": "初穂商事株式会社",
    "price": 1100.0,
    "state": "実測 1.40（1以上）",
    "band": "real_ge1",
@@ -165,7 +165,7 @@
    "nc_asof": "2026-03-26",
    "nc_solo": false,
    "nc_real": 1.4,
-   "rank_score": 69.8,
+   "rank_score": 68.5,
    "rank": 6
   },
   {
@@ -181,7 +181,7 @@
    "nc_asof": "2026-06-24",
    "nc_solo": false,
    "nc_real": 1.44,
-   "rank_score": 66.7,
+   "rank_score": 65.2,
    "rank": 7
   },
   {
@@ -197,7 +197,7 @@
    "nc_asof": "2026-06-23",
    "nc_solo": false,
    "nc_real": 1.06,
-   "rank_score": 63.5,
+   "rank_score": 62.5,
    "rank": 8
   },
   {
@@ -213,7 +213,7 @@
    "nc_asof": "2026-06-22",
    "nc_solo": false,
    "nc_real": 1.53,
-   "rank_score": 57.3,
+   "rank_score": 55.4,
    "rank": 9
   },
   {
@@ -229,12 +229,12 @@
    "nc_asof": "2026-06-24",
    "nc_solo": false,
    "nc_real": 0.96,
-   "rank_score": 55.2,
+   "rank_score": 53.3,
    "rank": 10
   },
   {
    "code": "2700",
-   "name": "",
+   "name": "木徳神糧株式会社",
    "price": 1730.0,
    "state": "実測 0.98（1に近い）",
    "band": "real_near",
@@ -245,7 +245,7 @@
    "nc_asof": "2026-03-25",
    "nc_solo": false,
    "nc_real": 0.98,
-   "rank_score": 50.0,
+   "rank_score": 48.4,
    "rank": 11
   },
   {
@@ -261,7 +261,7 @@
    "nc_asof": "2026-02-16",
    "nc_solo": false,
    "nc_real": 0.82,
-   "rank_score": 49.0,
+   "rank_score": 46.7,
    "rank": 12
   },
   {
@@ -277,40 +277,8 @@
    "nc_asof": "2026-06-23",
    "nc_solo": false,
    "nc_real": 0.91,
-   "rank_score": 47.9,
+   "rank_score": 45.7,
    "rank": 13
-  },
-  {
-   "code": "1420",
-   "name": "",
-   "price": 631.0,
-   "state": "実測 1.56（1以上）",
-   "band": "real_ge1",
-   "in_bt": false,
-   "ret": "配当のみ",
-   "grow": "増収増益",
-   "grow_ok": true,
-   "nc_asof": "2026-06-23",
-   "nc_solo": false,
-   "nc_real": 1.56,
-   "rank_score": 46.9,
-   "rank": 14
-  },
-  {
-   "code": "3320",
-   "name": "",
-   "price": 1300.0,
-   "state": "実測 1.23（1以上）",
-   "band": "real_ge1",
-   "in_bt": false,
-   "ret": "増配",
-   "grow": "減収増益",
-   "grow_ok": true,
-   "nc_asof": "2026-09-11",
-   "nc_solo": false,
-   "nc_real": 1.23,
-   "rank_score": 46.9,
-   "rank": 15
   },
   {
    "code": "6863",
@@ -325,7 +293,39 @@
    "nc_asof": "2026-06-22",
    "nc_solo": false,
    "nc_real": 1.46,
-   "rank_score": 46.9,
+   "rank_score": 45.1,
+   "rank": 14
+  },
+  {
+   "code": "1420",
+   "name": "",
+   "price": 631.0,
+   "state": "実測 1.56（1以上）",
+   "band": "real_ge1",
+   "in_bt": false,
+   "ret": "配当のみ",
+   "grow": "増収増益",
+   "grow_ok": true,
+   "nc_asof": "2026-06-23",
+   "nc_solo": false,
+   "nc_real": 1.56,
+   "rank_score": 44.6,
+   "rank": 15
+  },
+  {
+   "code": "3320",
+   "name": "クロスプラス株式会社",
+   "price": 1300.0,
+   "state": "実測 1.23（1以上）",
+   "band": "real_ge1",
+   "in_bt": false,
+   "ret": "増配",
+   "grow": "減収増益",
+   "grow_ok": true,
+   "nc_asof": "2026-09-11",
+   "nc_solo": false,
+   "nc_real": 1.23,
+   "rank_score": 44.6,
    "rank": 16
   },
   {
@@ -341,7 +341,7 @@
    "nc_asof": "2026-06-24",
    "nc_solo": false,
    "nc_real": 1.22,
-   "rank_score": 44.8,
+   "rank_score": 42.9,
    "rank": 17
   },
   {
@@ -357,7 +357,7 @@
    "nc_asof": "2026-06-17",
    "nc_solo": false,
    "nc_real": 0.94,
-   "rank_score": 40.6,
+   "rank_score": 38.0,
    "rank": 18
   },
   {
@@ -373,12 +373,12 @@
    "nc_asof": "2026-06-24",
    "nc_solo": false,
    "nc_real": 1.01,
-   "rank_score": 33.3,
+   "rank_score": 32.6,
    "rank": 19
   },
   {
    "code": "6748",
-   "name": "",
+   "name": "星和電機株式会社",
    "price": 760.0,
    "state": "実測 1.16（1以上）",
    "band": "real_ge1",
@@ -389,12 +389,12 @@
    "nc_asof": "2026-03-30",
    "nc_solo": false,
    "nc_real": 1.16,
-   "rank_score": 31.2,
+   "rank_score": 30.4,
    "rank": 20
   },
   {
    "code": "2986",
-   "name": "",
+   "name": "株式会社ＬＡホールディングス",
    "price": 2955.0,
    "state": "実測 0.86（1に近い）",
    "band": "real_near",
@@ -405,7 +405,7 @@
    "nc_asof": "2026-03-26",
    "nc_solo": false,
    "nc_real": 0.86,
-   "rank_score": 29.2,
+   "rank_score": 26.6,
    "rank": 21
   },
   {
@@ -421,7 +421,7 @@
    "nc_asof": "2026-06-25",
    "nc_solo": false,
    "nc_real": 1.13,
-   "rank_score": 27.1,
+   "rank_score": 26.1,
    "rank": 22
   },
   {
@@ -437,24 +437,8 @@
    "nc_asof": "2026-06-24",
    "nc_solo": false,
    "nc_real": 0.81,
-   "rank_score": 26.0,
+   "rank_score": 22.8,
    "rank": 23
-  },
-  {
-   "code": "7619",
-   "name": "",
-   "price": 994.0,
-   "state": "推定：薄い",
-   "band": "thin",
-   "in_bt": false,
-   "ret": "配当のみ",
-   "grow": "増収増益",
-   "grow_ok": true,
-   "nc_asof": null,
-   "nc_solo": null,
-   "nc_real": null,
-   "rank_score": 13.5,
-   "rank": 24
   }
  ]
 }
