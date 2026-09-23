@@ -16,7 +16,12 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 90        # 全銘柄スクリーニングがあるため既定の6時間より短く切る
+    # ★内側の時間予算の合計より長くしておく。
+    #   全銘柄スクリーニング 45分 + 過去検証 40分 + 決算履歴 4分 + 決算日照会 4分
+    #   ＝ 93分。90分で切っていたので、検証を作り直す回は**途中で殺され、
+    #   Commit ステップが走らず成果が丸ごと捨てられる**。
+    #   既定の6時間よりは短く切りたいので 150分にする。
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
