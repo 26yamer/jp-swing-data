@@ -1035,7 +1035,12 @@ def _jq_get(params, path=None):
         if not pk: break
     return rows
 
-JQ_EARN_PATH = "/v2/fins/earnings-date"   # 決算発表予定日（無料プランの範囲）
+JQ_EARN_PATH = "/v2/fins/earnings-date"   # 決算発表予定日
+# ★無料プランでこの入口が返すのは「12週間前〜2年12週間前」、つまり**過去だけ**。
+#   ここは「次の決算発表日」を知るための入口なので、
+#   無料プランでは原理的に埋まらない（公式のデータ提供範囲より）。
+#   それでも毎回3回だけ叩くのは、呼び方の間違いと提供範囲の壁を
+#   区別するため。範囲内の日付でも空なら、呼び方がおかしい。
 
 def _jq_pick_field(row, want):
     """行から目的の値が入っている鍵を見つける。
@@ -1046,16 +1051,21 @@ def _jq_pick_field(row, want):
          候補名で探し、無ければ値の形（4桁コード / YYYY-MM-DD）で探す。
          見つかった鍵は meta に残して、次回から当てにできるようにする。"""
     if not isinstance(row, dict): return None, None
+    # ★公式の項目名は SchDate（発表予定日）/ PubDate（公表日）/ Code。
+    #   予定日を先に見る。公表日は「その予定が載った日」で、知りたい日ではない。
     cands = {"code": ("Code", "code", "LocalCode", "local_code", "SecuritiesCode"),
-             "date": ("Date", "date", "AnnouncementDate", "announcement_date",
-                      "EarningsDate", "earnings_date", "ScheduledDate")}[want]
+             "date": ("SchDate", "ScheduledDate", "scheduled_date",
+                      "Date", "date", "AnnouncementDate", "announcement_date",
+                      "EarningsDate", "earnings_date", "PubDate")}[want]
     for k in cands:
         v = row.get(k)
         if v not in (None, ""): return k, v
     # 名前で見つからなければ形で探す（決め打ちしない）
     for k, v in row.items():
         s = str(v or "")
-        if want == "date" and re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        # ★日付は YYYYMMDD で返ることがある（公式の例が 20250805）。
+        #   ハイフン付きしか見ていなかったので、形での探索が働かなかった。
+        if want == "date" and re.fullmatch(r"\d{4}-\d{2}-\d{2}|\d{8}", s):
             return k, s
         if want == "code" and re.fullmatch(r"\d{4}0?", s):
             return k, s
@@ -1067,26 +1077,46 @@ def jq_earnings_dates():
        ★なぜ足したか: TDnetの自動取得を止めたことで、候補の決算予定日が
          20件中10件「不明」になった（実測）。
          「決算をまたぐ建玉は作らない」という規則が、半分の候補で効かない。
-         JPXの公開Excelは当日分しか載らず、yfinanceの日本株は推定で穴が多い。
-       ★引数の形も公式仕様に無いので、まず引数なしで叩き、
-         駄目なら日付を付けて試す。どちらが通ったかを meta に残す。"""
-    out, diag = {}, {"tried": [], "rows": 0, "path": JQ_EARN_PATH}
+       ★いま分かっていること（公式のデータ提供範囲より）:
+         無料プランでこの入口が返すのは「12週間前〜2年12週間前」。
+         **未来の予定日は無料プランの範囲外**なので、ここは埋まらない。
+         それでも呼ぶのは、提供範囲が変わったときに気づくためと、
+         「範囲外で空」なのか「呼び方を間違えて空」なのかを
+         毎回はっきりさせるため。判定は rows_by_probe に残る。
+       ★引数は必須（code / date / scheduled_date のどれか）。
+         以前は引数なしで叩いていたので、何をしても空が返っていた（実測）。
+         日付は YYYYMMDD。ハイフン付きでは通らない。"""
+    out, diag = {}, {"path": JQ_EARN_PATH, "tried": [], "rows": 0,
+                     "free_window": "12週間前〜2年12週間前（未来は範囲外）"}
     if not JQ_KEY:
         meta["jq_earn"] = {"skipped": "JQUANTS_API_KEY 未設定"}
         return out
+    def _f(d): return d.strftime("%Y%m%d")
+    _t = NOW.date()
+    probes = (
+        ("予定日=明日", {"scheduled_date": _f(_t + dt.timedelta(days=1))}),
+        ("公表日=今日", {"date": _f(_t)}),
+        # ★無料プランの範囲の内側。ここが空なら呼び方がおかしい。
+        #   ここだけ返るなら「範囲外だから未来が無い」と切り分けられる。
+        ("公表日=13週間前（範囲の内側）", {"date": _f(_t - dt.timedelta(days=91))}),
+    )
     rows = None
-    for label, params in (("引数なし", {}),
-                          ("date=今日", {"date": str(NOW.date())})):
+    for label, params in probes:
         diag["tried"].append(label)
         try:
             r = _jq_get(params, path=JQ_EARN_PATH)
         except Exception as e:
             diag.setdefault("err", []).append(f"{label}:{type(e).__name__}")
             continue
-        if r:
-            rows = r; diag["used"] = label; break
+        diag.setdefault("rows_by_probe", {})[label] = len(r or [])
+        if r and rows is None:
+            rows, diag["used"] = r, label
+    diag["http_err"] = dict(_JQ["err"]) or None
     if not rows:
-        diag["result"] = "取れなかった"
+        diag["result"] = ("範囲の内側でも空。呼び方かプランを確認"
+                          if diag.get("rows_by_probe", {}).get(
+                              "公表日=13週間前（範囲の内側）", 0) == 0
+                          else "取れなかった")
         meta["jq_earn"] = diag
         print("[決算予定] J-Quantsから取れませんでした。meta.json の jq_earn を確認")
         return out
@@ -1100,21 +1130,25 @@ def jq_earnings_dates():
         meta["jq_earn"] = diag
         print(f"[決算予定] 項目名が判別できません: {diag.get('sample_keys')}")
         return out
-    today = str(NOW.date())
+    today, n_past = str(NOW.date()), 0
     for r in rows:
         if not isinstance(r, dict): continue
         c = str(r.get(ck) or "").strip()
         d = str(r.get(dk) or "").strip()[:10]
+        # ★YYYYMMDD で返ることがあるので揃える
+        if re.fullmatch(r"\d{8}", d): d = f"{d[:4]}-{d[4:6]}-{d[6:]}"
         if not c or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d): continue
         c4 = c[:4] if len(c) == 5 and c.endswith("0") else c
-        if d < today: continue                 # 過ぎた予定は使わない
+        if d < today:
+            n_past += 1
+            continue                           # 過ぎた予定は使わない
         cur = out.get(c4)
         if cur is None or d < cur: out[c4] = d   # 一番近い予定
-    diag["codes"] = len(out)
-    diag["result"] = "ok"
+    diag["codes"], diag["past_rows"] = len(out), n_past
+    diag["result"] = "ok" if out else "過去の予定だけ（無料プランの範囲どおり）"
     meta["jq_earn"] = diag
-    print(f"[決算予定] J-Quants {len(rows):,}件 → {len(out):,}銘柄"
-          f"（項目 {ck} / {dk}）")
+    print(f"[決算予定] J-Quants {len(rows):,}件 → 今後の予定 {len(out):,}銘柄"
+          f"（過去 {n_past:,}件 / 項目 {ck} / {dk}）")
     return out
 
 def jq_fetch(dates):
@@ -5649,15 +5683,28 @@ try:
                         "min_indep": BT_MIN_INDEP, "units": ["R", "pct"],
                         "max_1d_move": BT_MAX_1D_MOVE,
                         "filters": [MIN_TURNOVER, MIN_PRICE, MIN_ATR_PCT, MAX_ATR_PCT]}
-                _age, _same_cfg = 999, False
+                _age, _same_cfg, _no_fund = 999, False, False
                 if os.path.exists(_btp):
                     try:
                         _old = json.load(open(_btp, encoding="utf-8"))
                         _age = (NOW - dt.datetime.fromisoformat(
                             _old["generated_at_jst"])).days
                         _same_cfg = (_old.get("config") == _cfg)
+                        # ★前回の検証が「APIキーが無いまま」走っていたら、
+                        #   ファンダ側の腕（value/ep/bp/…）と決算イベントの腕
+                        #   （pead_up/pead_dn/guid_up＝事前登録した3つ）が
+                        #   **丸ごと測られていない**。設定の指紋は同じなので、
+                        #   放っておくと欠けたままの結果を30日間使い続ける。
+                        #   実測: 9/19 17:13 の結果が entry_dates_fund=0 で、
+                        #   キーを入れた 21:27 の実行がそれを再利用した。
+                        #   いまキーがあるなら、日数に関係なく作り直す。
+                        _oj = _old.get("jq") or {}
+                        _no_fund = bool(
+                            JQ_KEY and (
+                                "未設定" in str(_oj.get("skipped") or "")
+                                or (_old.get("entry_dates_fund") or 0) == 0))
                     except Exception:
-                        _age, _same_cfg = 999, False
+                        _age, _same_cfg, _no_fund = 999, False, False
                 # ★状態は必ず残す。以前は作り直した回だけ meta["backtest"] に
                 #   値が入り、飛ばした回は null だったため、
                 #   「失敗した」のか「前回の結果を使っている」のか
@@ -5665,16 +5712,21 @@ try:
                 meta["backtest_status"] = {
                     "file_exists": os.path.exists(_btp), "age_days": _age,
                     "same_config": _same_cfg, "max_age_d": BT_MAX_AGE_D,
-                    "min_indep": BT_MIN_INDEP, "t_threshold": BT_T_THRESHOLD}
+                    "min_indep": BT_MIN_INDEP, "t_threshold": BT_T_THRESHOLD,
+                    "prev_ran_without_jquants": _no_fund}
                 if BT_ENABLED and not session_complete():
                     meta["backtest_skipped"] = f"場中（{NOW:%H:%M} JST）"
                     print(f"[検証] 場中（{NOW:%H:%M}）のため見送り。"
                           "大引け後・寄り付き前・土日の実行で走る")
+                elif BT_ENABLED and _no_fund:
+                    print("[検証] 前回はAPIキーが無くファンダ側と決算イベントが"
+                          "測れていないので、日数に関係なく作り直す")
                 elif BT_ENABLED and _same_cfg and _age < BT_MAX_AGE_D:
                     meta["backtest_skipped"] = f"前回から{_age}日（{BT_MAX_AGE_D}日ごと）・設定変更なし"
                 elif BT_ENABLED and not _same_cfg:
                     print("[検証] 検証の前提が変わっているため、日数に関係なく作り直す")
-                if BT_ENABLED and session_complete() and (_age >= BT_MAX_AGE_D or not _same_cfg):
+                if BT_ENABLED and session_complete() and (
+                        _age >= BT_MAX_AGE_D or not _same_cfg or _no_fund):
                     print(f"[検証] 過去検証を実行（前回から{_age}日）")
                     tk, nd, nf, d0, d1, cov, ndf = run_backtest(uni)
                     _bm = meta.get("backtest_breadth") or {}
@@ -6334,8 +6386,12 @@ try:
                      f"（無料枠のデータが直近2年ぶんしか無いため、"
                      f"技術指標側より少ない）。\n")
         elif bt.get("jq", {}).get("skipped"):
-            L.append("> 財務情報は取得していない（"
-                     f"{bt['jq']['skipped']}）。下の表は技術指標だけの比較。\n")
+            L.append("> **この検証は財務情報が無いまま走っている**（"
+                     f"{bt['jq']['skipped']}）。下の表は技術指標だけの比較で、"
+                     "**バリュー系の因子と、事前登録した決算イベントの3つ"
+                     "（pead_up / pead_dn / guid_up）は一度も測られていない**。"
+                     "事前登録した群の結果が空なのはこのため。"
+                     "キーが入った状態の実行で自動的に作り直す。\n")
         # ★見出しと区切り行のセル数を必ず揃える。
         #   過去に2回、見出しだけ増やして最後の列が黙って消えた。
         L.append("| 選び方 | 件数 | 勝率 | 平均R | 基準 | 母集団平均との差 | 粗いt値 | 利確% | 損切% | 時間切れ% |")
