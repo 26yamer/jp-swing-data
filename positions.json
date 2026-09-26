@@ -1,0 +1,13 @@
+{
+  "_説明": "保有と現金。保有が変わったらこのファイルだけ直す（GitHubの画面で編集→Commit）。sleeve は swing（スイング枠）/ kiyohara（清原枠）/ out（対象外・別口）。since はスイング枠の建てた日（手仕舞い水準の起点）。cash は証券口座の現金（円）。",
+  "cash": 3745137,
+  "holdings": {
+    "1306.T": {"name": "NF TOPIX",       "acct": "NISA", "shares": 2870, "cost": 434.0,   "sleeve": "swing"},
+    "1540.T": {"name": "純金信託",         "acct": "特定", "shares": 4,    "cost": 21399.0, "sleeve": "swing", "since": "2026-09-16"},
+    "1615.T": {"name": "NF銀行業",        "acct": "特定", "shares": 420,  "cost": 773.0,   "sleeve": "swing", "since": "2026-09-16"},
+    "2563.T": {"name": "iS S&P500ヘッジ", "acct": "特定", "shares": 1140, "cost": 412.0,   "sleeve": "swing"},
+    "4755.T": {"name": "楽天グループ",      "acct": "特定", "shares": 100,  "cost": 917.0,   "sleeve": "out"},
+    "8053.T": {"name": "住友商事",          "acct": "特定", "shares": 100,  "cost": 1823.0,  "sleeve": "swing", "since": "2026-09-16"},
+    "9432.T": {"name": "NTT",            "acct": "特定", "shares": 100,  "cost": 149.0,   "sleeve": "out"}
+  }
+}

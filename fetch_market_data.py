@@ -37,6 +37,20 @@ NOW = dt.datetime.now(JST)
 #   下の HOLD_SYNC_CHECK で食い違いを検出して警告する。
 #   2026-09-16のスクリーンショットで更新（1343・2559・2621は売却済みで削除）。
 HOLDINGS = ["1306.T","1540.T","1615.T","2563.T","4755.T","8053.T","9432.T"]
+# ★2026-09-26: リポジトリ直下の positions.json に書いた銘柄は、ここに書かなくても株価を取りに行く。
+#   保有が変わるたびに 50万字のこのファイルを差し替えるのは手間で、書き忘れ（8053 の実測）も起きる。
+#   保有の変更は positions.json（小さいファイル）を GitHub の画面で直すだけで済むようにする。
+_POS_CODES = []
+try:
+    with open("positions.json", encoding="utf-8") as _f:
+        _POS_CODES = [str(c) for c in (json.load(_f).get("holdings") or {})]
+except FileNotFoundError:
+    pass
+except Exception as _e:
+    print(f"::warning::positions.json が読めません（{type(_e).__name__}）。コード内の既定の保有を使います")
+for _c in _POS_CODES:
+    if _c not in HOLDINGS:
+        HOLDINGS.append(_c)
 # スイング候補の拡張ユニバース（値動きがあり流動性の高い日本株/ETF）
 # レバレッジ/インバース型（1357・1459・1568）は日々減価する設計でスイングの
 # 保有候補にならず、株式併合が頻繁でデータも荒れるため監視対象から外した。
@@ -2636,8 +2650,23 @@ def ky_return_tag(k):
     if (k.get("buyback") or 0) > 0.1: t.append("自己株買い")
     return "／".join(t) if t else "配当のみ"
 
+def _ky_held_codes(path="positions.json"):
+    """positions.json で清原枠（sleeve == "kiyohara"）に入っている証券コード。
+       ★SLV_KY は後ろで定義されるので、ここでは同じ文字列を直接使う（定義順のテストがある）。
+       ファイルが無ければ、コード内の既定（load_positions）には清原枠の保有が無いので空。"""
+    try:
+        with open(path, encoding="utf-8") as f:
+            h = json.load(f).get("holdings") or {}
+        return sorted(str(c).replace(".T", "") for c, v in h.items()
+                      if (v or {}).get("sleeve") == "kiyohara")
+    except FileNotFoundError:
+        return []
+    except Exception as e:
+        meta["errors"].append(f"positions.json（清原枠）: {type(e).__name__}")
+        return []
+
 def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
-                    bt_codes=None):
+                    bt_codes=None, held=None):
     """清原枠の候補。指定条件で絞り、読み取った考えで並べる。
 
        bt_codes … 過去検証が使っている母集団の証券コード集合。
@@ -2657,8 +2686,22 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
         meta["kiyohara"] = {"error": "価格の枠が空"}
         return []
     reasons, rows = {}, []
+    # ★清原枠で保有中の銘柄は、条件を外れても毎回同じ物差しで測って残す（2026-09-26）。
+    #   以前は候補の表に残った銘柄しか分からず、買ったあとで PER が上がって表から消えると
+    #   「還元の後退・体力の低下」が見えなくなっていた。降りる理由（仮説の崩れ）を毎日確かめる。
+    _held = set(str(h).replace(".T", "") for h in (held or ()))
+    held_rows = {}
     for i in range(len(sc_all)):
         c = str(sc_all["code"].iloc[i]); cc = c.replace(".T", "")
+        if cc in _held:
+            _kh = ky_metrics(fmap.get(cc), float(sc_all["close"].iloc[i]), ed_rows, cc)
+            _okh, _whyh = ky_pass(_kh)
+            held_rows[cc] = {"pass": bool(_okh), "why": _whyh,
+                             "ret": ky_return_tag(_kh) if _kh else "—",
+                             "cap": ky_capacity_tag(_kh), "fcst": ky_fcst_tag(_kh),
+                             "div_cut": bool(_kh and (_kh.get("div_up") or 0) < 0),
+                             "nc_real": (round(_kh["nc_real"], 2)
+                                         if _kh and _kh.get("nc_real") is not None else None)}
         if float(sc_all["turnover"].iloc[i]) < KY_MIN_TURNOVER:
             reasons["売買代金が薄い"] = reasons.get("売買代金が薄い", 0) + 1; continue
         if s17.get(cc) in KY_EXCLUDE:
@@ -2799,7 +2842,9 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
                         "流動資産>負債・ネットキャッシュ比率1以上または1に近い）。"
                         "流動資産と投資有価証券は無料データに無いため不等式で挟んでいる。"
                         "PER・PBR・時価総額・比率の数値は利用条件により載せない。"),
-               "rows": out}
+               "rows": out,
+               # 清原枠の保有の点検（分類・真偽値・EDINETの実測だけ。J-Quantsの数値は書かない）
+               "held": held_rows}
     json.dump(jpx_safe(payload), open(KY_PATH, "w"),
               ensure_ascii=False, indent=1)
     meta["kiyohara"] = {k: payload[k] for k in
@@ -3040,7 +3085,8 @@ def fund_today(sc, refetch=True):
                         # 過去検証の母集団＝スイングの絞り込みを通った銘柄。
                         # コードは "7203.T" と "7203" の両方で照合できるようにする。
                         set(str(x) for x in sc["code"])
-                        | set(str(x).replace(".T", "") for x in sc["code"]))
+                        | set(str(x).replace(".T", "") for x in sc["code"]),
+                        held=_ky_held_codes())
     except Exception as e:
         meta["errors"].append(f"kiyohara: {type(e).__name__}: {e}")
         meta["kiyohara"] = {"error": str(e)[:120]}
@@ -6824,20 +6870,33 @@ try:
     _ky_held = t[t["sleeve"] == SLV_KY]
     if len(_ky_held):
         L.append("\n## 清原枠の保有（スイングの判定・損切りは当てない）\n")
-        L.append("| コード | 銘柄 | 株価 | 損益% | 株主還元 | 見るところ |")
-        L.append("|---|---|--:|--:|:-:|---|")
-        _kyj = {}
+        L.append("| コード | 銘柄 | 株価 | 損益% | 比率(実測) | 株主還元 | 還元の体力 | 今期の会社予想 | 点検 |")
+        L.append("|---|---|--:|--:|--:|:-:|:-:|:-:|---|")
+        _kyh = {}
         try:
-            _kyj = {r["code"]: r for r in
-                    (json.load(open(f"{OUT}/kiyohara.json", encoding="utf-8"))
-                     .get("rows") or [])}
+            _kyh = (json.load(open(f"{OUT}/kiyohara.json", encoding="utf-8"))
+                    .get("held") or {})
         except Exception:
             pass
         for _, r in _ky_held.iterrows():
             _c4 = r["code"][:4]
-            _kr2 = _kyj.get(_c4) or {}
+            _h = _kyh.get(_c4) or {}
+            # ★点検は「仮説が崩れたか」だけ。含み損や値動きでは降りない。
+            #   崩れの印: 減配／営業赤字予想／配当が利益を超える／比率が0.8を割った。
+            #   2倍に届いたら「仮説どおり。持ち続けるか本人が決める」と出す（清原氏は最低2倍が目安）。
+            _flags = []
+            if _h.get("div_cut"): _flags.append("**減配**")
+            if _h.get("fcst") == "営業赤字予想": _flags.append("**営業赤字予想**")
+            if _h.get("cap") == "配当が利益を超える": _flags.append("**配当が利益を超える**")
+            if _h.get("nc_real") is not None and _h["nc_real"] < KY_NC_MIN:
+                _flags.append(f"**比率が{KY_NC_MIN}を割った**")
+            if r["pl_pct"] >= 100: _flags.append("2倍に到達（持ち続けるか本人が判断）")
+            _chk = ("仮説の崩れ: " + "・".join(_flags)) if any(f.startswith("**") for f in _flags) \
+                   else ("・".join(_flags) if _flags else ("異常なし" if _h else "測れない（財務が引けない）"))
+            _nr = _h.get("nc_real")
             L.append(f"| {_c4} | {r['name']} | {r['close']:,.1f} | {r['pl_pct']:+.2f} | "
-                     f"{_kr2.get('ret', '—')} | 本業の推移／株主還元の継続／経営者の言動 |")
+                     f"{('%.2f' % _nr) if _nr is not None else '—'} | {_h.get('ret', '—')} | "
+                     f"{_h.get('cap', '—')} | {_h.get('fcst', '—')} | {_chk} |")
         L.append("\n> **清原枠にATRの損切りは当てない。** 降りるのは投資仮説が"
                  "崩れたとき（本業の悪化・株主還元の後退・経営者の言動の不一致）。"
                  "**含み損だけを理由に降りない。** 最低2倍を狙う建玉で、"
