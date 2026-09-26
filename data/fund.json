@@ -1,5 +1,5 @@
 {
- "generated_at_jst": "2026-09-26T15:32:54.693480+09:00",
+ "generated_at_jst": "2026-09-26T23:34:49.305561+09:00",
  "asof_latest_disclosure": "2026-07-01",
  "pool": 1681,
  "n_codes": 1602,
@@ -20,7 +20,7 @@
  "coverage": {
   "has": 1602,
   "value": 1602,
-  "ep": 1522,
+  "ep": 1530,
   "bp": 1598,
   "netcash": 1599,
   "kiyohara": 1602,
@@ -115,9 +115,9 @@
    "ep": 64,
    "bp": 68,
    "netcash": 30,
-   "kiyohara": 53,
+   "kiyohara": 52,
    "payout": 62,
-   "quality": 37,
+   "quality": 36,
    "moat": 38,
    "revision": 41,
    "growth": 59,
@@ -171,7 +171,7 @@
    "quality": 56,
    "moat": 11,
    "growth": 71,
-   "ky_grow": 84
+   "ky_grow": 83
   },
   "1436": {
    "value": 37,
@@ -274,7 +274,7 @@
    "ky_grow": 40
   },
   "1663": {
-   "value": 48,
+   "value": 47,
    "ep": 16,
    "bp": 79,
    "netcash": 93,
@@ -390,7 +390,7 @@
    "ky_grow": 65
   },
   "1786": {
-   "value": 78,
+   "value": 79,
    "ep": 71,
    "bp": 86,
    "netcash": 48,
@@ -456,7 +456,7 @@
   },
   "1808": {
    "value": 70,
-   "ep": 80,
+   "ep": 79,
    "bp": 60,
    "netcash": 27,
    "kiyohara": 62,
@@ -511,7 +511,7 @@
    "ep": 68,
    "bp": 88,
    "netcash": 9,
-   "kiyohara": 48,
+   "kiyohara": 49,
    "payout": 81,
    "quality": 18,
    "moat": 39,
@@ -578,7 +578,7 @@
    "netcash": 44,
    "kiyohara": 77,
    "payout": 85,
-   "quality": 57,
+   "quality": 58,
    "moat": 62,
    "revision": 94,
    "growth": 42,
@@ -662,7 +662,7 @@
    "ky_grow": 69
   },
   "1885": {
-   "value": 74,
+   "value": 73,
    "ep": 93,
    "bp": 54,
    "netcash": 26,
@@ -717,7 +717,7 @@
    "ep": 96,
    "bp": 91,
    "netcash": 14,
-   "kiyohara": 69,
+   "kiyohara": 68,
    "payout": 49,
    "quality": 35,
    "moat": 35,
@@ -933,7 +933,7 @@
    "ky_grow": 49
   },
   "1961": {
-   "value": 33,
+   "value": 34,
    "ep": 48,
    "bp": 19,
    "netcash": 61,
@@ -952,7 +952,7 @@
    "netcash": 77,
    "kiyohara": 56,
    "payout": 22,
-   "quality": 35,
+   "quality": 34,
    "moat": 24,
    "revision": 86,
    "growth": 30,
@@ -1064,7 +1064,7 @@
   },
   "1982": {
    "value": 26,
-   "ep": 11,
+   "ep": 10,
    "bp": 42,
    "netcash": 80,
    "kiyohara": 34,
@@ -1193,7 +1193,7 @@
   },
   "2124": {
    "value": 24,
-   "ep": 43,
+   "ep": 44,
    "bp": 5,
    "netcash": 88,
    "kiyohara": 58,
@@ -1267,17 +1267,16 @@
    "ky_grow": 42
   },
   "2157": {
-   "value": 58,
-   "ep": 87,
+   "value": 30,
    "bp": 30,
    "netcash": 46,
-   "kiyohara": 73,
+   "kiyohara": 46,
    "payout": 53,
-   "quality": 68,
+   "quality": 57,
    "moat": 40,
    "revision": 5,
    "growth": 55,
-   "ky_grow": 61
+   "ky_grow": 52
   },
   "2158": {
    "value": 8,
@@ -1464,7 +1463,7 @@
    "quality": 26,
    "moat": 31,
    "growth": 17,
-   "ky_grow": 30
+   "ky_grow": 31
   },
   "2267": {
    "value": 54,
@@ -1512,7 +1511,7 @@
    "netcash": 31,
    "kiyohara": 46,
    "payout": 81,
-   "quality": 39,
+   "quality": 38,
    "revision": 41,
    "growth": 50,
    "ky_grow": 45
@@ -1638,7 +1637,7 @@
    "ep": 68,
    "bp": 12,
    "netcash": 58,
-   "kiyohara": 64,
+   "kiyohara": 65,
    "payout": 81,
    "quality": 67,
    "moat": 76,
@@ -1648,7 +1647,7 @@
   },
   "2384": {
    "value": 46,
-   "ep": 60,
+   "ep": 59,
    "bp": 32,
    "netcash": 23,
    "kiyohara": 47,
@@ -1660,7 +1659,7 @@
   },
   "2385": {
    "value": 44,
-   "ep": 9,
+   "ep": 8,
    "bp": 79,
    "netcash": 100,
    "kiyohara": 39,
@@ -1686,7 +1685,7 @@
   },
   "2413": {
    "value": 23,
-   "ep": 23,
+   "ep": 24,
    "bp": 22,
    "netcash": 74,
    "kiyohara": 40,
@@ -1750,7 +1749,7 @@
    "ep": 47,
    "bp": 47,
    "netcash": 99,
-   "kiyohara": 64,
+   "kiyohara": 65,
    "payout": 65,
    "quality": 71,
    "moat": 45,
@@ -2071,7 +2070,7 @@
   },
   "2659": {
    "value": 51,
-   "ep": 44,
+   "ep": 45,
    "bp": 58,
    "netcash": 93,
    "kiyohara": 61,
@@ -2134,17 +2133,16 @@
    "ky_grow": 54
   },
   "2678": {
-   "value": 51,
-   "ep": 51,
+   "value": 52,
    "bp": 52,
    "netcash": 21,
-   "kiyohara": 41,
+   "kiyohara": 21,
    "payout": 30,
-   "quality": 21,
+   "quality": 7,
    "moat": 14,
    "revision": 0,
    "growth": 3,
-   "ky_grow": 19
+   "ky_grow": 9
   },
   "2681": {
    "value": 66,
@@ -2178,7 +2176,7 @@
    "netcash": 58,
    "kiyohara": 31,
    "payout": 23,
-   "quality": 43,
+   "quality": 44,
    "moat": 14,
    "growth": 9,
    "ky_grow": 24
@@ -2223,7 +2221,7 @@
   },
   "2705": {
    "value": 4,
-   "ep": 7,
+   "ep": 6,
    "bp": 1,
    "netcash": 71,
    "kiyohara": 28,
@@ -2392,7 +2390,7 @@
    "ep": 28,
    "bp": 19,
    "netcash": 80,
-   "kiyohara": 45,
+   "kiyohara": 46,
    "payout": 49,
    "quality": 67,
    "moat": 66,
@@ -2556,16 +2554,17 @@
    "ky_grow": 45
   },
   "2897": {
-   "value": 46,
+   "value": 43,
+   "ep": 41,
    "bp": 46,
    "netcash": 44,
-   "kiyohara": 44,
+   "kiyohara": 42,
    "payout": 35,
    "quality": 47,
    "moat": 52,
    "revision": 41,
    "growth": 20,
-   "ky_grow": 28
+   "ky_grow": 31
   },
   "290A": {
    "value": 7,
@@ -2581,7 +2580,7 @@
   },
   "2914": {
    "value": 27,
-   "ep": 34,
+   "ep": 35,
    "bp": 20,
    "netcash": 49,
    "kiyohara": 39,
@@ -2615,7 +2614,7 @@
    "moat": 4,
    "revision": 41,
    "growth": 28,
-   "ky_grow": 38
+   "ky_grow": 39
   },
   "2931": {
    "value": 49,
@@ -2630,7 +2629,7 @@
   },
   "2938": {
    "value": 21,
-   "ep": 27,
+   "ep": 28,
    "bp": 14,
    "netcash": 33,
    "kiyohara": 29,
@@ -2680,7 +2679,7 @@
   },
   "2980": {
    "value": 42,
-   "ep": 56,
+   "ep": 55,
    "bp": 29,
    "netcash": 31,
    "kiyohara": 47,
@@ -2692,15 +2691,16 @@
    "ky_grow": 35
   },
   "2982": {
-   "value": 75,
+   "value": 87,
+   "ep": 98,
    "bp": 75,
    "netcash": 8,
-   "kiyohara": 8,
+   "kiyohara": 68,
    "payout": 62,
-   "quality": 33,
+   "quality": 48,
    "moat": 57,
    "growth": 91,
-   "ky_grow": 64
+   "ky_grow": 72
   },
   "2983": {
    "value": 65,
@@ -2932,7 +2932,7 @@
   },
   "3088": {
    "value": 45,
-   "ep": 49,
+   "ep": 50,
    "bp": 40,
    "netcash": 67,
    "kiyohara": 55,
@@ -3180,7 +3180,7 @@
    "ep": 92,
    "bp": 37,
    "netcash": 21,
-   "kiyohara": 69,
+   "kiyohara": 68,
    "payout": 53,
    "quality": 47,
    "moat": 32,
@@ -3341,7 +3341,7 @@
   },
   "3232": {
    "value": 89,
-   "ep": 93,
+   "ep": 92,
    "bp": 86,
    "netcash": 11,
    "kiyohara": 65,
@@ -3353,16 +3353,17 @@
    "ky_grow": 41
   },
   "3245": {
-   "value": 48,
+   "value": 72,
+   "ep": 97,
    "bp": 48,
    "netcash": 50,
-   "kiyohara": 50,
+   "kiyohara": 81,
    "payout": 50,
-   "quality": 26,
+   "quality": 47,
    "moat": 9,
    "revision": 41,
    "growth": 48,
-   "ky_grow": 49
+   "ky_grow": 61
   },
   "3252": {
    "value": 84,
@@ -3416,7 +3417,7 @@
   },
   "3289": {
    "value": 83,
-   "ep": 91,
+   "ep": 90,
    "bp": 76,
    "netcash": 8,
    "kiyohara": 63,
@@ -3478,7 +3479,7 @@
    "ky_grow": 59
   },
   "3321": {
-   "value": 92,
+   "value": 91,
    "ep": 97,
    "bp": 86,
    "netcash": 14,
@@ -3833,7 +3834,7 @@
    "ky_grow": 54
   },
   "3479": {
-   "value": 48,
+   "value": 49,
    "ep": 43,
    "bp": 54,
    "netcash": 23,
@@ -3871,7 +3872,7 @@
   },
   "3491": {
    "value": 68,
-   "ep": 93,
+   "ep": 92,
    "bp": 43,
    "netcash": 30,
    "kiyohara": 72,
@@ -4017,7 +4018,7 @@
    "netcash": 32,
    "kiyohara": 37,
    "payout": 28,
-   "quality": 26,
+   "quality": 25,
    "moat": 33,
    "revision": 41,
    "growth": 50,
@@ -4030,7 +4031,7 @@
    "netcash": 39,
    "kiyohara": 76,
    "payout": 51,
-   "quality": 34,
+   "quality": 33,
    "moat": 43,
    "revision": 41,
    "growth": 71,
@@ -4228,7 +4229,7 @@
    "netcash": 98,
    "kiyohara": 43,
    "payout": 72,
-   "quality": 35,
+   "quality": 34,
    "moat": 4,
    "growth": 32,
    "ky_grow": 45
@@ -4371,7 +4372,7 @@
   },
   "3733": {
    "value": 71,
-   "ep": 90,
+   "ep": 89,
    "bp": 52,
    "netcash": 93,
    "kiyohara": 91,
@@ -4570,7 +4571,7 @@
    "quality": 43,
    "moat": 2,
    "growth": 87,
-   "ky_grow": 69
+   "ky_grow": 70
   },
   "3836": {
    "value": 50,
@@ -4651,16 +4652,17 @@
    "ky_grow": 32
   },
   "3853": {
-   "value": 29,
+   "value": 26,
+   "ep": 23,
    "bp": 29,
    "netcash": 85,
-   "kiyohara": 85,
+   "kiyohara": 43,
    "payout": 29,
-   "quality": 88,
+   "quality": 76,
    "moat": 48,
    "revision": 81,
    "growth": 74,
-   "ky_grow": 77
+   "ky_grow": 64
   },
   "3854": {
    "value": 43,
@@ -4900,7 +4902,7 @@
    "netcash": 87,
    "kiyohara": 71,
    "payout": 47,
-   "quality": 51,
+   "quality": 50,
    "moat": 49,
    "growth": 27,
    "ky_grow": 51
@@ -4919,7 +4921,7 @@
    "ky_grow": 60
   },
   "3964": {
-   "value": 34,
+   "value": 33,
    "ep": 56,
    "bp": 11,
    "netcash": 76,
@@ -5289,7 +5291,7 @@
    "ep": 44,
    "bp": 7,
    "netcash": 93,
-   "kiyohara": 60,
+   "kiyohara": 61,
    "payout": 66,
    "quality": 89,
    "moat": 58,
@@ -5443,7 +5445,7 @@
    "ep": 42,
    "bp": 35,
    "netcash": 67,
-   "kiyohara": 50,
+   "kiyohara": 51,
    "payout": 46,
    "quality": 72,
    "moat": 58,
@@ -5559,7 +5561,7 @@
    "netcash": 89,
    "kiyohara": 70,
    "payout": 70,
-   "quality": 71,
+   "quality": 70,
    "growth": 23,
    "ky_grow": 57
   },
@@ -5589,7 +5591,7 @@
   },
   "4180": {
    "value": 12,
-   "ep": 10,
+   "ep": 9,
    "bp": 14,
    "netcash": 69,
    "kiyohara": 29,
@@ -5733,7 +5735,7 @@
    "netcash": 48,
    "kiyohara": 59,
    "payout": 41,
-   "quality": 58,
+   "quality": 57,
    "moat": 53,
    "revision": 76,
    "growth": 40,
@@ -5909,7 +5911,7 @@
    "ep": 7,
    "bp": 1,
    "netcash": 77,
-   "kiyohara": 31,
+   "kiyohara": 30,
    "payout": 45,
    "quality": 65,
    "moat": 50,
@@ -6013,7 +6015,7 @@
    "quality": 80,
    "moat": 88,
    "revision": 41,
-   "ky_grow": 59
+   "ky_grow": 60
   },
   "4307": {
    "value": 13,
@@ -6022,7 +6024,7 @@
    "netcash": 63,
    "kiyohara": 35,
    "payout": 37,
-   "quality": 55,
+   "quality": 56,
    "moat": 28,
    "revision": 41,
    "growth": 54,
@@ -6142,12 +6144,12 @@
   },
   "4350": {
    "value": 84,
-   "ep": 84,
+   "ep": 83,
    "bp": 84,
    "netcash": 7,
    "kiyohara": 58,
    "payout": 46,
-   "quality": 20,
+   "quality": 19,
    "moat": 50,
    "revision": 41,
    "growth": 45,
@@ -6275,7 +6277,7 @@
    "ky_grow": 55
   },
   "4394": {
-   "value": 17,
+   "value": 16,
    "ep": 6,
    "bp": 27,
    "netcash": 98,
@@ -6301,7 +6303,7 @@
   },
   "4401": {
    "value": 51,
-   "ep": 48,
+   "ep": 49,
    "bp": 53,
    "netcash": 55,
    "kiyohara": 51,
@@ -6371,7 +6373,7 @@
    "netcash": 80,
    "kiyohara": 36,
    "payout": 0,
-   "quality": 44,
+   "quality": 45,
    "moat": 41,
    "revision": 41,
    "growth": 36,
@@ -6427,16 +6429,17 @@
    "ky_grow": 63
   },
   "4432": {
-   "value": 28,
+   "value": 38,
+   "ep": 48,
    "bp": 28,
    "netcash": 65,
-   "kiyohara": 65,
+   "kiyohara": 54,
    "payout": 47,
-   "quality": 80,
+   "quality": 78,
    "moat": 62,
    "revision": 41,
    "growth": 32,
-   "ky_grow": 43
+   "ky_grow": 44
   },
   "4434": {
    "value": 21,
@@ -6515,7 +6518,7 @@
   },
   "446A": {
    "value": 15,
-   "ep": 26,
+   "ep": 27,
    "bp": 3,
    "netcash": 89,
    "kiyohara": 47,
@@ -6660,7 +6663,7 @@
    "ky_grow": 31
   },
   "4502": {
-   "value": 34,
+   "value": 33,
    "ep": 7,
    "bp": 60,
    "netcash": 27,
@@ -7035,15 +7038,16 @@
    "ky_grow": 41
   },
   "4587": {
-   "value": 25,
+   "value": 17,
+   "ep": 9,
    "bp": 25,
    "netcash": 80,
-   "kiyohara": 80,
+   "kiyohara": 33,
    "payout": 0,
-   "quality": 36,
+   "quality": 33,
    "moat": 2,
    "growth": 1,
-   "ky_grow": 28
+   "ky_grow": 23
   },
   "4592": {
    "value": 4,
@@ -7124,7 +7128,7 @@
    "netcash": 52,
    "kiyohara": 64,
    "payout": 33,
-   "quality": 37,
+   "quality": 36,
    "moat": 48,
    "revision": 95,
    "growth": 49,
@@ -7137,7 +7141,7 @@
    "netcash": 93,
    "kiyohara": 83,
    "payout": 29,
-   "quality": 63,
+   "quality": 62,
    "moat": 73,
    "revision": 41,
    "growth": 30,
@@ -7199,7 +7203,7 @@
    "netcash": 83,
    "kiyohara": 35,
    "payout": 65,
-   "quality": 53,
+   "quality": 52,
    "moat": 74,
    "growth": 49,
    "ky_grow": 48
@@ -7289,7 +7293,7 @@
    "moat": 62,
    "revision": 41,
    "growth": 58,
-   "ky_grow": 65
+   "ky_grow": 64
   },
   "4676": {
    "value": 43,
@@ -7397,7 +7401,7 @@
    "netcash": 32,
    "kiyohara": 74,
    "payout": 70,
-   "quality": 63,
+   "quality": 64,
    "moat": 48,
    "revision": 94,
    "growth": 88,
@@ -7601,7 +7605,7 @@
    "ep": 22,
    "bp": 2,
    "netcash": 57,
-   "kiyohara": 33,
+   "kiyohara": 34,
    "payout": 61,
    "quality": 58,
    "moat": 39,
@@ -7615,7 +7619,7 @@
    "netcash": 97,
    "kiyohara": 57,
    "payout": 0,
-   "quality": 88,
+   "quality": 89,
    "moat": 85,
    "ky_grow": 67
   },
@@ -7624,7 +7628,7 @@
    "ep": 88,
    "bp": 8,
    "netcash": 92,
-   "kiyohara": 90,
+   "kiyohara": 89,
    "payout": 0,
    "quality": 75,
    "moat": 79,
@@ -7684,7 +7688,7 @@
    "netcash": 96,
    "kiyohara": 49,
    "payout": 65,
-   "quality": 88,
+   "quality": 89,
    "moat": 51,
    "revision": 41,
    "growth": 62,
@@ -7718,7 +7722,7 @@
   },
   "4847": {
    "value": 17,
-   "ep": 20,
+   "ep": 21,
    "bp": 13,
    "netcash": 70,
    "kiyohara": 37,
@@ -7862,7 +7866,7 @@
   },
   "4901": {
    "value": 66,
-   "ep": 61,
+   "ep": 60,
    "bp": 72,
    "netcash": 38,
    "kiyohara": 53,
@@ -7893,7 +7897,7 @@
    "netcash": 43,
    "kiyohara": 25,
    "payout": 49,
-   "quality": 34,
+   "quality": 33,
    "moat": 23,
    "growth": 8,
    "ky_grow": 19
@@ -8240,15 +8244,16 @@
    "ky_grow": 37
   },
   "5027": {
-   "value": 23,
+   "value": 21,
+   "ep": 19,
    "bp": 23,
    "netcash": 38,
-   "kiyohara": 38,
+   "kiyohara": 25,
    "payout": 24,
-   "quality": 13,
+   "quality": 27,
    "moat": 33,
    "growth": 45,
-   "ky_grow": 43
+   "ky_grow": 37
   },
   "5032": {
    "value": 30,
@@ -8413,7 +8418,7 @@
    "ep": 25,
    "bp": 78,
    "netcash": 57,
-   "kiyohara": 35,
+   "kiyohara": 36,
    "payout": 50,
    "quality": 38,
    "moat": 34,
@@ -8555,7 +8560,7 @@
    "ep": 60,
    "bp": 91,
    "netcash": 56,
-   "kiyohara": 59,
+   "kiyohara": 58,
    "payout": 77,
    "quality": 49,
    "moat": 32,
@@ -8861,7 +8866,7 @@
    "netcash": 74,
    "kiyohara": 39,
    "payout": 37,
-   "quality": 75,
+   "quality": 76,
    "moat": 81,
    "revision": 41,
    "growth": 64,
@@ -8894,7 +8899,7 @@
   },
   "5406": {
    "value": 95,
-   "ep": 96,
+   "ep": 95,
    "bp": 95,
    "netcash": 14,
    "kiyohara": 68,
@@ -8942,7 +8947,7 @@
    "moat": 42,
    "revision": 41,
    "growth": 8,
-   "ky_grow": 22
+   "ky_grow": 21
   },
   "5423": {
    "value": 64,
@@ -8998,7 +9003,7 @@
   },
   "5461": {
    "value": 49,
-   "ep": 8,
+   "ep": 7,
    "bp": 90,
    "netcash": 90,
    "kiyohara": 35,
@@ -9029,7 +9034,7 @@
    "netcash": 35,
    "kiyohara": 39,
    "payout": 39,
-   "quality": 39,
+   "quality": 38,
    "moat": 64,
    "revision": 84,
    "growth": 27,
@@ -9275,7 +9280,7 @@
    "netcash": 88,
    "kiyohara": 57,
    "payout": 38,
-   "quality": 49,
+   "quality": 48,
    "moat": 34,
    "revision": 41,
    "growth": 12,
@@ -9389,7 +9394,7 @@
    "ep": 10,
    "bp": 35,
    "netcash": 32,
-   "kiyohara": 18,
+   "kiyohara": 17,
    "payout": 25,
    "quality": 38,
    "moat": 37,
@@ -9500,7 +9505,7 @@
   },
   "5834": {
    "value": 71,
-   "ep": 96,
+   "ep": 95,
    "bp": 47,
    "netcash": 14,
    "kiyohara": 68,
@@ -9551,7 +9556,7 @@
    "ep": 97,
    "bp": 98,
    "netcash": 15,
-   "kiyohara": 70,
+   "kiyohara": 69,
    "payout": 58,
    "quality": 33,
    "moat": 56,
@@ -9768,7 +9773,7 @@
    "ep": 51,
    "bp": 47,
    "netcash": 50,
-   "kiyohara": 50,
+   "kiyohara": 51,
    "payout": 35,
    "quality": 47,
    "moat": 60,
@@ -9829,7 +9834,7 @@
    "ky_grow": 31
   },
   "6036": {
-   "value": 50,
+   "value": 49,
    "ep": 90,
    "bp": 9,
    "netcash": 89,
@@ -9998,7 +10003,7 @@
   },
   "6098": {
    "value": 5,
-   "ep": 9,
+   "ep": 8,
    "bp": 1,
    "netcash": 75,
    "kiyohara": 31,
@@ -10026,7 +10031,7 @@
    "ep": 41,
    "bp": 20,
    "netcash": 75,
-   "kiyohara": 52,
+   "kiyohara": 53,
    "payout": 63,
    "quality": 73,
    "moat": 57,
@@ -10041,7 +10046,7 @@
    "netcash": 63,
    "kiyohara": 35,
    "payout": 50,
-   "quality": 44,
+   "quality": 43,
    "moat": 51,
    "revision": 41,
    "growth": 56,
@@ -10104,7 +10109,7 @@
    "ep": 23,
    "bp": 23,
    "netcash": 81,
-   "kiyohara": 42,
+   "kiyohara": 43,
    "payout": 36,
    "quality": 78,
    "moat": 57,
@@ -10175,7 +10180,7 @@
    "ky_grow": 68
   },
   "6145": {
-   "value": 61,
+   "value": 60,
    "ep": 52,
    "bp": 69,
    "netcash": 71,
@@ -10266,7 +10271,7 @@
   },
   "6184": {
    "value": 22,
-   "ep": 31,
+   "ep": 32,
    "bp": 13,
    "netcash": 93,
    "kiyohara": 52,
@@ -10328,11 +10333,11 @@
    "ky_grow": 73
   },
   "6208": {
-   "value": 32,
+   "value": 33,
    "ep": 25,
    "bp": 40,
    "netcash": 12,
-   "kiyohara": 20,
+   "kiyohara": 21,
    "payout": 48,
    "quality": 28,
    "moat": 37,
@@ -10478,7 +10483,7 @@
    "moat": 35,
    "revision": 98,
    "growth": 23,
-   "ky_grow": 38
+   "ky_grow": 37
   },
   "6247": {
    "value": 74,
@@ -10624,7 +10629,7 @@
    "ep": 45,
    "bp": 53,
    "netcash": 71,
-   "kiyohara": 53,
+   "kiyohara": 54,
    "payout": 44,
    "quality": 45,
    "moat": 28,
@@ -10774,7 +10779,7 @@
   },
   "6315": {
    "value": 23,
-   "ep": 16,
+   "ep": 15,
    "bp": 30,
    "netcash": 71,
    "kiyohara": 34,
@@ -10787,7 +10792,7 @@
   },
   "6317": {
    "value": 96,
-   "ep": 94,
+   "ep": 93,
    "bp": 98,
    "netcash": 18,
    "kiyohara": 68,
@@ -10831,7 +10836,7 @@
    "netcash": 22,
    "kiyohara": 50,
    "payout": 47,
-   "quality": 48,
+   "quality": 47,
    "moat": 60,
    "growth": 18,
    "ky_grow": 30
@@ -10931,7 +10936,7 @@
    "ep": 55,
    "bp": 85,
    "netcash": 75,
-   "kiyohara": 62,
+   "kiyohara": 61,
    "payout": 63,
    "quality": 48,
    "moat": 38,
@@ -10978,11 +10983,11 @@
    "ky_grow": 57
   },
   "6363": {
-   "value": 65,
-   "ep": 71,
+   "value": 66,
+   "ep": 72,
    "bp": 60,
    "netcash": 36,
-   "kiyohara": 59,
+   "kiyohara": 60,
    "payout": 53,
    "quality": 42,
    "moat": 34,
@@ -11060,7 +11065,7 @@
    "ep": 30,
    "bp": 28,
    "netcash": 58,
-   "kiyohara": 39,
+   "kiyohara": 40,
    "payout": 43,
    "quality": 66,
    "moat": 54,
@@ -11669,7 +11674,7 @@
   },
   "6517": {
    "value": 66,
-   "ep": 57,
+   "ep": 56,
    "bp": 76,
    "netcash": 85,
    "kiyohara": 66,
@@ -11723,7 +11728,7 @@
    "ep": 7,
    "bp": 21,
    "netcash": 84,
-   "kiyohara": 33,
+   "kiyohara": 32,
    "payout": 39,
    "quality": 48,
    "moat": 21,
@@ -11755,7 +11760,7 @@
    "moat": 44,
    "revision": 41,
    "growth": 40,
-   "ky_grow": 60
+   "ky_grow": 59
   },
   "6544": {
    "value": 6,
@@ -11803,7 +11808,7 @@
    "netcash": 92,
    "kiyohara": 42,
    "payout": 45,
-   "quality": 45,
+   "quality": 44,
    "moat": 53,
    "revision": 41,
    "growth": 79,
@@ -11888,7 +11893,7 @@
   },
   "6594": {
    "value": 45,
-   "ep": 50,
+   "ep": 51,
    "bp": 39,
    "netcash": 41,
    "kiyohara": 47,
@@ -12143,11 +12148,11 @@
    "ky_grow": 60
   },
   "6677": {
-   "value": 85,
-   "ep": 89,
+   "value": 84,
+   "ep": 88,
    "bp": 80,
    "netcash": 85,
-   "kiyohara": 88,
+   "kiyohara": 87,
    "payout": 60,
    "quality": 75,
    "moat": 57,
@@ -12231,7 +12236,7 @@
   },
   "6724": {
    "value": 44,
-   "ep": 25,
+   "ep": 26,
    "bp": 62,
    "netcash": 45,
    "kiyohara": 32,
@@ -12305,7 +12310,7 @@
    "moat": 30,
    "revision": 1,
    "growth": 19,
-   "ky_grow": 28
+   "ky_grow": 27
   },
   "6741": {
    "value": 79,
@@ -12331,7 +12336,7 @@
    "moat": 16,
    "revision": 41,
    "growth": 46,
-   "ky_grow": 40
+   "ky_grow": 39
   },
   "6744": {
    "value": 41,
@@ -12425,7 +12430,7 @@
   },
   "6762": {
    "value": 22,
-   "ep": 19,
+   "ep": 18,
    "bp": 26,
    "netcash": 53,
    "kiyohara": 30,
@@ -12570,7 +12575,7 @@
    "netcash": 86,
    "kiyohara": 43,
    "payout": 54,
-   "quality": 76,
+   "quality": 75,
    "moat": 68,
    "revision": 77,
    "growth": 46,
@@ -12809,7 +12814,7 @@
   },
   "6857": {
    "value": 3,
-   "ep": 6,
+   "ep": 5,
    "bp": 0,
    "netcash": 79,
    "kiyohara": 30,
@@ -12851,7 +12856,7 @@
    "netcash": 85,
    "kiyohara": 61,
    "payout": 24,
-   "quality": 72,
+   "quality": 71,
    "moat": 48,
    "revision": 41,
    "growth": 25,
@@ -12926,7 +12931,7 @@
    "ep": 6,
    "bp": 76,
    "netcash": 43,
-   "kiyohara": 19,
+   "kiyohara": 18,
    "payout": 28,
    "quality": 26,
    "moat": 6,
@@ -12936,7 +12941,7 @@
   },
   "6898": {
    "value": 41,
-   "ep": 6,
+   "ep": 5,
    "bp": 77,
    "netcash": 93,
    "kiyohara": 35,
@@ -12953,7 +12958,7 @@
    "netcash": 46,
    "kiyohara": 68,
    "payout": 58,
-   "quality": 49,
+   "quality": 48,
    "moat": 64,
    "revision": 4,
    "growth": 33,
@@ -13132,7 +13137,7 @@
    "netcash": 82,
    "kiyohara": 46,
    "payout": 92,
-   "quality": 65,
+   "quality": 66,
    "moat": 60,
    "revision": 41,
    "growth": 43,
@@ -13197,7 +13202,7 @@
    "netcash": 90,
    "kiyohara": 57,
    "payout": 44,
-   "quality": 77,
+   "quality": 76,
    "moat": 64,
    "revision": 41,
    "growth": 28,
@@ -13274,7 +13279,7 @@
    "netcash": 81,
    "kiyohara": 31,
    "payout": 43,
-   "quality": 73,
+   "quality": 72,
    "moat": 66,
    "revision": 6,
    "growth": 33,
@@ -13338,7 +13343,7 @@
    "netcash": 51,
    "kiyohara": 30,
    "payout": 46,
-   "quality": 34,
+   "quality": 33,
    "moat": 44,
    "revision": 41,
    "growth": 33,
@@ -13592,7 +13597,7 @@
    "ep": 96,
    "bp": 92,
    "netcash": 7,
-   "kiyohara": 67,
+   "kiyohara": 66,
    "payout": 42,
    "quality": 24,
    "moat": 53,
@@ -13601,7 +13606,7 @@
    "ky_grow": 56
   },
   "7148": {
-   "value": 61,
+   "value": 60,
    "ep": 93,
    "bp": 28,
    "netcash": 40,
@@ -13614,14 +13619,15 @@
    "ky_grow": 38
   },
   "7157": {
-   "value": 64,
+   "value": 66,
+   "ep": 68,
    "bp": 64,
    "netcash": 65,
-   "kiyohara": 65,
+   "kiyohara": 67,
    "payout": 0,
-   "quality": 89,
+   "quality": 67,
    "revision": 89,
-   "ky_grow": 65
+   "ky_grow": 66
   },
   "7161": {
    "value": 64,
@@ -13713,7 +13719,7 @@
    "netcash": 6,
    "kiyohara": 40,
    "payout": 70,
-   "quality": 21,
+   "quality": 20,
    "revision": 98,
    "growth": 4,
    "ky_grow": 22
@@ -13740,7 +13746,7 @@
    "quality": 14,
    "revision": 41,
    "growth": 86,
-   "ky_grow": 43
+   "ky_grow": 44
   },
   "7192": {
    "value": 81,
@@ -13834,12 +13840,12 @@
   },
   "7222": {
    "value": 68,
-   "ep": 41,
+   "ep": 42,
    "bp": 94,
    "netcash": 72,
    "kiyohara": 52,
    "payout": 36,
-   "quality": 33,
+   "quality": 32,
    "moat": 24,
    "revision": 99,
    "growth": 93,
@@ -13951,7 +13957,7 @@
   },
   "7244": {
    "value": 91,
-   "ep": 88,
+   "ep": 87,
    "bp": 94,
    "netcash": 34,
    "kiyohara": 70,
@@ -13968,7 +13974,7 @@
    "netcash": 13,
    "kiyohara": 53,
    "payout": 70,
-   "quality": 26,
+   "quality": 25,
    "moat": 57,
    "revision": 41,
    "growth": 54,
@@ -14070,7 +14076,7 @@
    "ep": 51,
    "bp": 49,
    "netcash": 26,
-   "kiyohara": 42,
+   "kiyohara": 43,
    "payout": 70,
    "quality": 42,
    "moat": 43,
@@ -14196,7 +14202,7 @@
   },
   "7296": {
    "value": 68,
-   "ep": 59,
+   "ep": 58,
    "bp": 77,
    "netcash": 89,
    "kiyohara": 69,
@@ -14263,7 +14269,7 @@
    "netcash": 3,
    "kiyohara": 32,
    "payout": 66,
-   "quality": 19,
+   "quality": 18,
    "revision": 41,
    "growth": 80,
    "ky_grow": 43
@@ -14338,7 +14344,7 @@
    "netcash": 4,
    "kiyohara": 24,
    "payout": 56,
-   "quality": 12,
+   "quality": 11,
    "revision": 41,
    "growth": 86,
    "ky_grow": 41
@@ -14360,7 +14366,7 @@
    "ep": 27,
    "bp": 39,
    "netcash": 19,
-   "kiyohara": 24,
+   "kiyohara": 25,
    "payout": 0,
    "quality": 38,
    "moat": 52,
@@ -14381,7 +14387,7 @@
    "ky_grow": 27
   },
   "7389": {
-   "value": 43,
+   "value": 44,
    "ep": 21,
    "bp": 66,
    "netcash": 4,
@@ -14437,7 +14443,7 @@
    "netcash": 30,
    "kiyohara": 32,
    "payout": 50,
-   "quality": 28,
+   "quality": 27,
    "moat": 46,
    "revision": 41,
    "growth": 12,
@@ -14536,7 +14542,7 @@
   },
   "7476": {
    "value": 33,
-   "ep": 39,
+   "ep": 38,
    "bp": 27,
    "netcash": 67,
    "kiyohara": 48,
@@ -14580,7 +14586,7 @@
    "netcash": 58,
    "kiyohara": 39,
    "payout": 80,
-   "quality": 47,
+   "quality": 46,
    "moat": 58,
    "revision": 41,
    "growth": 58,
@@ -14742,7 +14748,7 @@
    "ky_grow": 59
   },
   "7593": {
-   "value": 90,
+   "value": 89,
    "ep": 94,
    "bp": 85,
    "netcash": 7,
@@ -14884,7 +14890,7 @@
   },
   "7630": {
    "value": 7,
-   "ep": 7,
+   "ep": 6,
    "bp": 8,
    "netcash": 78,
    "kiyohara": 30,
@@ -15081,7 +15087,7 @@
    "netcash": 78,
    "kiyohara": 36,
    "payout": 23,
-   "quality": 79,
+   "quality": 80,
    "moat": 66,
    "revision": 76,
    "growth": 57,
@@ -15295,7 +15301,7 @@
    "ep": 8,
    "bp": 4,
    "netcash": 79,
-   "kiyohara": 32,
+   "kiyohara": 31,
    "payout": 0,
    "quality": 73,
    "moat": 35,
@@ -15402,7 +15408,7 @@
    "moat": 82,
    "revision": 77,
    "growth": 60,
-   "ky_grow": 66
+   "ky_grow": 65
   },
   "7821": {
    "value": 44,
@@ -15445,7 +15451,7 @@
   },
   "7832": {
    "value": 17,
-   "ep": 21,
+   "ep": 22,
    "bp": 13,
    "netcash": 83,
    "kiyohara": 42,
@@ -15471,7 +15477,7 @@
   },
   "7844": {
    "value": 48,
-   "ep": 30,
+   "ep": 31,
    "bp": 65,
    "netcash": 98,
    "kiyohara": 53,
@@ -15664,7 +15670,7 @@
   },
   "7931": {
    "value": 71,
-   "ep": 70,
+   "ep": 71,
    "bp": 72,
    "netcash": 94,
    "kiyohara": 78,
@@ -15803,7 +15809,7 @@
    "ky_grow": 54
   },
   "7971": {
-   "value": 91,
+   "value": 90,
    "ep": 91,
    "bp": 90,
    "netcash": 22,
@@ -15960,7 +15966,7 @@
    "ep": 33,
    "bp": 46,
    "netcash": 59,
-   "kiyohara": 41,
+   "kiyohara": 42,
    "payout": 79,
    "quality": 47,
    "moat": 45,
@@ -16270,7 +16276,7 @@
    "netcash": 15,
    "kiyohara": 60,
    "payout": 52,
-   "quality": 27,
+   "quality": 26,
    "moat": 55,
    "revision": 41,
    "growth": 45,
@@ -16447,7 +16453,7 @@
   },
   "8111": {
    "value": 58,
-   "ep": 84,
+   "ep": 85,
    "bp": 31,
    "netcash": 86,
    "kiyohara": 85,
@@ -16497,7 +16503,7 @@
    "ky_grow": 32
   },
   "8131": {
-   "value": 59,
+   "value": 58,
    "ep": 58,
    "bp": 59,
    "netcash": 42,
@@ -16562,7 +16568,7 @@
    "ky_grow": 34
   },
   "8142": {
-   "value": 77,
+   "value": 76,
    "ep": 93,
    "bp": 60,
    "netcash": 16,
@@ -16665,16 +16671,17 @@
    "ky_grow": 29
   },
   "8163": {
-   "value": 18,
+   "value": 15,
+   "ep": 12,
    "bp": 18,
    "netcash": 52,
-   "kiyohara": 52,
+   "kiyohara": 25,
    "payout": 41,
-   "quality": 22,
+   "quality": 32,
    "moat": 55,
    "revision": 41,
    "growth": 60,
-   "ky_grow": 57
+   "ky_grow": 46
   },
   "8167": {
    "value": 90,
@@ -16793,7 +16800,7 @@
    "ky_grow": 35
   },
   "8226": {
-   "value": 84,
+   "value": 83,
    "ep": 90,
    "bp": 77,
    "netcash": 40,
@@ -16885,7 +16892,7 @@
    "ep": 68,
    "bp": 61,
    "netcash": 61,
-   "kiyohara": 65,
+   "kiyohara": 66,
    "payout": 55,
    "quality": 46,
    "moat": 60,
@@ -16894,17 +16901,16 @@
    "ky_grow": 55
   },
   "8267": {
-   "value": 13,
-   "ep": 5,
+   "value": 21,
    "bp": 21,
    "netcash": 7,
-   "kiyohara": 6,
+   "kiyohara": 7,
    "payout": 42,
-   "quality": 9,
+   "quality": 8,
    "moat": 54,
    "revision": 41,
    "growth": 54,
-   "ky_grow": 30
+   "ky_grow": 38
   },
   "8273": {
    "value": 83,
@@ -17039,7 +17045,7 @@
    "ky_grow": 28
   },
   "8331": {
-   "value": 40,
+   "value": 41,
    "ep": 33,
    "bp": 48,
    "netcash": 5,
@@ -17088,7 +17094,7 @@
   },
   "8338": {
    "value": 81,
-   "ep": 79,
+   "ep": 78,
    "bp": 83,
    "netcash": 1,
    "kiyohara": 53,
@@ -17223,7 +17229,7 @@
    "ep": 16,
    "bp": 61,
    "netcash": 2,
-   "kiyohara": 12,
+   "kiyohara": 11,
    "payout": 39,
    "quality": 7,
    "revision": 41,
@@ -17271,7 +17277,7 @@
    "ep": 18,
    "bp": 63,
    "netcash": 5,
-   "kiyohara": 14,
+   "kiyohara": 13,
    "payout": 52,
    "quality": 9,
    "revision": 41,
@@ -17376,7 +17382,7 @@
   },
   "8395": {
    "value": 73,
-   "ep": 66,
+   "ep": 65,
    "bp": 81,
    "netcash": 1,
    "kiyohara": 44,
@@ -17547,7 +17553,7 @@
    "ep": 28,
    "bp": 69,
    "netcash": 3,
-   "kiyohara": 19,
+   "kiyohara": 20,
    "payout": 61,
    "quality": 9,
    "revision": 41,
@@ -17585,7 +17591,7 @@
    "netcash": 1,
    "kiyohara": 39,
    "payout": 27,
-   "quality": 7,
+   "quality": 6,
    "revision": 41,
    "growth": 89,
    "ky_grow": 49
@@ -17632,7 +17638,7 @@
    "ep": 82,
    "bp": 97,
    "netcash": 2,
-   "kiyohara": 56,
+   "kiyohara": 55,
    "payout": 63,
    "quality": 18,
    "moat": 50,
@@ -17641,16 +17647,17 @@
    "ky_grow": 40
   },
   "8591": {
-   "value": 51,
+   "value": 56,
+   "ep": 62,
    "bp": 51,
    "netcash": 13,
-   "kiyohara": 13,
+   "kiyohara": 45,
    "payout": 24,
-   "quality": 42,
+   "quality": 47,
    "moat": 59,
    "revision": 41,
    "growth": 74,
-   "ky_grow": 54
+   "ky_grow": 56
   },
   "8600": {
    "value": 79,
@@ -17956,7 +17963,7 @@
    "ep": 28,
    "bp": 15,
    "netcash": 83,
-   "kiyohara": 46,
+   "kiyohara": 47,
    "payout": 32,
    "quality": 85,
    "moat": 74,
@@ -18094,7 +18101,7 @@
   },
   "8850": {
    "value": 78,
-   "ep": 92,
+   "ep": 91,
    "bp": 64,
    "netcash": 44,
    "kiyohara": 76,
@@ -18146,7 +18153,7 @@
   },
   "8897": {
    "value": 94,
-   "ep": 97,
+   "ep": 96,
    "bp": 92,
    "netcash": 6,
    "kiyohara": 66,
@@ -18342,7 +18349,7 @@
   },
   "9010": {
    "value": 21,
-   "ep": 24,
+   "ep": 25,
    "bp": 18,
    "netcash": 46,
    "kiyohara": 32,
@@ -18433,7 +18440,7 @@
   },
   "9031": {
    "value": 92,
-   "ep": 97,
+   "ep": 96,
    "bp": 87,
    "netcash": 10,
    "kiyohara": 68,
@@ -18498,7 +18505,7 @@
   },
   "9068": {
    "value": 80,
-   "ep": 83,
+   "ep": 82,
    "bp": 77,
    "netcash": 62,
    "kiyohara": 76,
@@ -18516,7 +18523,7 @@
    "netcash": 18,
    "kiyohara": 30,
    "payout": 39,
-   "quality": 27,
+   "quality": 26,
    "moat": 59,
    "revision": 41,
    "growth": 42,
@@ -18690,16 +18697,17 @@
    "ky_grow": 43
   },
   "9201": {
-   "value": 64,
+   "value": 74,
+   "ep": 84,
    "bp": 64,
    "netcash": 32,
-   "kiyohara": 32,
+   "kiyohara": 67,
    "payout": 73,
-   "quality": 44,
+   "quality": 49,
    "moat": 48,
    "revision": 41,
    "growth": 66,
-   "ky_grow": 55
+   "ky_grow": 62
   },
   "9202": {
    "value": 82,
@@ -18879,7 +18887,7 @@
    "moat": 58,
    "revision": 41,
    "growth": 62,
-   "ky_grow": 48
+   "ky_grow": 49
   },
   "9303": {
    "value": 61,
@@ -18901,7 +18909,7 @@
    "netcash": 47,
    "kiyohara": 40,
    "payout": 15,
-   "quality": 45,
+   "quality": 44,
    "moat": 55,
    "revision": 41,
    "growth": 24,
@@ -18940,7 +18948,7 @@
    "netcash": 17,
    "kiyohara": 55,
    "payout": 81,
-   "quality": 30,
+   "quality": 29,
    "moat": 58,
    "revision": 41,
    "growth": 73,
@@ -19028,14 +19036,14 @@
    "netcash": 60,
    "kiyohara": 65,
    "payout": 20,
-   "quality": 61,
+   "quality": 60,
    "moat": 55,
    "revision": 41,
    "growth": 71,
    "ky_grow": 67
   },
   "9405": {
-   "value": 97,
+   "value": 96,
    "ep": 94,
    "bp": 99,
    "netcash": 35,
@@ -19087,7 +19095,7 @@
    "ky_grow": 51
   },
   "9416": {
-   "value": 59,
+   "value": 58,
    "ep": 90,
    "bp": 27,
    "netcash": 93,
@@ -19316,7 +19324,7 @@
   },
   "9508": {
    "value": 88,
-   "ep": 98,
+   "ep": 97,
    "bp": 78,
    "netcash": 6,
    "kiyohara": 67,
@@ -19329,7 +19337,7 @@
   },
   "9509": {
    "value": 96,
-   "ep": 95,
+   "ep": 94,
    "bp": 97,
    "netcash": 5,
    "kiyohara": 65,
@@ -19618,7 +19626,7 @@
    "netcash": 11,
    "kiyohara": 63,
    "payout": 59,
-   "quality": 36,
+   "quality": 35,
    "moat": 62,
    "revision": 41,
    "growth": 40,
@@ -19766,7 +19774,7 @@
   },
   "9699": {
    "value": 85,
-   "ep": 89,
+   "ep": 88,
    "bp": 82,
    "netcash": 27,
    "kiyohara": 68,
@@ -19833,7 +19841,7 @@
    "ep": 96,
    "bp": 20,
    "netcash": 95,
-   "kiyohara": 96,
+   "kiyohara": 95,
    "payout": 43,
    "quality": 46,
    "moat": 51,
@@ -19874,7 +19882,7 @@
    "netcash": 49,
    "kiyohara": 67,
    "payout": 48,
-   "quality": 41,
+   "quality": 40,
    "moat": 47,
    "revision": 41,
    "growth": 63,
@@ -20045,7 +20053,7 @@
    "moat": 47,
    "revision": 41,
    "growth": 62,
-   "ky_grow": 49
+   "ky_grow": 48
   },
   "9869": {
    "value": 64,
