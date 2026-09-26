@@ -1461,7 +1461,10 @@ def jq_metrics(rows_upto):
     # 会社自身の今期予想 対 直近通期の実績。前を向いた唯一の数字なので別に持つ。
     g_fop = None
     _fy_ops = [r["op"] for r in fin if r.get("per") == "FY" and r.get("op") is not None]
-    _fop_now = L("fop")
+    # ★予想は「予想が載っている直近の1行」から（前の期の予想を拾わない。下の feps と同じ理由）
+    _fr0 = next((r for r in reversed(_win)
+                 if any(r.get(k) is not None for k in ("feps", "fop", "fnp"))), None)
+    _fop_now = _fr0.get("fop") if _fr0 is not None else None
     if _fop_now is not None and _fy_ops and _fy_ops[-1] > 0:
         g_fop = (_fop_now / _fy_ops[-1] - 1) * 100
 
@@ -1496,7 +1499,19 @@ def jq_metrics(rows_upto):
     if (_prev_tr is not None and _trsh is not None and _shout and _shout > 0):
         buyback = (_trsh - _prev_tr) / _shout * 100
     no_div = (div_now is not None and div_now <= 0 and (L("divann") or 0) <= 0)
-    return {"bps": L("bps"), "feps": L("feps"), "eqar": L("eqar"),
+    # ★会社予想は「予想が載っている直近の1行」からだけ取る（2026-09-26）。
+    #   L() は項目ごとに古い行へ遡るので、今期の予想EPSが空だと**前の期の予想**を
+    #   拾ってしまう。実測: 東京汽船(9193)は今期を営業赤字・純利益ほぼ0と予想しているのに、
+    #   清原枠の「PER8倍以下・本業黒字」を通っていた（前期は資産売却益で大幅増益）。
+    #   予想EPSが空で予想純利益があれば、株数で割って作る。それも無ければ None（推測しない）。
+    _fr = next((r for r in reversed(_win)
+                if any(r.get(k) is not None for k in ("feps", "fop", "fnp"))), None)
+    feps_cur = fop_cur = None
+    if _fr is not None:
+        feps_cur, fop_cur = _fr.get("feps"), _fr.get("fop")
+        if feps_cur is None and _fr.get("fnp") is not None and sh:
+            feps_cur = _fr["fnp"] / sh
+    return {"bps": L("bps"), "feps": feps_cur, "fop": fop_cur, "eqar": L("eqar"),
             "opm": opm, "opm_stab": stab, "rev": rev, "cfoa": cfoa,
             "g_sales": g_sales, "g_op": g_op, "g_fop": g_fop,
             "n_growth": n_gs + n_go,
@@ -2431,6 +2446,9 @@ KY_MIN_FILL     = 0.6            # 1銘柄の目安額に対して、これを�
                                  # 目安37.5万円の枠に6万円の端株を混ぜると
                                  # 「8銘柄に分散した」と言えなくなる。
                                  # 現金が足りないなら銘柄数を減らすほうが正しい。
+KY_MAX_FILL     = 1.25           # 上に外すのはここまで。単元100株だと、切り捨てで
+                                 # 目安の6割を割る銘柄が出る（実測: ヨシコン 59%）。
+                                 # 目安に近いほうの株数を選び、上側は1.25倍までにする。
 KY_TOP          = 40             # 出す候補の上限
 KY_EXCLUDE      = ("銀行", "金融（除く銀行）")   # 流動資産と負債の意味が違う
 
@@ -2490,7 +2508,7 @@ def ky_metrics(m, price, ed_rows=None, code=None):
             "nc_lo": ((cash - debt) / mcap) if cash is not None else None,
             "nc_hi": eq / mcap,
             "cash_gt_debt": (cash is not None and cash > debt),
-            "op": op, "no_div": m.get("no_div"),
+            "op": op, "fop": m.get("fop"), "no_div": m.get("no_div"),
             "g_sales": m.get("g_sales"), "g_op": m.get("g_op"),
             "g_fop": m.get("g_fop"), "n_growth": m.get("n_growth") or 0,
             "grow": ky_grow(m),
@@ -2507,8 +2525,16 @@ def ky_pass(k):
     if k["pbr"] > KY_MAX_PBR:                return False, f"PBR>{KY_MAX_PBR}倍"
     if k["mcap"] > KY_MAX_MCAP:              return False, f"時価総額>{KY_MAX_MCAP/1e8:.0f}億円"
     if k["op"] is not None and k["op"] <= 0: return False, "本業が赤字"
-    # ★成長。測れた銘柄にだけ課す（測れない＝落とす、にはしない）。
-    if k.get("grow") is False:               return False, KY_WHY_GROW
+    # ★会社自身が今期の営業赤字を予想していれば、本業黒字とは言えない（東京汽船の実測）
+    if k.get("fop") is not None and k["fop"] <= 0: return False, "本業が赤字"
+    # ★2026-09-26 本人指定: 「成長は、株主還元をする体力がちゃんとあることを確かめる
+    #   補助的な役割でしかない」（『わが投資術』の読み直し）。成長そのものでは落とさない
+    #   （成長は表示だけ）。代わりに**還元の体力**を課す:
+    #     本業黒字（実績・会社予想とも。上の2行）＋ 会社予想の利益で予想配当を賄えている。
+    #   配当を利益以上に払っている会社は、還元を続けられない＝カタリストが続かない。
+    _d, _e = k.get("div"), k.get("feps")
+    if _d is not None and _e is not None and _d > 0 and _e > 0 and _d > _e:
+        return False, KY_WHY_CAP
     # ★本物の比率が取れている銘柄には、指定された条件をそのまま課す。
     #   取れていない銘柄は落とさない（EDINETのキャッシュは日々積み上がる途中で、
     #   ここで落とすと「まだ取っていないだけ」の銘柄が消える）。
@@ -2521,7 +2547,8 @@ def ky_pass(k):
     return True, "通過"
 
 # 実測で落としたときの理由。レポート側でも同じ字を使うので定数にする。
-KY_WHY_GROW = "売上も営業利益も伸びていない"
+KY_WHY_GROW = "売上も営業利益も伸びていない"   # 表示・集計用（2026-09-26 から条件ではない）
+KY_WHY_CAP = "予想利益で配当を賄えていない"
 KY_WHY_CA = "流動資産≤負債合計(実測)"
 KY_WHY_NC = f"ネットキャッシュ比率<{KY_NC_MIN}(実測)"
 
@@ -2579,6 +2606,28 @@ def ky_grow_tag(k):
     if go is not None: t.append("増益" if go > KY_GROW_MIN else "減益")
     return "".join(t)
 
+def ky_capacity_tag(k):
+    """還元の体力: 会社予想の配当 ÷ 会社予想の1株利益 を帯で。数値は書かない。"""
+    if not k: return "—"
+    d, e = k.get("div"), k.get("feps")
+    if d is None or e is None or e <= 0: return "—"
+    if d <= 0: return "無配"
+    r = d / e
+    if r < 0.3:  return "配当は利益の3割未満"
+    if r < 0.6:  return "配当は利益の3〜6割"
+    if r <= 1.0: return "配当は利益の6〜10割"
+    return "配当が利益を超える"
+
+def ky_fcst_tag(k):
+    """会社自身の今期予想（営業利益 対 前期実績）の向き。数値は書かない。"""
+    if not k: return "—"
+    if k.get("fop") is not None and k["fop"] <= 0: return "営業赤字予想"
+    g = k.get("g_fop")
+    if g is None: return "—"
+    if g >= 0: return "増益予想"
+    if g > -20: return "減益予想（2割以内）"
+    return "大幅減益予想（2割超）"
+
 def ky_return_tag(k):
     """株主還元。清原氏が「最終的なカタリスト」とするもの＝罠の見分け。"""
     if k.get("no_div"): return "無配"
@@ -2631,6 +2680,10 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
                      "in_bt": (None if bt_codes is None
                                else (cc in bt_codes or c in bt_codes)),
                      "ret": ky_return_tag(k),
+                     # ★還元の体力と今期の向き（分類だけ。J-Quantsの生の数値は書かない）。
+                     #   日次タスクが外部サイトを見に行かなくても、推奨を付けられるようにする。
+                     "cap": ky_capacity_tag(k),
+                     "fcst": ky_fcst_tag(k),
                      "grow": ky_grow_tag(k),
                      # 「測れた」のか「まだ数字が無い」のかを区別して残す
                      "grow_ok": k.get("grow"),
@@ -2719,7 +2772,8 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
                # ★成長の条件。何件を落とし、何件が「測れない」まま通ったか。
                #   測れない件数が増えたら、条件が骨抜きになっている合図。
                "growth": {"min_pct": KY_GROW_MIN,
-                          "rejected": reasons.get(KY_WHY_GROW, 0),
+                          "rejected": 0,   # 成長では落とさない（2026-09-26）
+                          "capacity_rejected": reasons.get(KY_WHY_CAP, 0),
                           "passed_measured": sum(1 for r in rows
                                                  if r.get("grow_ok") is True),
                           "passed_unmeasured": sum(1 for r in rows
@@ -6116,6 +6170,10 @@ try:
                         # ★1株当たり値を分割に合わせ、EP・BP の株価を配当調整なしにした。
                         #   割安系の結果が変わるので、古い結果は使い回さない。
                         "fund_units": "split-adjusted-v1",
+                        # ★予想EPSを「予想が載っている直近の1行」からだけ取るようにした（2026-09-26）
+                        "feps_rule": "latest-forecast-row-v1",
+                        # ★成長を条件から外し、還元の体力（予想利益≥予想配当）を課した（2026-09-26）
+                        "growth_rule": "capacity-v1",
                         # ★運用中の手順と暦日ポートフォリオ法（2026-09-25）
                         "swing_rule": f"{SWING_FACTOR}|{SWING_EXIT}|{SWING_HOLD}",
                         "calendar": "ct-v1",
@@ -7756,20 +7814,15 @@ try:
                  f"（売買代金20日平均 {sch.get('min_turnover', 0)/1e4:.0f}万円以上、"
                  f"本業黒字、{'・'.join(sch.get('excluded_sectors', []))}を除外）\n")
         _gw = ky.get("growth") or {}
-        L.append(f"\n**成長の条件**: 売上か営業利益が**前年より伸びている**こと"
-                 f"（同じ四半期どうしの比較）。"
-                 f"落とした {_gw.get('rejected', 0)}件／"
-                 f"測れて通った {_gw.get('passed_measured', 0)}件／"
-                 f"**測れないまま通った {_gw.get('passed_unmeasured', 0)}件**。")
-        L.append("> ★清原達郎氏の対象は「割安 **小型 成長** 株」で、"
-                 "安いだけの会社ではない。これまでこの条件が無かったため、"
-                 "**万年割安で伸びない会社が候補に残っていた**。")
-        L.append("> ★「過去3期」で見ていないのは、J-Quants無料プランの"
-                 "提供範囲が **2年ぶんしかない**ため。年度の数字を3期並べるのは"
-                 "データとして不可能なので、同じ四半期どうしの前年比で測っている。"
-                 "3期で見たい場合は有料プラン（Light以上）が要る。")
-        L.append("> ★「測れないまま通った」件数が多いときは、条件が効いていない。"
-                 "meta.json の `kiyohara.growth` を見ること。\n")
+        L.append(f"\n**株主還元の体力**: 本業が黒字（実績・会社予想とも）で、"
+                 f"**会社予想の利益で予想配当を賄えている**こと。"
+                 f"体力不足で落とした {_gw.get('capacity_rejected', 0)}件。"
+                 "成長（増収・増益）は**表示だけ**で、条件にはしていない。")
+        L.append("> ★『わが投資術』の軸は「PERが低い・ネットキャッシュが厚い・株主還元がカタリスト」。"
+                 "成長は、還元を続ける体力があるかを確かめる補助にすぎない（本人の読み、2026-09-26）。"
+                 "一時は「成長していること」を条件にしていたが、趣旨から外れていたので戻した。")
+        L.append("> 表の「成長」列は同じ四半期どうしの前年比（J-Quants無料プランは2年ぶんしか無いため）。"
+                 "12週間遅れの数字なので、今期の会社予想とは違うことがある。\n")
         L.append(f"**流動資産＞負債合計／ネットキャッシュ比率 {_ncm}以上** は、"
                  f"**EDINETの貸借対照表が取れている銘柄にだけ課している**。"
                  f"取れていない銘柄は落とさず、推定の確からしさを添えて残す"
@@ -7907,8 +7960,8 @@ try:
                 L.append(f"1銘柄あたりの目安 **¥{_per:,.0f}**"
                          f"（清原枠 ¥{KY_BUDGET:,.0f} ÷ {KY_NAMES}銘柄）／"
                          f"単元100株／今日使える清原枠の現金 **¥{KY_CASH:,.0f}**\n")
-                L.append("| 順 | コード | 銘柄名 | 株価 | 比率(実測) | 株主還元 | 株数 | 概算金額 | 判定 |")
-                L.append("|--:|---|---|--:|--:|:-:|--:|--:|:-:|")
+                L.append("| 順 | コード | 銘柄名 | 株価 | 比率(実測) | 株主還元 | 還元の体力 | 今期の会社予想 | 株数 | 概算金額 | 判定 |")
+                L.append("|--:|---|---|--:|--:|:-:|:-:|:-:|--:|--:|:-:|")
                 _left = KY_CASH
                 _n_built, _spend = 0, 0.0
                 for r in _ok[:KY_NAMES * 2]:
@@ -7918,27 +7971,39 @@ try:
                         _sh, _cost, _v = 0, 0.0, "株価が取れない"
                     elif _c4 in _held:
                         _sh, _cost, _v = 0, 0.0, "保有中"
-                    elif _p * LOT > _per:
+                    elif _p * LOT > _per * KY_MAX_FILL:
                         _sh, _cost, _v = 0, 0.0, f"1単元が枠超（¥{_p*LOT:,.0f}）"
                     elif _n_built >= KY_NAMES:
                         _sh, _cost, _v = 0, 0.0, f"{KY_NAMES}銘柄に達した"
                     else:
-                        _sh = int(min(_per, _left) // (_p * LOT)) * LOT
-                        _cost = _sh * _p
-                        if _sh <= 0:
-                            _v = "現金が足りない"
-                        elif _cost < _per * KY_MIN_FILL:
-                            # ★端株になるなら建てない。等ウェイトが崩れる。
-                            _sh, _cost = 0, 0.0
-                            _v = f"端数になる（目安の{KY_MIN_FILL:.0%}未満）"
-                        else:
+                        # ★単元の切り方は「目安額にいちばん近い株数」。
+                        #   実測(2026-09-26): 切り捨てだけだと、株価2,217円のヨシコンは
+                        #   100株＝目安の59%で「端数」になり、順位1位が建たなかった。
+                        #   200株なら目安の118%で、等ウェイトからのずれはこちらの方が小さい。
+                        #   上に外すのは目安の KY_MAX_FILL 倍までで、現金の範囲内だけ。
+                        _lot = _p * LOT
+                        _nf = int(_per // _lot)
+                        _opts = [n for n in (_nf, _nf + 1)
+                                 if n > 0 and _per * KY_MIN_FILL <= n * _lot <= _per * KY_MAX_FILL]
+                        _fit = [n for n in _opts if n * _lot <= _left]
+                        if _fit:
+                            _n = min(_fit, key=lambda n: abs(n * _lot - _per))
+                            _sh, _cost = _n * LOT, _n * _lot
                             _v = "**建てられる**"
                             _left -= _cost; _spend += _cost; _n_built += 1
+                        elif _opts:
+                            # 目安どおりなら建てられるが、今日の清原枠の現金が足りない
+                            _sh, _cost = 0, 0.0
+                            _v = "現金が足りない"
+                        else:
+                            # ★端株になるなら建てない。等ウェイトが崩れる。
+                            _sh, _cost = 0, 0.0
+                            _v = f"単元が目安に合わない（{_lot:,.0f}円単位）"
                     L.append(f"| {r.get('rank', '')} | {_c4} | "
                              f"{(r.get('name') or '—')[:14]} | "
                              f"{_p:,.1f} | "
                              f"{(('%.2f' % r['nc_real']) if r.get('nc_real') is not None else '—')} | "
-                             f"{r.get('ret', '—')} | "
+                             f"{r.get('ret', '—')} | {r.get('cap', '—')} | {r.get('fcst', '—')} | "
                              f"{(f'{_sh:,}' if _sh else '—')} | "
                              f"{(f'¥{_cost:,.0f}' if _sh else '—')} | {_v} |")
                 L.append(f"\n**今日建てられるのは {_n_built}銘柄・概算 ¥{_spend:,.0f}**"
@@ -7948,15 +8013,20 @@ try:
                              "「実測で条件を満たした銘柄が足りない」か"
                              "「現金が足りない」か「株価が高くて1単元が枠を超える」。"
                              "上の判定列を見ること。**足りないまま無理に埋めない。**")
-                L.append("> **これは発注リストではない。** 予算と単元と現金の制約を"
-                         "当てただけの表で、**清原氏の言う「経営者が9割」の判定が"
-                         "まだ入っていない**。建てる前に決算説明資料と中期経営計画を"
-                         "読むこと。読んでいない銘柄は建てない。")
+                # ★2026-09-26: 以前は「発注リストではない」と書いていたため、日次タスクが
+                #   「候補には挙げるが売買リストには出さない」と答え、何をすればよいか
+                #   分からなくなった。表は**買い候補**で、発注の前提は1つだけ、と書く。
+                L.append("> **「建てられる」は買い候補。発注の前提は1つだけ: 本人が資料を読んで納得すること。** "
+                         "清原氏の言う「経営者が9割」はこの仕組みでは判定できないため。"
+                         "読むのは**決算説明資料**と**中期経営計画**。中期経営計画を出していない会社は、"
+                         "有価証券報告書の「経営方針、経営環境及び対処すべき課題等」で代える"
+                         "（中計が無いことは、それだけでは見送る理由にしない）。")
                 L.append("> **1日に1〜2銘柄までにして段階的に建てる**（本人の方針）。"
                          "一度に全部入れると、相場全体が下げた局面で"
                          "枠ごと含み損になり、判断が難しくなる。")
-                L.append("> 株数は「1銘柄の目安 ÷ 株価」を**単元100株で切り捨て**。"
-                         "切り上げると枠と分散が崩れる。")
+                L.append(f"> 株数は**目安額にいちばん近い単元数**（100株単位）。"
+                         f"目安の{KY_MIN_FILL:.0%}〜{KY_MAX_FILL:.0%}に収まる株数だけを使い、"
+                         "今日の清原枠の現金を超えない。")
                 L.append(f"> **目安額の{KY_MIN_FILL:.0%}に届かない端株は建てない。** "
                          "清原式は等ウェイトの分散が前提で、"
                          f"目安 ¥{_per:,.0f} の枠に数万円の端株を混ぜると"
