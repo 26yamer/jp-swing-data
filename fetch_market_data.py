@@ -2518,6 +2518,9 @@ def ky_metrics(m, price, ed_rows=None, code=None):
             "nc_inv_missing": (real or {}).get("inv_missing"),
             "nc_ca_gt_liab": (real or {}).get("ca_gt_liab"),
             "per": (price / feps) if (feps is not None and feps > 0) else None,
+            # ★還元の体力（予想配当 ÷ 予想1株利益）に要る。以前は持ち回っておらず、
+            #   9/26 の実行で「還元の体力」が全銘柄「—」、体力の条件も1件も効いていなかった。
+            "feps": feps,
             "pbr": mcap / eq,
             "nc_lo": ((cash - debt) / mcap) if cash is not None else None,
             "nc_hi": eq / mcap,
