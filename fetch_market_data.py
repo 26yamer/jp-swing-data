@@ -4393,6 +4393,150 @@ def ct_verdict(st, thr):
     return {"ok": True, "why": f"暦日ポートフォリオで t={t:+.2f} ≥ {thr}（{st['n_days']}営業日・"
                                f"年率換算の差 {st.get('ann_diff_pct')}%）"}
 
+# ══ 本人の手順（事前登録）── 2026-09-28 ════════════════════════════════
+#  本人の言葉:「週次のMACDが綺麗なゴールデンクロスで、RSIが反発していて、200日移動線の
+#   中期的なトレンドとも一致して、利上げやニュースなどのトレンドにも合致しているものを買って、
+#   予想通り動かなかった場合は損切りしてる」。選択肢で確定した定義（結果を見る前に固定）:
+#   ① 日足MACD(12,26,9)がその日にゴールデンクロス（2026-09-28 本人訂正: 週足ではなく日足）
+#   ② 日足RSI(14)が30を下から上抜けた日が直近10営業日以内にあり、今日も30以上
+#   ③ 終値が200日線の上、かつ200日線が20営業日前より上
+#   ④ ニュースの代用: その銘柄の業種（17業種・メモリ上だけ）の等ウェイト指数が200日線の上で、
+#      20日騰落率が全銘柄平均を上回る
+#   売り（本人訂正）: 日足MACDがデッドクロスした日の終値、またはトレーリングストップ
+#         （建ててからの最高値〔前日まで〕− KOICHI_TRAIL×ATR。初日は建値−KOICHI_TRAIL×ATR）に触れたら。
+#         どちらも起きなければ最長 KOICHI_MAXHOLD 営業日（安全装置）。
+#   ★パラメータは探索しない（1回だけ測る）。判定は暦日ポートフォリオ法で、比べる相手は
+#     同じ日の足切り通過の全銘柄の等ウェイト平均。合格点は BT_T_THRESHOLD（2.8。下げない）。
+#   ★「綺麗な」は数字に落とせないので条件に入れていない。
+KOICHI_MAXHOLD = 120
+KOICHI_RSI_WIN = 10
+KOICHI_TRAIL = 3.0    # トレーリングの幅（運用中のスイングと同じ3ATR。本人は幅を指定していない）
+_KOICHI = {}
+
+def koichi_backtest(feats, cal, s17_of=None):
+    """本人の手順を、実際の値動きで1回だけ測る（上の事前登録どおり）。
+       feats: 銘柄 → bt_features の配列（cal にそろえ済み）。s17_of: 銘柄 → 17業種（メモリ上だけ）。"""
+    import numpy as np
+    codes = list(feats); n = len(cal)
+    if n < 300 or len(codes) < 50: return {"error": "データが足りない"}
+    C = np.vstack([feats[c]["close"] for c in codes])
+    O = np.vstack([feats[c]["open"] for c in codes])
+    L = np.vstack([feats[c]["low"] for c in codes])
+    A = np.vstack([feats[c]["atr"] for c in codes])
+    RSI = np.vstack([feats[c]["rsi"] for c in codes])
+    MA200 = np.vstack([feats[c]["ma200"] for c in codes])
+    TURN = np.vstack([feats[c]["turn"] for c in codes])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        R1 = C[:, 1:] / C[:, :-1] - 1.0
+    R1 = np.concatenate([np.full((len(codes), 1), np.nan), R1], axis=1)
+    # 足切り（その日の値で判定。翌日の損益を足切りの母集団で平均する）
+    with np.errstate(invalid="ignore"):
+        atrp = A / C * 100
+        ELIG = (C >= MIN_PRICE) & (TURN >= MIN_TURNOVER) & (atrp >= MIN_ATR_PCT) & (atrp <= MAX_ATR_PCT)
+    # 日足MACD(12,26,9)。bt_features と同じ値（そこで作ったものを使う）
+    H = np.vstack([feats[c]["high"] for c in codes])
+    macd = np.vstack([feats[c]["macd"] for c in codes])
+    sig = np.vstack([feats[c]["macd_sig"] for c in codes])
+    gc_d = np.zeros_like(macd, bool); dc_d = np.zeros_like(macd, bool)
+    with np.errstate(invalid="ignore"):
+        gc_d[:, 1:] = (macd[:, :-1] <= sig[:, :-1]) & (macd[:, 1:] > sig[:, 1:])
+        dc_d[:, 1:] = (macd[:, :-1] >= sig[:, :-1]) & (macd[:, 1:] < sig[:, 1:])
+    # 業種の等ウェイト指数（足切りを通った銘柄の平均騰落から作る）
+    s17_of = s17_of or {}
+    sect = np.array([s17_of.get(str(c).replace(".T", "")) or "?" for c in codes], dtype=object)
+    allret = np.nanmean(np.where(ELIG[:, :-1], R1[:, 1:], np.nan), axis=0)
+    allret = np.r_[0.0, np.nan_to_num(allret)]
+    all_lvl = np.cumprod(1 + allret)
+    sec_ok = np.zeros((len(codes), n), bool)
+    for sname in set(sect):
+        if sname == "?": continue
+        rows = np.flatnonzero(sect == sname)
+        if len(rows) < 5: continue
+        with np.errstate(invalid="ignore"):
+            r = np.nanmean(np.where(ELIG[rows, :-1], R1[rows, 1:], np.nan), axis=0)
+        r = np.r_[0.0, np.nan_to_num(r)]
+        lvl = np.cumprod(1 + r)
+        ma = pd.Series(lvl).rolling(200).mean().to_numpy(float)
+        r20 = np.r_[np.full(20, np.nan), lvl[20:] / lvl[:-20] - 1]
+        a20 = np.r_[np.full(20, np.nan), all_lvl[20:] / all_lvl[:-20] - 1]
+        with np.errstate(invalid="ignore"):
+            ok = (lvl > ma) & (r20 > a20)
+        sec_ok[rows, :] = ok[None, :]
+    # 日々の足し込み（暦日ポートフォリオ）
+    sp = np.zeros(n); cnt = np.zeros(n)
+    with np.errstate(invalid="ignore"):
+        pool_ret = np.nanmean(np.where(ELIG[:, :-1], R1[:, 1:], np.nan), axis=0)
+    pool_ret = np.r_[np.nan, pool_ret]
+    trades = []; busy = np.full(len(codes), -1)
+    start = max(BT_WARMUP, 220)
+    for i in range(start, n - 1):
+        cand = np.flatnonzero(ELIG[:, i] & gc_d[:, i] & sec_ok[:, i] & (busy < i))
+        for r in cand:
+            c = C[r, i]; m200 = MA200[r, i]; m200p = MA200[r, i - 20]
+            if not (c > m200 and m200 > m200p): continue
+            lo = max(1, i - KOICHI_RSI_WIN + 1)
+            rs = RSI[r, lo - 1:i + 1]
+            if not (rs[-1] >= 30): continue
+            if not np.any((rs[:-1] < 30) & (rs[1:] >= 30)): continue
+            atr = A[r, i]
+            if not (atr > 0): continue
+            exit_k = None; fill = None; how = "timeout"; runmax = c
+            for k in range(i + 1, min(i + 1 + KOICHI_MAXHOLD, n)):
+                # ★トレーリング水準は前日までの最高値で決める（当日の高値を見てから安値を判定しない）
+                lvl = max(runmax, c) - KOICHI_TRAIL * atr
+                if L[r, k] <= lvl:
+                    op = O[r, k]; fill = min(op, lvl) if op == op else lvl
+                    exit_k, how = k, "trail"; break
+                if dc_d[r, k]:
+                    exit_k, fill, how = k, C[r, k], "macd_dc"; break
+                if H[r, k] == H[r, k] and H[r, k] > runmax: runmax = H[r, k]
+            if exit_k is None:
+                exit_k = min(i + KOICHI_MAXHOLD, n - 1); fill = C[r, exit_k]
+            prev = c
+            for k in range(i + 1, exit_k + 1):
+                cur = fill if k == exit_k else C[r, k]
+                if prev > 0 and cur == cur:
+                    sp[k] += cur / prev - 1; cnt[k] += 1
+                prev = cur
+            with np.errstate(invalid="ignore"):
+                pool_w = np.nanprod(1 + pool_ret[i + 1:exit_k + 1]) - 1
+            trades.append({"i": i, "ret": fill / c - 1, "excess": (fill / c - 1) - pool_w,
+                           "bars": exit_k - i, "how": how})
+            busy[r] = exit_k
+    m = (cnt > 0) & np.isfinite(pool_ret)
+    d = sp[m] / cnt[m] - pool_ret[m]
+    months = max(1.0, (n - start) / 21.0)
+    res = {"rule": "日足MACDのGC＋日足RSIが30を上抜け(10日以内)＋200日線の上で上向き＋業種が強い／"
+                   f"日足MACDのDCかトレーリングストップ（最高値−{KOICHI_TRAIL:g}ATR）で降りる（最長{KOICHI_MAXHOLD}日）",
+           "from": str(cal[start].date()), "to": str(cal[-1].date()),
+           "n_trades": len(trades), "per_month": round(len(trades) / months, 1),
+           "n_days": int(m.sum()), "avg_open": round(float(cnt[m].mean()), 1) if m.any() else 0}
+    if trades:
+        rets = np.array([t["ret"] for t in trades]); exc = np.array([t["excess"] for t in trades])
+        res.update({"win_pct": round(100 * float((rets > 0).mean()), 1),
+                    "avg_ret_pct": round(100 * float(rets.mean()), 2),
+                    "med_ret_pct": round(100 * float(np.median(rets)), 2),
+                    "avg_excess_pct": round(100 * float(np.nanmean(exc)), 2),
+                    "avg_bars": round(float(np.mean([t["bars"] for t in trades])), 1),
+                    "exit_mix": {h: sum(1 for t in trades if t["how"] == h)
+                                 for h in ("macd_dc", "trail", "timeout")}})
+    if m.sum() >= 30:
+        res.update({"mean_diff_pct_day": round(float(d.mean()) * 100, 4),
+                    "ann_diff_pct": round(float(d.mean()) * 245 * 100, 2),
+                    "t_nw": ct_nw_t(d)})
+    thr = BT_T_THRESHOLD
+    res["thr"] = thr
+    if res.get("n_days", 0) < CT_MIN_DAYS:
+        res["verdict"] = f"判定しない（建玉のある営業日が{res.get('n_days', 0)}日＜{CT_MIN_DAYS}日）"
+    elif res.get("t_nw") is None:
+        res["verdict"] = "検定できない"
+    elif res["t_nw"] >= thr and res["mean_diff_pct_day"] > 0:
+        res["verdict"] = f"合格（t={res['t_nw']:+.2f} ≥ {thr}）"
+    else:
+        res["verdict"] = f"不合格（t={res['t_nw']:+.2f} < {thr}）" if res["mean_diff_pct_day"] > 0 \
+                         else f"全銘柄平均を下回る（t={res['t_nw']:+.2f}）"
+    return res
+
 def run_backtest(codes, bench="1306.T"):
     """過去2年で、順位付けに情報があるかを母集団の全銘柄平均と比べる。
 
@@ -4523,6 +4667,16 @@ def run_backtest(codes, bench="1306.T"):
     M = {k: np.vstack([feats[c][k] for c in _codes_m])
          for k in ("open", "high", "low", "close")}
     print(f"[検証] 決着用の行列 {M['close'].shape[0]}銘柄 × {M['close'].shape[1]}営業日")
+    # ★本人の手順（事前登録）を同じ価格で1回だけ測る。失敗しても本流は止めない。
+    _KOICHI.clear()
+    try:
+        _s17k = {c4: (v or {}).get("s17") for c4, v in (MASTER or {}).items()}
+        _KOICHI.update(koichi_backtest(feats, cal, _s17k))
+        print(f"[検証] 本人の手順: {_KOICHI.get('n_trades')}件（月{_KOICHI.get('per_month')}件）"
+              f" t={_KOICHI.get('t_nw')} … {_KOICHI.get('verdict')}")
+    except Exception as e:
+        _KOICHI["error"] = f"{type(e).__name__}: {e}"[:160]
+        meta["errors"].append(f"koichi bt: {type(e).__name__}")
 
     trades = {k: [] for k in BT_FACTORS + BT_FACTORS_LIQ
               + ("pool", "pool_f", "pool_liq")}
@@ -6223,6 +6377,7 @@ try:
                         "feps_rule": "latest-forecast-row-v1",
                         # ★成長を条件から外し、還元の体力（予想利益≥予想配当）を課した（2026-09-26）
                         "growth_rule": "capacity-v1",
+                        "koichi": "v2-daily-macd-trail",
                         # ★運用中の手順と暦日ポートフォリオ法（2026-09-25）
                         "swing_rule": f"{SWING_FACTOR}|{SWING_EXIT}|{SWING_HOLD}",
                         "calendar": "ct-v1",
@@ -6301,6 +6456,8 @@ try:
                                                               up=_BT_CAL.get("_up"))
                                        for _e, _h in CT_RULES},
                           "calendar_rules": [f"{_e}|{_h}" for _e, _h in CT_RULES],
+                          # 本人の手順（事前登録・2026-09-28）。門には使わない（研究用）
+                          "koichi": dict(_KOICHI),
                           "regime": {"above200": bt_summary(tk, 25, True),
                                      "below200": bt_summary(tk, 25, False)},
                           # ★市場の広がりで分けた集計。局面で符号が反転する
@@ -7511,6 +7668,31 @@ try:
                  "バリューは**過大評価**されうる一方、PBR1倍割れがTOB・MBOで"
                  "プレミアム付き非上場化した分も抜けているので**過小評価**にも働く。"
                  "どちらが大きいかは無料データでは分からない。")
+
+        # ── 本人の手順（事前登録・2026-09-28）──────────────────────────
+        _kq = bt.get("koichi") or {}
+        if _kq:
+            L.append("\n**本人の手順（事前登録・結果を見る前に規則を固定）**\n")
+            if _kq.get("error"):
+                L.append(f"> 測れなかった: {_kq['error']}")
+            else:
+                L.append(f"> 規則: {_kq.get('rule')}。期間 {_kq.get('from')}〜{_kq.get('to')}。")
+                L.append("")
+                L.append("| 件数 | 月あたり | 勝率 | 1件の平均 | 中央値 | 全銘柄平均との差（1件） | 平均保有 | 年率換算の差 | t | 判定 |")
+                L.append("|--:|--:|--:|--:|--:|--:|--:|--:|--:|:-:|")
+                def _f(x, fmt):
+                    return (fmt % x) if isinstance(x, (int, float)) else "—"
+                L.append(f"| {_kq.get('n_trades', 0):,} | {_f(_kq.get('per_month'), '%.1f')} | "
+                         f"{_f(_kq.get('win_pct'), '%.1f%%')} | {_f(_kq.get('avg_ret_pct'), '%+.2f%%')} | "
+                         f"{_f(_kq.get('med_ret_pct'), '%+.2f%%')} | {_f(_kq.get('avg_excess_pct'), '%+.2f%%')} | "
+                         f"{_f(_kq.get('avg_bars'), '%.0f日')} | {_f(_kq.get('ann_diff_pct'), '%+.1f%%')} | "
+                         f"{_f(_kq.get('t_nw'), '%+.2f')} | {_kq.get('verdict', '—')} |")
+                _mx = _kq.get("exit_mix") or {}
+                if _mx:
+                    L.append(f"\n> 降り方の内訳: 日足MACDのデッドクロス {_mx.get('macd_dc', 0)}件／"
+                             f"トレーリングストップ {_mx.get('trail', 0)}件／期限 {_mx.get('timeout', 0)}件。"
+                             "比べる相手は、同じ日の足切り通過の全銘柄の等ウェイト平均（何も考えずに全部持った場合）。"
+                             "「ニュースと合っているか」は業種の強さで代用している（最後は本人が目で見る）。")
 
         rg = bt.get("regime", {})
         if rg.get("above200") and rg.get("below200"):
