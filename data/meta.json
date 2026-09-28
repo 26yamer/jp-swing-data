@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-09-28T11:46:45.417698+09:00",
+ "fetched_at_jst": "2026-09-28T15:56:12.614691+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -95,7 +95,7 @@
  "n_ok": 53,
  "n_total": 53,
  "holdings_ok": 7,
- "news_ok": 44,
+ "news_ok": 41,
  "jgb": {
   "date": "2026-09-25",
   "age_days": 3,
@@ -115,38 +115,281 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-09-28",
- "signals_settled": 1,
+ "signals_settled": 0,
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1662,
+  "passed": 1688,
   "named": true,
   "source": "jpx_master"
  },
- "fund": {
-  "reused": true,
-  "reason": "場中（11:46 JST）は取り直さない（大引け後の実行で更新）",
-  "age_days": 0,
-  "age_hours": 22.6,
-  "fetched_at_jst": "2026-09-27T13:08:36.893348+09:00",
-  "asof_latest_disclosure": "2026-07-02",
-  "pool": 1681,
-  "n_codes": 1602,
-  "coverage": {
-   "has": 1602,
-   "value": 1602,
-   "ep": 1530,
-   "bp": 1598,
-   "netcash": 1599,
-   "kiyohara": 1602,
-   "payout": 1601,
-   "quality": 1602,
-   "moat": 1499,
-   "revision": 1241,
-   "growth": 1573,
-   "ky_grow": 1602
+ "splits": {
+  "events": 911,
+  "split_codes": 802,
+  "adjusted_rows": 2692,
+  "adjusted_codes": 483,
+  "examples": [
+   "1333",
+   "1414",
+   "142A",
+   "1436",
+   "1450",
+   "146A",
+   "1491",
+   "1515",
+   "1518",
+   "151A"
+  ]
+ },
+ "netcash": {
+  "pool": 1690,
+  "shortlist": 60,
+  "sure": 0
+ },
+ "edinet": {
+  "codes": 2516,
+  "with_ca": 2465,
+  "usable": 2427,
+  "bs_bad": 0,
+  "refetch_bad": 38,
+  "names": 4026,
+  "with_inv": 1664,
+  "listed_days": 45,
+  "todo": 52,
+  "todo_priority": 0,
+  "priority_given": 77,
+  "downloaded": 52,
+  "parsed": 50,
+  "req": 97,
+  "n429": 0,
+  "blocked": null,
+  "enc": "utf-16",
+  "sep": "TAB",
+  "cols": [
+   "要素ID",
+   "項目名",
+   "コンテキストID",
+   "相対年度",
+   "連結・個別",
+   "期間・時点",
+   "ユニットID",
+   "単位",
+   "値"
+  ],
+  "dtypes": {
+   "120": 1380,
+   "160": 1136
   },
-  "span_days": 730,
+  "hist_rows": 1769,
+  "hist_codes": 1651,
+  "hist_multi": 107,
+  "hist_from": "2023-12-15",
+  "hist_to": "2026-09-25",
+  "nomatch": {
+   "120:連結と個別が混在": 4,
+   "160:連結と個別が混在": 34
+  },
+  "probe": [
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior1YearInstant_CapitalSurplusIFRSMember",
+     "Prior1YearInstant_RetainedEarningsIFRSMember",
+     "Prior1YearInstant_ShareCapitalIFRSMember",
+     "Prior2YearInstant",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_RemeasurementsOfDefinedBenefitPlansIFRSMember"
+    ],
+    "v": {
+     "流動資産": 51526000000.0,
+     "負債合計": 23110913000000.0,
+     "資産合計": 29592153000000.0,
+     "純資産": 6481239000000.0
+    }
+   },
+   {
+    "dtype": "120",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "CurrentYearInstant",
+     "Prior1YearInstant",
+     "Prior1YearInstant_CapitalSurplusIFRSMember",
+     "Prior1YearInstant_ShareCapitalIFRSMember",
+     "Prior2YearInstant",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_EquityAttributableToOwnersOfParentIFRSMember",
+     "Prior2YearInstant_NonControllingInterestsIFRSMember"
+    ],
+    "v": {
+     "流動資産": 34820000000.0,
+     "負債合計": 1136929000000.0,
+     "資産合計": 1319072000000.0,
+     "純資産": 182143000000.0
+    }
+   },
+   {
+    "dtype": "160",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "InterimInstant",
+     "Prior1InterimInstant_CapitalStockMember",
+     "Prior1InterimInstant_CapitalSurplusMember",
+     "Prior1InterimInstant_RetainedEarningsMember",
+     "Prior1InterimInstant_ShareholdersEquityMember",
+     "Prior1InterimInstant_TreasuryStockMember",
+     "Prior1YearInstant",
+     "Prior2YearInstant_CapitalStockMember"
+    ],
+    "v": {
+     "流動資産": 7788000000.0,
+     "負債合計": 10910671000000.0,
+     "資産合計": 12155790000000.0,
+     "純資産": 1245119000000.0
+    }
+   },
+   {
+    "dtype": "160",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "InterimInstant",
+     "Prior1InterimInstant_CapitalStockMember",
+     "Prior1InterimInstant_CapitalSurplusMember",
+     "Prior1InterimInstant_RetainedEarningsMember",
+     "Prior1InterimInstant_ShareholdersEquityMember",
+     "Prior1InterimInstant_TreasuryStockMember",
+     "Prior1YearInstant",
+     "Prior2YearInstant_CapitalStockMember"
+    ],
+    "v": {
+     "流動資産": 1145071000000.0,
+     "負債合計": 277681073000000.0,
+     "資産合計": 288757081000000.0,
+     "純資産": 11076007000000.0
+    }
+   },
+   {
+    "dtype": "160",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "InterimInstant",
+     "Prior1InterimInstant_CapitalSurplusIFRSMember",
+     "Prior1InterimInstant_RetainedEarningsIFRSMember",
+     "Prior1InterimInstant_ShareCapitalIFRSMember",
+     "Prior1YearInstant",
+     "Prior2YearInstant_CapitalSurplusIFRSMember",
+     "Prior2YearInstant_RemeasurementsOfDefinedBenefitPlansIFRSMember",
+     "Prior2YearInstant_RetainedEarningsIFRSMember"
+    ],
+    "v": {
+     "流動資産": 302554000000.0,
+     "負債合計": 11558898000000.0,
+     "資産合計": 16356544000000.0,
+     "純資産": 4797646000000.0
+    }
+   },
+   {
+    "dtype": "160",
+    "why": "連結と個別が混在",
+    "ctx": [
+     "InterimInstant",
+     "Prior1InterimInstant_CapitalStockMember",
+     "Prior1InterimInstant_CapitalSurplusMember",
+     "Prior1InterimInstant_RetainedEarningsMember",
+     "Prior1InterimInstant_ShareholdersEquityMember",
+     "Prior1InterimInstant_TreasuryStockMember",
+     "Prior1YearInstant",
+     "Prior2YearInstant_CapitalStockMember"
+    ],
+    "v": {
+     "流動資産": 2554481000000.0,
+     "負債合計": 290601655000000.0,
+     "資産合計": 305905915000000.0,
+     "純資産": 15304259000000.0
+    }
+   }
+  ],
+  "err": {
+   "zip:BadZipFile": 2
+  }
+ },
+ "kiyohara": {
+  "universe": 4119,
+  "passed": 22,
+  "shown": 22,
+  "sure": 0,
+  "likely": 0,
+  "no_div": 0,
+  "with_real": 20,
+  "real_ge1": 13,
+  "real_near": 7,
+  "bands": {
+   "real_ge1": 12,
+   "real_near": 8,
+   "real_lo": 0,
+   "sure": 0,
+   "likely": 0,
+   "maybe": 0,
+   "thin": 2,
+   "unknown": 0
+  },
+  "dropped": {
+   "PER>8倍": 2393,
+   "財務が引けない": 354,
+   "売買代金が薄い": 734,
+   "PBR>0.8倍": 96,
+   "流動資産≤負債合計(実測)": 34,
+   "予想PERが出ない(赤字予想)": 283,
+   "ネットキャッシュ比率<0.8(実測)": 21,
+   "時価総額>500億円": 16,
+   "銀行・金融（式が成立しない）": 162,
+   "本業が赤字": 4
+  }
+ },
+ "fund_raw": {
+  "n_bps": 4056,
+  "n_feps": 3880,
+  "n_eq": 4125,
+  "n_ta": 4125,
+  "n_cash": 4087,
+  "n_sh": 4123,
+  "n_op": 4010,
+  "n_div": 4044,
+  "n_codes": 4125
+ },
+ "fund": {
+  "asof_latest_disclosure": "2026-07-03",
+  "pool": 1690,
+  "n_codes": 1613,
+  "coverage": {
+   "has": 1613,
+   "value": 1613,
+   "ep": 1540,
+   "bp": 1608,
+   "netcash": 1610,
+   "kiyohara": 1613,
+   "payout": 1612,
+   "quality": 1613,
+   "moat": 1508,
+   "revision": 1250,
+   "growth": 1582,
+   "ky_grow": 1613
+  },
+  "jq": {
+   "dates_asked": 523,
+   "dates_with_data": 484,
+   "rows": 37633,
+   "codes": 4129,
+   "req": 523,
+   "n429": 0,
+   "blocked": null,
+   "resp_key": "data",
+   "err": {
+    "HTTP 400": 3
+   }
+  },
   "holdings_added": 2
  },
  "earnings_hist": {
@@ -176,7 +419,9 @@
    "予定日=今後40営業日": 2
   },
   "used": "予定日=今後40営業日",
-  "http_err": null,
+  "http_err": {
+   "HTTP 400": 3
+  },
   "sample_keys": [
    "CoName",
    "CoNameEn",
@@ -194,17 +439,17 @@
  },
  "cand_earnings": {
   "asked": 20,
-  "ok": 6,
+  "ok": 5,
   "from_jquants": 0,
   "from_jpx": 0,
-  "from_yf": 6,
+  "from_yf": 5,
   "recent": 0,
   "estimate": 0,
-  "unknown": 14,
+  "unknown": 15,
   "error": 0
  },
- "signals_appended": false,
- "skip_reason": "場中（11:46 JST）のため当日足が未確定",
+ "signals_appended": true,
+ "signals_bar": "2026-09-28",
  "backtest_status": {
   "file_exists": true,
   "age_days": 1,
@@ -214,7 +459,7 @@
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "場中（11:46 JST）",
+ "backtest_skipped": "前回から1日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 7,
   "open": 38,
@@ -261,12 +506,12 @@
   }
  },
  "regime": {
-  "px": 430.7999877929688,
-  "vs200": 9.95,
-  "vs25": 1.03,
+  "px": 428.2000122070313,
+  "vs200": 9.29,
+  "vs25": 0.44,
   "above200": true,
-  "breadth": "10/17",
-  "breadth_pct": 59.0,
+  "breadth": "7/17",
+  "breadth_pct": 41.0,
   "b_suggest": 0.7
  },
  "swing_gate": {
