@@ -4508,6 +4508,8 @@ def _koichi_trades(ctx, spec):
                 rs = RSI[r, lo - 1:i + 1]
                 if not (rs[-1] >= 30): continue
                 if not np.any((rs[:-1] < 30) & (rs[1:] >= 30)): continue
+            rmax = spec.get("rsi_max")
+            if rmax is not None and not (RSI[r, i] < rmax): continue   # 買われすぎの日は買わない
             z = spec.get("zone", "any")
             if z == "below" and not (macd[r, i] < 0): continue
             if z == "above" and not (macd[r, i] > 0): continue
@@ -4561,6 +4563,7 @@ def koichi_rule_text(spec):
     """規則を日本語1行に。"""
     buy = ["日足MACDのGC" + {"any": "", "below": "（0より下）", "above": "（0より上）"}[spec.get("zone", "any")]]
     if spec.get("rsi"): buy.append("RSIが30を上抜け(10日以内)")
+    if spec.get("rsi_max") is not None: buy.append(f"RSI<{spec['rsi_max']:g}")
     if spec.get("trend"): buy.append("200日線の上で上向き")
     if spec.get("sector"): buy.append("業種が強い")
     sell = (["日足MACDのDC"] if spec.get("dc") else []) + [f"トレーリング（最高値−{spec['trail']:g}ATR）"]
@@ -4665,6 +4668,66 @@ def koichi_grid(ctx):
             "oos_from": str(ctx["cal"][split].date()), "oos_to": str(ctx["cal"][n - 1].date()),
             "top": ok[:5], "base": base, "effects": effects,
             "oos_rank_of_is_top": _rank_in(rows, ok[:5])}
+
+# ══ 設定値の探索（2026-09-29 本人依頼・第2版）════════════════════════════
+#  本人の決定: RSIは「買われすぎの時に買わない」ために使う（30上抜けの条件は外す）。
+#  前提（固定）: 日足MACDのGC ＋ 200日線の上で上向き（前回、前半・後半とも効いた唯一の条件）。
+#  探す設定（結果を見る前に固定。見てから増やさない）:
+#    RSIの上限   なし・80・75・70・65・60（この値以上なら買わない）      6
+#    業種の強さ  入れる・入れない（前回は前半と後半で逆向き）            2
+#    DCで降りる  する・しない                                            2
+#    トレーリング 2・2.5・3・4 ATR                                      4   → 96通り
+#  前回と同じく前半60%で順位 → 上位を後半でそのまま測る。加えて「設定ごとの平均」を
+#  前半・後半で並べ、1点だけ良いのか、その周りも良いのか（山がなだらかか）を見る。
+#  ★暦日ポートフォリオは建玉を等ウェイトで平均するので、信号が多すぎて全部は買えなくても、
+#    その中から偶然に数銘柄を選んだ場合の「期待値」に当たる（選び方の上乗せは含まない）。
+KOICHI_G2_RSI = (None, 80, 75, 70, 65, 60)
+KOICHI_G2_TRAIL = (2.0, 2.5, 3.0, 4.0)
+_KOICHI_GRID2 = {}
+
+def koichi_grid2(ctx):
+    import itertools
+    if ctx is None: return {"error": "データが足りない"}
+    n = ctx["n"]; start = ctx["start"]
+    split = start + int((n - start) * KOICHI_GRID_SPLIT)
+    keep = ("n_trades", "per_month", "win_pct", "avg_ret_pct", "med_ret_pct", "avg_bars",
+            "avg_open", "ann_diff_pct", "t_nw", "exit_mix")
+    rows = []
+    for rmax, sector, dc, trail in itertools.product(KOICHI_G2_RSI, (True, False), (True, False), KOICHI_G2_TRAIL):
+        spec = {"rsi": False, "trend": True, "sector": sector, "zone": "any",
+                "rsi_max": rmax, "dc": dc, "trail": trail}
+        tr = _koichi_trades(ctx, spec)
+        a = _koichi_stats(ctx, tr, start, split); b = _koichi_stats(ctx, tr, split, n)
+        full = _koichi_stats(ctx, tr, start, n)
+        rows.append({"spec": spec, "rule": koichi_rule_text(spec),
+                     "is": {k: a.get(k) for k in keep}, "oos": {k: b.get(k) for k in keep},
+                     "all": {k: full.get(k) for k in keep}})
+    ok = [r for r in rows if (r["is"].get("per_month") or 0) >= KOICHI_GRID_MIN_PM
+          and r["is"].get("t_nw") is not None]
+    ok.sort(key=lambda r: -r["is"]["t_nw"])
+    for k, r in enumerate(ok): r["rank_is"] = k + 1
+    # 設定ごとの平均（その値を持つ全組み合わせの平均）
+    def _lvl(key, vals):
+        out = []
+        for v in vals:
+            grp = [r for r in rows if r["spec"][key] == v]
+            d = {"value": v}
+            for half in ("is", "oos"):
+                xs = [r[half]["ann_diff_pct"] for r in grp if r[half].get("ann_diff_pct") is not None]
+                ts = [r[half]["t_nw"] for r in grp if r[half].get("t_nw") is not None]
+                d[half] = {"avg_ann_diff": round(sum(xs) / len(xs), 2) if xs else None,
+                           "avg_t": round(sum(ts) / len(ts), 2) if ts else None}
+            out.append(d)
+        return out
+    levels = {"rsi_max": _lvl("rsi_max", KOICHI_G2_RSI), "sector": _lvl("sector", (True, False)),
+              "dc": _lvl("dc", (True, False)), "trail": _lvl("trail", KOICHI_G2_TRAIL)}
+    oo = sorted([r for r in rows if r["oos"].get("t_nw") is not None], key=lambda r: -r["oos"]["t_nw"])
+    pos = {id(r): k + 1 for k, r in enumerate(oo)}
+    return {"n_tried": len(rows), "n_ranked": len(ok),
+            "is_from": str(ctx["cal"][start].date()), "is_to": str(ctx["cal"][split - 1].date()),
+            "oos_from": str(ctx["cal"][split].date()), "oos_to": str(ctx["cal"][n - 1].date()),
+            "top": ok[:5], "levels": levels,
+            "oos_rank_of_is_top": [pos.get(id(r)) for r in ok[:5]]}
 
 def run_backtest(codes, bench="1306.T"):
     """過去2年で、順位付けに情報があるかを母集団の全銘柄平均と比べる。
@@ -4807,15 +4870,16 @@ def run_backtest(codes, bench="1306.T"):
     except Exception as e:
         _KOICHI["error"] = f"{type(e).__name__}: {e}"[:160]
         meta["errors"].append(f"koichi bt: {type(e).__name__}")
-    _KOICHI_GRID.clear()
+    _KOICHI_GRID.clear(); _KOICHI_GRID2.clear()
     try:
         import time as _t; _t0 = _t.time()
-        _KOICHI_GRID.update(koichi_grid(_kctx))
+        # 第1版（72通り）は 2026-09-29 に1回測って結果を引継に記録済み。以後は第2版だけを回す。
+        _KOICHI_GRID2.update(koichi_grid2(_kctx))
         _kctx = None
-        print(f"[検証] 本人の手順の組み合わせ {_KOICHI_GRID.get('n_tried')}通り（{_t.time() - _t0:.0f}秒）")
+        print(f"[検証] 本人の手順の設定値 {_KOICHI_GRID2.get('n_tried')}通り（{_t.time() - _t0:.0f}秒）")
     except Exception as e:
-        _KOICHI_GRID["error"] = f"{type(e).__name__}: {e}"[:160]
-        meta["errors"].append(f"koichi grid: {type(e).__name__}")
+        _KOICHI_GRID2["error"] = f"{type(e).__name__}: {e}"[:160]
+        meta["errors"].append(f"koichi grid2: {type(e).__name__}")
 
     trades = {k: [] for k in BT_FACTORS + BT_FACTORS_LIQ
               + ("pool", "pool_f", "pool_liq")}
@@ -6516,7 +6580,7 @@ try:
                         "feps_rule": "latest-forecast-row-v1",
                         # ★成長を条件から外し、還元の体力（予想利益≥予想配当）を課した（2026-09-26）
                         "growth_rule": "capacity-v1",
-                        "koichi": "v2-daily-macd-trail", "koichi_grid": "v1-72-split60",
+                        "koichi": "v2-daily-macd-trail", "koichi_grid": "v2-96-rsimax-split60",
                         # ★運用中の手順と暦日ポートフォリオ法（2026-09-25）
                         "swing_rule": f"{SWING_FACTOR}|{SWING_EXIT}|{SWING_HOLD}",
                         "calendar": "ct-v1",
@@ -6596,7 +6660,7 @@ try:
                                        for _e, _h in CT_RULES},
                           "calendar_rules": [f"{_e}|{_h}" for _e, _h in CT_RULES],
                           # 本人の手順（事前登録・2026-09-28）。門には使わない（研究用）
-                          "koichi": dict(_KOICHI), "koichi_grid": dict(_KOICHI_GRID),
+                          "koichi": dict(_KOICHI), "koichi_grid": dict(_KOICHI_GRID), "koichi_grid2": dict(_KOICHI_GRID2),
                           "regime": {"above200": bt_summary(tk, 25, True),
                                      "below200": bt_summary(tk, 25, False)},
                           # ★市場の広がりで分けた集計。局面で符号が反転する
@@ -7880,6 +7944,48 @@ try:
                         same = "○" if (a["avg_ann_diff"] > 0) == (o["avg_ann_diff"] > 0) else "×"
                         L.append(f"| {lab} | {a['avg_ann_diff']:+.1f}%（{a['pos_share']}%） | "
                                  f"{o['avg_ann_diff']:+.1f}%（{o['pos_share']}%） | {same} |")
+
+        _k2 = bt.get("koichi_grid2") or {}
+        if _k2.get("top") or _k2.get("error"):
+            L.append("\n**本人の手順の設定値（MACDのGC＋200日線の上で上向き／RSIは買われすぎを避ける）**\n")
+            if _k2.get("error"):
+                L.append(f"> 測れなかった: {_k2['error']}")
+            else:
+                def _g2(x, fmt):
+                    return (fmt % x) if isinstance(x, (int, float)) else "—"
+                L.append(f"> {_k2.get('n_tried')}通り（RSIの上限×業種×DC×トレーリング幅）。前半 {_k2.get('is_from')}〜{_k2.get('is_to')} で順位、"
+                         f"後半 {_k2.get('oos_from')}〜{_k2.get('oos_to')} はそのまま測った。差は全銘柄の等ウェイト平均との年率換算の差。"
+                         "建玉の等ウェイト平均なので、信号から数銘柄だけ選んだ場合の期待値に当たる（選び方の上乗せは含まない）。")
+                L.append("")
+                L.append("| 前半の順位 | 規則 | 前半 月あたり | 前半 差 | 前半 t | 後半 件数 | 後半 勝率 | 後半 差 | 後半 t | 平均保有 | 同時保有 |")
+                L.append("|--:|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|")
+                for r in _k2.get("top") or []:
+                    a, o = r.get("is") or {}, r.get("oos") or {}
+                    L.append(f"| {r.get('rank_is', '—')} | {r.get('rule', '')} | {_g2(a.get('per_month'), '%.1f')} | "
+                             f"{_g2(a.get('ann_diff_pct'), '%+.1f%%')} | {_g2(a.get('t_nw'), '%+.2f')} | "
+                             f"{o.get('n_trades', 0):,} | {_g2(o.get('win_pct'), '%.1f%%')} | "
+                             f"{_g2(o.get('ann_diff_pct'), '%+.1f%%')} | {_g2(o.get('t_nw'), '%+.2f')} | "
+                             f"{_g2(o.get('avg_bars'), '%.0f日')} | {_g2(o.get('avg_open'), '%.0f')} |")
+                _rk = _k2.get("oos_rank_of_is_top") or []
+                if _rk:
+                    L.append(f"\n> 前半の上位5つは、後半では{_k2.get('n_tried')}通り中 "
+                             + "・".join(str(x) if x else "—" for x in _rk) + " 位。")
+                _lv = _k2.get("levels") or {}
+                _nm = {"rsi_max": "RSIの上限", "sector": "業種の強さ", "dc": "DCで降りる", "trail": "トレーリング幅"}
+                def _vv(k, v):
+                    if k == "rsi_max": return "なし" if v is None else f"{v:g}未満"
+                    if k in ("sector", "dc"): return "入れる" if v else "入れない"
+                    return f"{v:g}ATR"
+                if _lv:
+                    L.append("\n設定ごとの平均（その値を持つ全組み合わせの平均。前半・後半で同じ値が良ければ、偶然ではない見込みが高い）\n")
+                    L.append("| 設定 | 値 | 前半 差 | 前半 t | 後半 差 | 後半 t |")
+                    L.append("|---|---|--:|--:|--:|--:|")
+                    for k, lab in _nm.items():
+                        for d in _lv.get(k) or []:
+                            a, o = d.get("is") or {}, d.get("oos") or {}
+                            L.append(f"| {lab} | {_vv(k, d.get('value'))} | {_g2(a.get('avg_ann_diff'), '%+.1f%%')} | "
+                                     f"{_g2(a.get('avg_t'), '%+.2f')} | {_g2(o.get('avg_ann_diff'), '%+.1f%%')} | "
+                                     f"{_g2(o.get('avg_t'), '%+.2f')} |")
 
         rg = bt.get("regime", {})
         if rg.get("above200") and rg.get("below200"):
