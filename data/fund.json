@@ -1,7 +1,7 @@
 {
- "generated_at_jst": "2026-09-29T18:30:52.059389+09:00",
+ "generated_at_jst": "2026-09-30T08:51:46.825256+09:00",
  "asof_latest_disclosure": "2026-07-03",
- "pool": 1745,
+ "pool": 1746,
  "n_codes": 1664,
  "span_days": 730,
  "note": "断面のパーセンタイル（0〜100、大きいほど上位）のみを収録する。母集団は当日スクリーニングを通過した銘柄。J-Quantsの生の財務数値は利用条件により公開できないため含まない。",
@@ -33,16 +33,16 @@
  },
  "used_in_score": false,
  "jq": {
-  "dates_asked": 522,
+  "dates_asked": 521,
   "dates_with_data": 484,
   "rows": 37633,
   "codes": 4129,
-  "req": 522,
+  "req": 521,
   "n429": 0,
   "blocked": null,
   "resp_key": "data",
   "err": {
-   "HTTP 400": 2
+   "HTTP 400": 1
   }
  },
  "pct": {
