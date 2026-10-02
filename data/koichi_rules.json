@@ -1,0 +1,30 @@
+{
+ "champion": {
+  "id": "k32ecdd",
+  "spec": {
+   "trend": "200up",
+   "rsi_max": 70,
+   "adx_min": null,
+   "volr_min": null,
+   "zone": "any",
+   "near_high": null,
+   "dev25_max": null,
+   "dc": false,
+   "trail": 4.0,
+   "maxhold": 120
+  },
+  "since": "2026-10-02",
+  "why": "2026-10-01 の96通りの前半1位。本人が採用を決定"
+ },
+ "history": [],
+ "evals": [
+  {
+   "date": "2026-10-02",
+   "champion": "k32ecdd",
+   "tried": 20,
+   "passed": 0,
+   "promoted": null,
+   "cooldown_left": 0
+  }
+ ]
+}
