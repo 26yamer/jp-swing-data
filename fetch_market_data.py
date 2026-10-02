@@ -4420,6 +4420,9 @@ def _koichi_ctx(feats, cal, s17_of=None):
     if n < 300 or len(codes) < 50: return None
     X = {k: np.vstack([feats[c][k] for c in codes])
          for k in ("close", "open", "low", "high", "atr", "rsi", "ma200", "turn", "macd", "macd_sig")}
+    # 進化の部品（無い特徴量は NaN で埋める＝その条件は常に不成立。古い feats でも落ちない）
+    for k in ("ma75", "adx", "volr", "hi60", "dev25"):
+        X[k] = np.vstack([np.asarray(feats[c].get(k, np.full(n, np.nan)), float) for c in codes])
     C, A, TURN = X["close"], X["atr"], X["turn"]
     with np.errstate(invalid="ignore", divide="ignore"):
         R1 = C[:, 1:] / C[:, :-1] - 1.0
@@ -4460,6 +4463,7 @@ def _koichi_ctx(feats, cal, s17_of=None):
     pool_ret = np.r_[np.nan, pool_ret]
     return {"codes": codes, "n": n, "cal": cal, "C": C, "O": X["open"], "L": X["low"], "H": X["high"],
             "A": A, "RSI": X["rsi"], "MA200": X["ma200"], "macd": macd, "ELIG": ELIG,
+            "MA75": X["ma75"], "ADX": X["adx"], "VOLR": X["volr"], "HI60": X["hi60"], "DEV25": X["dev25"],
             "gc_d": gc_d, "dc_d": dc_d, "sec_ok": sec_ok, "pool_ret": pool_ret,
             "start": max(BT_WARMUP, 220), "_exit_cache": {}}
 
@@ -4468,14 +4472,15 @@ def _koichi_ctx(feats, cal, s17_of=None):
 # dc は日足MACDのDCで降りるか、trail はトレーリングの幅（ATRの何倍）。
 KOICHI_BASE = {"rsi": True, "trend": True, "sector": True, "zone": "any", "dc": True, "trail": 3.0}
 
-def _koichi_exit(ctx, r, i, dc, trail):
+def _koichi_exit(ctx, r, i, dc, trail, maxhold=None):
     """i日の終値で建てた建玉の決着（何日目に・いくらで・何で）。同じ建玉は使い回す。"""
-    key = (r, i, dc, trail); ec = ctx["_exit_cache"]
+    maxhold = int(maxhold or KOICHI_MAXHOLD)
+    key = (r, i, dc, trail, maxhold); ec = ctx["_exit_cache"]
     if key in ec: return ec[key]
     C, O, L, H, dc_d, n = ctx["C"], ctx["O"], ctx["L"], ctx["H"], ctx["dc_d"], ctx["n"]
     c = C[r, i]; atr = ctx["A"][r, i]
     exit_k = None; fill = None; how = "timeout"; runmax = c
-    for k in range(i + 1, min(i + 1 + KOICHI_MAXHOLD, n)):
+    for k in range(i + 1, min(i + 1 + maxhold, n)):
         # ★トレーリング水準は前日までの最高値で決める（当日の高値を見てから安値を判定しない）
         lvl = max(runmax, c) - trail * atr
         if L[r, k] <= lvl:
@@ -4485,36 +4490,58 @@ def _koichi_exit(ctx, r, i, dc, trail):
             exit_k, fill, how = k, C[r, k], "macd_dc"; break
         if H[r, k] == H[r, k] and H[r, k] > runmax: runmax = H[r, k]
     if exit_k is None:
-        exit_k = min(i + KOICHI_MAXHOLD, n - 1); fill = C[r, exit_k]
+        exit_k = min(i + maxhold, n - 1); fill = C[r, exit_k]
     ec[key] = (exit_k, fill, how)
     return ec[key]
+
+def _kq_trend(spec):
+    t = spec.get("trend")
+    if t is True: return "200up"
+    if t in (False, None): return "none"
+    return str(t)
+
+def _kq_entry_ok(X, r, i, spec):
+    """GC が起きた日 i に、銘柄 r が規則 spec の買いの条件（GC以外）を満たすか。
+       ★過去検証と毎日の候補で**同じ関数**を使う（X は ctx でも、1銘柄の行列でもよい）。
+       見るのは i 日までの値だけ。"""
+    import numpy as np
+    C, RSI = X["C"], X["RSI"]
+    c = C[r, i]
+    tr = _kq_trend(spec)
+    if tr != "none":
+        m200 = X["MA200"][r, i]
+        if not (c > m200): return False
+        if tr == "200up" and not (m200 > X["MA200"][r, i - 20]): return False
+        if tr == "75_200" and not (X["MA75"][r, i] > m200): return False
+    if spec.get("rsi"):
+        lo = max(1, i - KOICHI_RSI_WIN + 1)
+        rs = RSI[r, lo - 1:i + 1]
+        if not (rs[-1] >= 30): return False
+        if not np.any((rs[:-1] < 30) & (rs[1:] >= 30)): return False
+    rmax = spec.get("rsi_max")
+    if rmax is not None and not (RSI[r, i] < rmax): return False   # 買われすぎの日は買わない
+    z = spec.get("zone", "any")
+    if z == "below" and not (X["macd"][r, i] < 0): return False
+    if z == "above" and not (X["macd"][r, i] > 0): return False
+    if spec.get("adx_min") is not None and not (X["ADX"][r, i] >= spec["adx_min"]): return False
+    if spec.get("volr_min") is not None and not (X["VOLR"][r, i] >= spec["volr_min"]): return False
+    if spec.get("near_high") is not None and not (c >= spec["near_high"] * X["HI60"][r, i]): return False
+    if spec.get("dev25_max") is not None and not (X["DEV25"][r, i] < spec["dev25_max"]): return False
+    if not (X["A"][r, i] > 0): return False
+    return True
 
 def _koichi_trades(ctx, spec):
     """規則 spec で全期間の建玉を作る（同じ銘柄は決着するまで重ねない）。"""
     import numpy as np
-    C, RSI, MA200, macd = ctx["C"], ctx["RSI"], ctx["MA200"], ctx["macd"]
     n = ctx["n"]; busy = np.full(len(ctx["codes"]), -1); trades = []
     base = ctx["ELIG"] & ctx["gc_d"]
     if spec.get("sector"): base = base & ctx["sec_ok"]
+    mh = int(spec.get("maxhold") or KOICHI_MAXHOLD)
     for i in range(ctx["start"], n - 1):
         cand = np.flatnonzero(base[:, i] & (busy < i))
         for r in cand:
-            c = C[r, i]
-            if spec.get("trend"):
-                m200 = MA200[r, i]; m200p = MA200[r, i - 20]
-                if not (c > m200 and m200 > m200p): continue
-            if spec.get("rsi"):
-                lo = max(1, i - KOICHI_RSI_WIN + 1)
-                rs = RSI[r, lo - 1:i + 1]
-                if not (rs[-1] >= 30): continue
-                if not np.any((rs[:-1] < 30) & (rs[1:] >= 30)): continue
-            rmax = spec.get("rsi_max")
-            if rmax is not None and not (RSI[r, i] < rmax): continue   # 買われすぎの日は買わない
-            z = spec.get("zone", "any")
-            if z == "below" and not (macd[r, i] < 0): continue
-            if z == "above" and not (macd[r, i] > 0): continue
-            if not (ctx["A"][r, i] > 0): continue
-            exit_k, fill, how = _koichi_exit(ctx, r, i, bool(spec.get("dc")), float(spec["trail"]))
+            if not _kq_entry_ok(ctx, r, i, spec): continue
+            exit_k, fill, how = _koichi_exit(ctx, r, i, bool(spec.get("dc")), float(spec["trail"]), mh)
             trades.append((r, i, exit_k, fill, how))
             busy[r] = exit_k
     return trades
@@ -4564,10 +4591,17 @@ def koichi_rule_text(spec):
     buy = ["日足MACDのGC" + {"any": "", "below": "（0より下）", "above": "（0より上）"}[spec.get("zone", "any")]]
     if spec.get("rsi"): buy.append("RSIが30を上抜け(10日以内)")
     if spec.get("rsi_max") is not None: buy.append(f"RSI<{spec['rsi_max']:g}")
-    if spec.get("trend"): buy.append("200日線の上で上向き")
+    buy.append({"200up": "200日線の上で上向き", "200": "200日線の上", "75_200": "200日線の上で75日線>200日線",
+                "none": None}[_kq_trend(spec)] or "")
     if spec.get("sector"): buy.append("業種が強い")
+    if spec.get("adx_min") is not None: buy.append(f"ADX≥{spec['adx_min']:g}")
+    if spec.get("volr_min") is not None: buy.append(f"出来高が20日平均の{spec['volr_min']:g}倍以上")
+    if spec.get("near_high") is not None: buy.append(f"60日高値の{spec['near_high']*100:.0f}%以上")
+    if spec.get("dev25_max") is not None: buy.append(f"25日線乖離<{spec['dev25_max']:g}%")
+    buy = [b for b in buy if b]
     sell = (["日足MACDのDC"] if spec.get("dc") else []) + [f"トレーリング（最高値−{spec['trail']:g}ATR）"]
-    return "＋".join(buy) + "／" + "か".join(sell) + "で降りる"
+    mh = spec.get("maxhold")
+    return "＋".join(buy) + "／" + "か".join(sell) + "で降りる" + (f"（最長{mh}日）" if mh else "")
 
 def koichi_backtest(feats, cal, s17_of=None, ctx=None):
     """本人の手順を、実際の値動きで1回だけ測る（上の事前登録どおり）。
@@ -4729,6 +4763,180 @@ def koichi_grid2(ctx):
             "top": ok[:5], "levels": levels,
             "oos_rank_of_is_top": [pos.get(id(r)) for r in ok[:5]]}
 
+# ══ 本人の手順を進化させる仕組み（2026-10-02 本人依頼）══════════════════════
+#  本人:「この条件にこだわるつもりはない。条件を足したり引いたりして、より良い条件を探しつつ
+#        進化させる仕組みを」。
+#  ■ 仕組み
+#   ・いま使う規則＝「現役」。data/koichi_rules.json に、いつから・なぜ現役かと、歴代の現役を残す。
+#   ・過去検証を作り直すたび（月1回）に、現役から**部品を1つだけ変えた規則**（足す・引く・値を変える）を
+#     全部測る（下の部品表で約20通り）。1回に動くのは1歩だけ＝少しずつ進化する。
+#   ・昇格の条件（すべて満たしたものの中で、前半と後半の t の小さいほうが最も大きいもの）:
+#       ① 前半・後半の**両方で**現役より成績（全銘柄平均との年率差）が良い
+#       ② 全期間の t が現役より KOICHI_PROMO_T_MARGIN 以上高い（誤差の上下で入れ替わらない）
+#       ③ 月 KOICHI_MIN_PM 件以上の候補が出る（選べるだけの数がある）
+#       ④ 前回の入れ替えから KOICHI_PROMO_COOLDOWN 日以上たっている（同じ過去で何度も選び直さない）
+#   ・毎日の候補と台帳（data/koichi_signals.csv）は、その日の現役で出す。台帳の行には規則の番号を
+#     付けるので、規則ごとに「実際に出た候補の、その後の成績」が積み上がる（これだけは過去の当てはめでない）。
+#  ■ 守ること
+#   ・部品表はここに固定。部品を増やすのはコードの変更で行い、引継に記録する（結果を見てこっそり増やさない）。
+#   ・同じ過去を毎月見直すので、過去の成績はだんだん楽観的になる。最後の判断は台帳（前向きの成績）で行う。
+#   ・業種の強さは部品に入れない（2回とも前半と後半で逆向き。毎日の候補で同じ計算ができない）。
+KOICHI_GENES = {
+    "trend":     ("none", "200", "200up", "75_200"),
+    "rsi_max":   (None, 80, 70, 60),
+    "adx_min":   (None, 20, 25),
+    "volr_min":  (None, 1.2, 1.5),
+    "zone":      ("any", "below", "above"),
+    "near_high": (None, 0.9),
+    "dev25_max": (None, 10.0),
+    "dc":        (False, True),
+    "trail":     (2.0, 2.5, 3.0, 4.0, 5.0),
+    "maxhold":   (60, 120),
+}
+# 2026-10-01 の96通りの前半1位（本人が採用を決定）
+KOICHI_V3 = {"trend": "200up", "rsi_max": 70, "adx_min": None, "volr_min": None, "zone": "any",
+             "near_high": None, "dev25_max": None, "dc": False, "trail": 4.0, "maxhold": 120}
+KOICHI_RULES_PATH = "data/koichi_rules.json"   # OUT と同じ場所（切り出して試験できるよう文字で持つ）
+KOICHI_PROMO_T_MARGIN = 0.2
+KOICHI_MIN_PM = 5.0
+KOICHI_PROMO_COOLDOWN = 20
+_KOICHI_EVO = {}
+
+def kq_spec_id(spec):
+    """規則の番号（中身が同じなら同じ番号）。"""
+    import hashlib
+    full = {k: spec.get(k, KOICHI_V3.get(k)) for k in KOICHI_GENES}
+    return "k" + hashlib.sha1(json.dumps(full, sort_keys=True).encode()).hexdigest()[:6]
+
+def kq_full(spec):
+    return {k: spec.get(k, KOICHI_V3.get(k)) for k in KOICHI_GENES}
+
+def kq_neighbors(spec):
+    """部品を1つだけ変えた規則を全部（足す・引く・値を変える）。"""
+    sp = kq_full(spec); out = []
+    for g, vals in KOICHI_GENES.items():
+        for v in vals:
+            if v == sp[g]: continue
+            nb = dict(sp); nb[g] = v
+            out.append((g, v, nb))
+    return out
+
+def kq_registry_load(today=None):
+    """現役の規則と歴代。無ければ KOICHI_V3 を現役として始める。"""
+    today = str(today or NOW.date())
+    try:
+        if os.path.exists(KOICHI_RULES_PATH):
+            o = json.load(open(KOICHI_RULES_PATH, encoding="utf-8"))
+            if (o.get("champion") or {}).get("spec"):
+                return o
+    except Exception as e:
+        meta["errors"].append(f"koichi_rules read: {type(e).__name__}")
+    sp = kq_full(KOICHI_V3)
+    return {"champion": {"id": kq_spec_id(sp), "spec": sp, "since": today,
+                         "why": "2026-10-01 の96通りの前半1位。本人が採用を決定"},
+            "history": [], "evals": []}
+
+def kq_registry_save(reg):
+    try:
+        json.dump(json_safe(reg) if "json_safe" in globals() else reg,
+                  open(KOICHI_RULES_PATH, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    except Exception as e:
+        meta["errors"].append(f"koichi_rules write: {type(e).__name__}")
+
+def _kq_eval(ctx, spec):
+    n = ctx["n"]; start = ctx["start"]
+    split = start + int((n - start) * KOICHI_GRID_SPLIT)
+    tr = _koichi_trades(ctx, spec)
+    keep = ("n_trades", "per_month", "win_pct", "avg_ret_pct", "med_ret_pct", "avg_bars",
+            "avg_open", "ann_diff_pct", "t_nw", "n_days")
+    pick = lambda d: {k: d.get(k) for k in keep}
+    return {"is": pick(_koichi_stats(ctx, tr, start, split)),
+            "oos": pick(_koichi_stats(ctx, tr, split, n)),
+            "all": pick(_koichi_stats(ctx, tr, start, n))}
+
+def _kq_better(c, ch):
+    """昇格の条件①〜③。満たさない理由を返す（空なら合格）。"""
+    why = []
+    for h, lab in (("is", "前半"), ("oos", "後半")):
+        a, b = c[h].get("ann_diff_pct"), ch[h].get("ann_diff_pct")
+        if a is None or b is None or not (a > b): why.append(f"{lab}で現役以下")
+    ta, tb = c["all"].get("t_nw"), ch["all"].get("t_nw")
+    if ta is None or tb is None or ta < tb + KOICHI_PROMO_T_MARGIN:
+        why.append(f"全期間のtの上積みが{KOICHI_PROMO_T_MARGIN}未満")
+    if (c["all"].get("per_month") or 0) < KOICHI_MIN_PM:
+        why.append(f"候補が月{KOICHI_MIN_PM:g}件未満")
+    if (c["all"].get("n_days") or 0) < CT_MIN_DAYS:
+        why.append("建玉のある日が少ない")
+    return why
+
+def _kq_gene_label(g, v):
+    """「何を変えたか」を本人が読める言葉で。"""
+    if g == "trend":
+        return {"none": "200日線の条件を外す", "200": "200日線は「上にある」だけにする",
+                "200up": "200日線の上で上向きにする", "75_200": "200日線の上で75日線>200日線にする"}.get(v, f"トレンド={v}")
+    if g == "zone":
+        return {"any": "GCの位置を問わない", "below": "GCを0より下に限る", "above": "GCを0より上に限る"}.get(v, f"GC={v}")
+    if g == "dc":
+        return "MACDのDCでも降りる" if v else "MACDのDCでは降りない"
+    if g == "rsi_max":
+        return "RSIの上限を外す" if v is None else f"RSI<{v:g} にする"
+    if g == "adx_min":
+        return "ADXの条件を外す" if v is None else f"ADX≥{v:g} を足す"
+    if g == "volr_min":
+        return "出来高の条件を外す" if v is None else f"出来高が20日平均の{v:g}倍以上を足す"
+    if g == "near_high":
+        return "高値圏の条件を外す" if v is None else f"60日高値の{v*100:.0f}%以上を足す"
+    if g == "dev25_max":
+        return "25日線乖離の条件を外す" if v is None else f"25日線乖離<{v:g}% を足す"
+    if g == "trail":
+        return f"トレーリング幅を{v:g}ATRに"
+    if g == "maxhold":
+        return f"最長保有を{v}日に"
+    return f"{g}={v}"
+
+def koichi_evolve(ctx, reg, today=None):
+    """現役と、部品を1つ変えた挑戦者を全部測り、条件を満たせば1つだけ入れ替える。"""
+    today = str(today or NOW.date())
+    if ctx is None: return {"error": "データが足りない"}, reg
+    ch = reg["champion"]; chs = kq_full(ch["spec"])
+    ch_res = _kq_eval(ctx, chs)
+    rows = []
+    for g, v, nb in kq_neighbors(chs):
+        r = _kq_eval(ctx, nb)
+        why = _kq_better(r, ch_res)
+        mt = min([x for x in (r["is"].get("t_nw"), r["oos"].get("t_nw")) if x is not None] or [None]) \
+            if (r["is"].get("t_nw") is not None and r["oos"].get("t_nw") is not None) else None
+        rows.append({"gene": g, "value": v, "id": kq_spec_id(nb), "spec": nb, "rule": koichi_rule_text(nb),
+                     "res": r, "fail": why, "min_t": mt})
+    ok = [r for r in rows if not r["fail"] and r["min_t"] is not None]
+    ok.sort(key=lambda r: -r["min_t"])
+    try:
+        age = (dt.date.fromisoformat(today) - dt.date.fromisoformat(str(ch.get("since"))[:10])).days
+    except Exception:
+        age = 999
+    promoted = None
+    if ok and age >= KOICHI_PROMO_COOLDOWN:
+        w = ok[0]
+        reg.setdefault("history", []).append(dict(ch, until=today, bt=ch_res["all"]))
+        reg["champion"] = {"id": w["id"], "spec": w["spec"], "since": today,
+                           "why": f"{_kq_gene_label(w['gene'], w['value'])}。前半・後半とも現役より良く、"
+                                  f"全期間 t {ch_res['all'].get('t_nw')}→{w['res']['all'].get('t_nw')}",
+                           "from": ch["id"]}
+        promoted = w
+    reg.setdefault("evals", []).append({"date": today, "champion": ch["id"], "tried": len(rows),
+                                        "passed": len(ok), "promoted": promoted["id"] if promoted else None,
+                                        "cooldown_left": max(0, KOICHI_PROMO_COOLDOWN - age) if ok and not promoted else 0})
+    reg["evals"] = reg["evals"][-24:]
+    rows.sort(key=lambda r: -(r["res"]["all"].get("t_nw") if r["res"]["all"].get("t_nw") is not None else -99))
+    summ = {"date": today, "champion_before": {"id": ch["id"], "rule": koichi_rule_text(chs), "res": ch_res,
+                                               "since": ch.get("since")},
+            "tried": len(rows), "passed": [r["id"] for r in ok],
+            "promoted": ({"id": promoted["id"], "rule": promoted["rule"], "res": promoted["res"],
+                          "gene": promoted["gene"]} if promoted else None),
+            "cooldown_left": (max(0, KOICHI_PROMO_COOLDOWN - age) if ok and not promoted else 0),
+            "top": [{k: r[k] for k in ("gene", "value", "id", "rule", "res", "fail", "min_t")} for r in rows[:8]]}
+    return summ, reg
+
 def run_backtest(codes, bench="1306.T"):
     """過去2年で、順位付けに情報があるかを母集団の全銘柄平均と比べる。
 
@@ -4873,13 +5081,17 @@ def run_backtest(codes, bench="1306.T"):
     _KOICHI_GRID.clear(); _KOICHI_GRID2.clear()
     try:
         import time as _t; _t0 = _t.time()
-        # 第1版（72通り）は 2026-09-29 に1回測って結果を引継に記録済み。以後は第2版だけを回す。
-        _KOICHI_GRID2.update(koichi_grid2(_kctx))
+        # 第1版（72通り・9/29）・第2版（96通り・10/1）は結果を引継に記録済み。以後は進化の仕組みだけを回す。
+        _reg = kq_registry_load()
+        _evo, _reg = koichi_evolve(_kctx, _reg)
+        _KOICHI_EVO.clear(); _KOICHI_EVO.update(_evo)
+        kq_registry_save(_reg)
         _kctx = None
-        print(f"[検証] 本人の手順の設定値 {_KOICHI_GRID2.get('n_tried')}通り（{_t.time() - _t0:.0f}秒）")
+        print(f"[検証] 本人の手順の進化: 挑戦者 {_evo.get('tried')}通り・条件を満たした {len(_evo.get('passed') or [])}"
+              f"・入れ替え {(_evo.get('promoted') or {}).get('id') or 'なし'}（{_t.time() - _t0:.0f}秒）")
     except Exception as e:
-        _KOICHI_GRID2["error"] = f"{type(e).__name__}: {e}"[:160]
-        meta["errors"].append(f"koichi grid2: {type(e).__name__}")
+        _KOICHI_EVO["error"] = f"{type(e).__name__}: {e}"[:160]
+        meta["errors"].append(f"koichi evo: {type(e).__name__}")
 
     trades = {k: [] for k in BT_FACTORS + BT_FACTORS_LIQ
               + ("pool", "pool_f", "pool_liq")}
@@ -5905,7 +6117,242 @@ def load_universe(master=None):
     meta["universe_source"] = "bruteforce" + ("(truncated)" if truncated else "")
     return found
 
-def screen_all(codes, sig=None, open_map=None):
+# ══ 本人の手順: 毎日の候補と前向きの台帳（2026-10-02）═══════════════════════
+#  ・候補は「現役の規則」をその日の日足に当てたもの。判定には過去検証と同じ関数（_kq_entry_ok）と
+#    同じ特徴量（bt_features）を使う。全銘柄の2年分を毎日は取れないので、
+#    6か月の日足で GC 付近の銘柄だけ先に拾い（KQ_PRE_TOL）、その銘柄だけ2年分を取り直して確かめる。
+#  ・大引け後の実行だけ台帳（data/koichi_signals.csv）に**全候補**を載せる。本人が選んだかどうかは
+#    positions.json の since（建てた日）と照らして付ける。比べる相手は同じ期間の 1306（TOPIX）。
+#  ・場中の実行の候補は前場までの値での**暫定**（大引けで崩れることがある）。台帳には載せない。
+KQ_SIG_PATH = "data/koichi_signals.csv"        # OUT と同じ場所
+KQ_COLS = ["date", "rule", "code", "name", "entry", "atr", "adjf", "trail", "maxhold", "dc", "stop0",
+           "bench_entry", "status", "exit_date", "exit", "ret_pct", "bench_ret_pct", "excess_pct",
+           "bars", "picked"]
+KQ_PRE_TOL = 0.05        # 6か月足での GC 付近の幅（ATRに対する比）。最終判定は2年分で取り直す
+KQ_PICK_DAYS = 7         # 候補の日から何日以内に建てていれば「本人が選んだ」とみなすか
+KQ_SHOW = 15
+_KQ_LIVE = {}
+_KQ_BENCH = {}
+
+def kq_load_signals():
+    try:
+        if os.path.exists(KQ_SIG_PATH):
+            d = pd.read_csv(KQ_SIG_PATH, dtype=str).fillna("")
+            for c in KQ_COLS:
+                if c not in d.columns: d[c] = ""
+            return d[KQ_COLS]
+    except Exception as e:
+        meta["errors"].append(f"koichi_signals read: {type(e).__name__}")
+    return pd.DataFrame(columns=KQ_COLS)
+
+def kq_open_map(sig):
+    out = {}
+    if sig is None or not len(sig): return out
+    for i, r in sig[sig["status"].isin(["", "open"])].iterrows():
+        out.setdefault(str(r["code"]), []).append(i)
+    return out
+
+def kq_settle(row, bars, bench=None, complete=True):
+    """候補の行の決着（その行を作った規則のトレーリング・DC・最長保有で）。bars は調整済みの日足。
+       ★場中は当日足を使わない（未確定の安値で決着させない）。"""
+    import numpy as np
+    try:
+        entry = float(row["entry"]); atr = float(row["atr"]); f0 = float(row.get("adjf") or 1.0)
+        trail = float(row["trail"]); mh = int(float(row["maxhold"]))
+        dc = str(row.get("dc")) in ("1", "True", "true")
+    except Exception:
+        return None
+    if not (f0 == f0 and f0 > 0): f0 = 1.0
+    b = bars
+    if not complete and len(b):
+        b = b[b.index.normalize() < pd.Timestamp(NOW.date())]
+    ea, aa = entry * f0, atr * f0
+    after = b[b.index > pd.Timestamp(row["date"])]
+    if not len(after): return None
+    if dc:
+        m, sg, _h = _macd(b["Close"].to_numpy(float))
+        hist = pd.Series(np.asarray(m) - np.asarray(sg), index=b.index)
+    runmax = ea
+    for n, (ts, x) in enumerate(after.iterrows(), start=1):
+        op = float(x["Open"]) if "Open" in x else float(x["Close"])
+        hi, lo, cl = float(x["High"]), float(x["Low"]), float(x["Close"])
+        lvl = max(runmax, ea) - trail * aa
+        fill = how = None
+        if lo <= lvl:
+            fill, how = (min(op, lvl) if op == op else lvl), "trail"
+        elif dc:
+            k = hist.index.get_loc(ts)
+            if k >= 1 and hist.iloc[k] < 0 <= hist.iloc[k - 1]:
+                fill, how = cl, "macd_dc"
+        if fill is None and n >= mh:
+            fill, how = cl, "timeout"
+        if fill is not None:
+            ret = fill / ea - 1
+            out = dict(status=how, exit_date=str(ts.date()), exit=round(fill / f0, 2),
+                       ret_pct=round(ret * 100, 2), bars=n)
+            try:
+                be = float(row.get("bench_entry") or "nan")
+                bx = float(bench.loc[:ts].iloc[-1]) if bench is not None and len(bench.loc[:ts]) else float("nan")
+                if be == be and bx == bx and be > 0:
+                    out["bench_ret_pct"] = round((bx / be - 1) * 100, 2)
+                    out["excess_pct"] = round((ret - (bx / be - 1)) * 100, 2)
+            except Exception:
+                pass
+            return out
+        if hi == hi and hi > runmax: runmax = hi
+    return None
+
+def kq_bench():
+    """1306（TOPIX連動ETF）の実際の終値。台帳の比べる相手。"""
+    if "s" in _KQ_BENCH: return _KQ_BENCH["s"]
+    try:
+        import yfinance as yf
+        d = yf.download("1306.T", period="1y", interval="1d", auto_adjust=False, progress=False)
+        if isinstance(d.columns, pd.MultiIndex): d.columns = d.columns.get_level_values(0)
+        s = d["Close"].dropna()
+        _KQ_BENCH["s"] = s if len(s) else None
+    except Exception as e:
+        meta["errors"].append(f"koichi bench: {type(e).__name__}")
+        _KQ_BENCH["s"] = None
+    return _KQ_BENCH["s"]
+
+def kq_pre(acl, a_adj):
+    """6か月の調整済み終値で、MACDが今日GCした付近か（最終判定は2年分で取り直す）。"""
+    import numpy as np
+    try:
+        m, sg, _h = _macd(np.asarray(acl, float))
+        h = np.asarray(m) - np.asarray(sg)
+        tol = KQ_PRE_TOL * float(a_adj)
+        return bool(h[-1] > -tol and h[-2] < tol)
+    except Exception:
+        return False
+
+def kq_live(sc, reg):
+    """今日の候補（現役の規則）。sc はスクリーニングを通った行（価格・売買代金・ATR帯の足切り済み）。"""
+    import yfinance as yf
+    ch = reg["champion"]; spec = kq_full(ch["spec"])
+    out = {"rule_id": ch["id"], "rule": koichi_rule_text(spec), "since": ch.get("since"),
+           "why": ch.get("why"), "spec": spec, "provisional": not session_complete(), "cands": [],
+           "checked": 0, "pre": 0}
+    if sc is None or sc.empty or "kq_pre" not in sc.columns: return out
+    pre = sc[sc["kq_pre"] == True]
+    out["pre"] = int(len(pre))
+    rowmap = {r["code"]: r for r in pre.to_dict("records")}
+    codes = list(rowmap)
+    for j in range(0, len(codes), 50):
+        part = codes[j:j + 50]
+        try:
+            d = yf.download(part, period="2y", interval="1d", auto_adjust=False, actions=True,
+                            group_by="ticker", threads=True, progress=False)
+        except Exception as e:
+            meta["errors"].append(f"koichi live dl: {type(e).__name__}"); continue
+        for c in part:
+            try:
+                x = (d[c] if len(part) > 1 else d)
+                if isinstance(x.columns, pd.MultiIndex): x.columns = x.columns.get_level_values(-1)
+                x = x.dropna(subset=["Close"])
+                if len(x) < 230: continue
+                ax = adjusted_frame(x)
+                _rc, _ = repair(ax["Close"])
+                _ratio = (_rc / ax["Close"]).replace([float("inf"), float("-inf")], float("nan")).ffill().bfill()
+                for _col in ("Open", "High", "Low", "Close"):
+                    if _col in ax.columns: ax[_col] = ax[_col] * _ratio
+                F = bt_features(ax, x["Volume"])
+                out["checked"] += 1
+                i = len(F["close"]) - 1
+                if not (F["macd"][i - 1] <= F["macd_sig"][i - 1] and F["macd"][i] > F["macd_sig"][i]): continue
+                X = {"C": F["close"][None, :], "RSI": F["rsi"][None, :], "MA200": F["ma200"][None, :],
+                     "MA75": F["ma75"][None, :], "macd": F["macd"][None, :], "ADX": F["adx"][None, :],
+                     "VOLR": F["volr"][None, :], "HI60": F["hi60"][None, :], "DEV25": F["dev25"][None, :],
+                     "A": F["atr"][None, :]}
+                if not _kq_entry_ok(X, 0, i, spec): continue
+                r = rowmap[c]
+                close, atr = float(r["close"]), float(r["atr"])
+                out["cands"].append({"code": c, "name": pub_name(str(c)[:4]), "close": close, "atr": atr,
+                                     "atr_pct": float(r.get("atr_pct") or 0), "adjf": float(r.get("adjf") or 1.0),
+                                     "rsi": round(float(F["rsi"][i]), 1), "turnover": float(r["turnover"]),
+                                     "stop0": round(close - float(spec["trail"]) * atr, 1),
+                                     "bar": str(pd.Timestamp(x.index[-1]).date())})
+            except Exception as e:
+                k = f"koichi live {type(e).__name__}"
+                if k not in meta["errors"]: meta["errors"].append(k)
+    out["cands"].sort(key=lambda z: -z["turnover"])
+    return out
+
+def kq_append(sig, live, bench=None):
+    """大引け後だけ、全候補を台帳へ。同じ銘柄の未決着があるうちは足さない。"""
+    if not live.get("cands"): return sig
+    have_open = set(sig.loc[sig["status"].isin(["", "open"]), "code"].astype(str)) if len(sig) else set()
+    have = set(zip(sig["date"].astype(str), sig["code"].astype(str))) if len(sig) else set()
+    sp = live["spec"]; add = []
+    for c in live["cands"]:
+        if c["code"] in have_open or (c["bar"], c["code"]) in have: continue
+        be = ""
+        try:
+            if bench is not None and len(bench.loc[:pd.Timestamp(c["bar"])]):
+                be = round(float(bench.loc[:pd.Timestamp(c["bar"])].iloc[-1]), 2)
+        except Exception:
+            pass
+        add.append({"date": c["bar"], "rule": live["rule_id"], "code": c["code"], "name": c["name"],
+                    "entry": round(c["close"], 2), "atr": round(c["atr"], 2), "adjf": c["adjf"],
+                    "trail": sp["trail"], "maxhold": sp["maxhold"], "dc": int(bool(sp["dc"])),
+                    "stop0": c["stop0"], "bench_entry": be, "status": "open", "exit_date": "", "exit": "",
+                    "ret_pct": "", "bench_ret_pct": "", "excess_pct": "", "bars": "", "picked": ""})
+    if not add: return sig
+    return pd.concat([sig, pd.DataFrame(add).astype(str)], ignore_index=True)[KQ_COLS]
+
+def kq_mark_picked(sig, hold):
+    """positions.json の since と照らして「本人が建てた」印を付ける（消えた保有の印は残す）。"""
+    if sig is None or not len(sig): return sig
+    for i, r in sig.iterrows():
+        h = (hold or {}).get(str(r["code"]))
+        if not h or not h.get("since"): continue
+        try:
+            d0 = dt.date.fromisoformat(str(r["date"])[:10]); s0 = dt.date.fromisoformat(str(h["since"])[:10])
+        except Exception:
+            continue
+        if 0 <= (s0 - d0).days <= KQ_PICK_DAYS:
+            sig.at[i, "picked"] = "1"
+    return sig
+
+def kq_rule_for_holding(sig, code, since):
+    """保有が台帳のどの候補から建てたものか（無ければ None）。"""
+    if sig is None or not len(sig) or not since: return None
+    try:
+        s0 = dt.date.fromisoformat(str(since)[:10])
+    except Exception:
+        return None
+    best = None
+    for _, r in sig[sig["code"].astype(str) == str(code)].iterrows():
+        try:
+            d0 = dt.date.fromisoformat(str(r["date"])[:10])
+        except Exception:
+            continue
+        if 0 <= (s0 - d0).days <= KQ_PICK_DAYS and (best is None or str(r["date"]) > str(best["date"])):
+            best = r
+    return best
+
+def kq_summary(sig):
+    """前向きの成績（決着済みだけ）。規則ごと・本人が建てた分。"""
+    out = {}
+    if sig is None or not len(sig): return out
+    for rid, g in sig.groupby("rule"):
+        d = g[~g["status"].isin(["", "open"])]
+        o = {"open": int(g["status"].isin(["", "open"]).sum()), "closed": int(len(d))}
+        def st(x):
+            r = pd.to_numeric(x["ret_pct"], errors="coerce").dropna()
+            e = pd.to_numeric(x["excess_pct"], errors="coerce").dropna()
+            if not len(r): return None
+            return {"n": int(len(r)), "win_pct": round(float((r > 0).mean() * 100), 1),
+                    "avg_ret_pct": round(float(r.mean()), 2),
+                    "avg_excess_pct": round(float(e.mean()), 2) if len(e) else None,
+                    "avg_bars": round(float(pd.to_numeric(x["bars"], errors="coerce").mean()), 1)}
+        o["all"] = st(d); o["picked"] = st(d[d["picked"] == "1"])
+        o["picked_open"] = int((g["status"].isin(["", "open"]) & (g["picked"] == "1")).sum())
+        out[rid] = o
+    return out
+
+def screen_all(codes, sig=None, open_map=None, kq_sig=None, kq_open=None):
     """全銘柄の直近データを取得し、流動性と値幅で絞ってから指標を付ける。"""
     import yfinance as yf
     rows, allrows, t0 = [], [], time.time()
@@ -5960,6 +6407,22 @@ def screen_all(codes, sig=None, open_map=None):
                                 skipped[k] = skipped.get(k, 0) + 1
                                 if k not in skip_msg: skip_msg[k] = str(_e)[:80]
 
+                # ── 本人の手順の台帳の決着（同じく、この銘柄の日足が手元にあるうちに）
+                if kq_open and c in kq_open and kq_sig is not None and len(x):
+                    try:
+                        _axk = adjusted_frame(x)
+                        _bk = kq_bench()
+                        for idx in kq_open[c]:
+                            _o = kq_settle(kq_sig.loc[idx], _axk, _bk, complete=session_complete())
+                            if _o:
+                                for k, v in _o.items():
+                                    kq_sig.at[idx, k] = "" if v is None else str(v)
+                                meta["koichi_settled"] = meta.get("koichi_settled", 0) + 1
+                    except Exception as _e:
+                        k = "kq_settle:" + type(_e).__name__
+                        skipped[k] = skipped.get(k, 0) + 1
+                        if k not in skip_msg: skip_msg[k] = str(_e)[:80]
+
                 if len(x) < 76: continue      # vs75 と r60 に必要な本数を満たすこと
                 cl = x["Close"]; last = float(cl.iloc[-1])
                 if last < MIN_PRICE: continue
@@ -5998,7 +6461,8 @@ def screen_all(codes, sig=None, open_map=None):
                     pos60=round((float(ax["Close"].iloc[-1])-w60["Low"].min())/rngw*100, 1),
                     r20=round((acl.iloc[-1]/acl.iloc[-21]-1)*100, 2),
                     r60=round((acl.iloc[-1]/acl.iloc[-61]-1)*100, 2),
-                    vol_ratio=round(float(x["Volume"].iloc[-1]/x["Volume"].tail(20).mean()), 2)))
+                    vol_ratio=round(float(x["Volume"].iloc[-1]/x["Volume"].tail(20).mean()), 2),
+                    kq_pre=kq_pre(acl.values, a_adj)))
             except Exception as e:
                 # 握りつぶすと「全銘柄が同じ理由で落ちている」事故が見えなくなる。
                 # 種類ごとに件数を数え、最初の1件はメッセージも残す。
@@ -6489,7 +6953,24 @@ try:
         uni = load_universe(MASTER)
         if uni:
             SIG = load_signals()
-            sc, scanned, sc_all = screen_all(uni, SIG, open_signal_map(SIG))
+            KQ_SIG = kq_load_signals()
+            sc, scanned, sc_all = screen_all(uni, SIG, open_signal_map(SIG), KQ_SIG, kq_open_map(KQ_SIG))
+            # ── 本人の手順: 今日の候補（現役の規則）と台帳 ──────────────────
+            try:
+                KQ_REG = kq_registry_load()
+                _KQ_LIVE.clear(); _KQ_LIVE.update(kq_live(sc, KQ_REG))
+                if session_complete() and not _KQ_LIVE.get("provisional"):
+                    KQ_SIG = kq_append(KQ_SIG, _KQ_LIVE, kq_bench())
+                    if not os.path.exists(KOICHI_RULES_PATH): kq_registry_save(KQ_REG)
+                KQ_SIG.to_csv(KQ_SIG_PATH, index=False)
+                meta["koichi_live"] = {"rule": _KQ_LIVE.get("rule_id"), "pre": _KQ_LIVE.get("pre"),
+                                       "checked": _KQ_LIVE.get("checked"), "cands": len(_KQ_LIVE.get("cands") or []),
+                                       "provisional": _KQ_LIVE.get("provisional"), "ledger": int(len(KQ_SIG))}
+                print(f"[本人の手順] 現役 {_KQ_LIVE.get('rule_id')}: GC付近 {_KQ_LIVE.get('pre')} → 確認 "
+                      f"{_KQ_LIVE.get('checked')} → 候補 {len(_KQ_LIVE.get('cands') or [])}"
+                      f"{'（暫定）' if _KQ_LIVE.get('provisional') else ''}／台帳 {len(KQ_SIG)}行")
+            except Exception as e:
+                meta["errors"].append(f"koichi live: {type(e).__name__}: {e}"[:160])
             meta["screen"] = {"universe": len(uni), "scanned": scanned, "passed": len(sc),
                               "named": bool(MASTER),
                               "source": meta.get("universe_source", "?")}
@@ -6580,7 +7061,7 @@ try:
                         "feps_rule": "latest-forecast-row-v1",
                         # ★成長を条件から外し、還元の体力（予想利益≥予想配当）を課した（2026-09-26）
                         "growth_rule": "capacity-v1",
-                        "koichi": "v2-daily-macd-trail", "koichi_grid": "v2-96-rsimax-split60",
+                        "koichi": "v2-daily-macd-trail", "koichi_grid": "v2-96-rsimax-split60", "koichi_evo": "v1",
                         # ★運用中の手順と暦日ポートフォリオ法（2026-09-25）
                         "swing_rule": f"{SWING_FACTOR}|{SWING_EXIT}|{SWING_HOLD}",
                         "calendar": "ct-v1",
@@ -6660,7 +7141,7 @@ try:
                                        for _e, _h in CT_RULES},
                           "calendar_rules": [f"{_e}|{_h}" for _e, _h in CT_RULES],
                           # 本人の手順（事前登録・2026-09-28）。門には使わない（研究用）
-                          "koichi": dict(_KOICHI), "koichi_grid": dict(_KOICHI_GRID), "koichi_grid2": dict(_KOICHI_GRID2),
+                          "koichi": dict(_KOICHI), "koichi_grid": dict(_KOICHI_GRID), "koichi_grid2": dict(_KOICHI_GRID2), "koichi_evo": dict(_KOICHI_EVO),
                           "regime": {"above200": bt_summary(tk, 25, True),
                                      "below200": bt_summary(tk, 25, False)},
                           # ★市場の広がりで分けた集計。局面で符号が反転する
@@ -6924,7 +7405,17 @@ try:
         #     決めると、同じ足の中で高値を見てから安値を判定したことになる）。
         _since = str(h.get("since") or "")
         _tr = dict(since=_since, entry_ref=None, atr_e=None, held=None, run_hi=None,
-                   trail_today=None, trail_next=None, low_last=None, broke=None)
+                   trail_today=None, trail_next=None, low_last=None, broke=None,
+                   trail_k=SWING_TRAIL, hold_k=SWING_HOLD, rule_k="", dc_k=False, dc_hit=False)
+        # ★本人の手順の候補から建てた保有は、その候補を出した規則（幅・最長・DC）で手仕舞う。
+        _kqr = kq_rule_for_holding(globals().get("KQ_SIG"), c, _since) if _since else None
+        if _kqr is not None:
+            try:
+                _tr.update(trail_k=float(_kqr["trail"]), hold_k=int(float(_kqr["maxhold"])),
+                           rule_k=str(_kqr["rule"]), dc_k=str(_kqr["dc"]) in ("1", "True"))
+            except Exception:
+                pass
+        _TK = _tr["trail_k"]
         if _since:
             try:
                 _pre = d[d["Date"] <= pd.Timestamp(_since)]
@@ -6941,11 +7432,12 @@ try:
                 _ent = float(_ent if _ent is not None else h["cost"])
                 _hp = float(_post["High"].iloc[:-1].max()) if len(_post) > 1 else _ent
                 _rh = max(_ent, float(_post["High"].max())) if len(_post) else _ent
-                _tt = max(_ent, _hp) - SWING_TRAIL * _ae
+                _tt = max(_ent, _hp) - _TK * _ae
                 _lo = float(_post["Low"].iloc[-1]) if len(_post) else None
                 _tr.update(entry_ref=round(_ent, 2), atr_e=round(float(_ae), 2), held=int(len(_post)),
                            run_hi=round(_rh, 2), trail_today=round(_tt, 2),
-                           trail_next=round(_rh - SWING_TRAIL * _ae, 2),
+                           trail_next=round(_rh - _TK * _ae, 2),
+                           dc_hit=bool(_tr["dc_k"] and len(hist) > 1 and hist.iloc[-1] < 0 <= hist.iloc[-2]),
                            low_last=_lo,
                            broke=(bool(_lo <= _tt) if _lo is not None else None))
             except Exception as _e:
@@ -7331,16 +7823,21 @@ try:
                      "**起点日が無く水準を出せない** | — |")
             continue
         _held = int(r["held"]) if r.get("held") == r.get("held") else 0
+        _hk = int(r.get("hold_k") or SWING_HOLD) if r.get("hold_k") == r.get("hold_k") else SWING_HOLD
         if bool(r.get("broke")):
             _jd = "**手仕舞い（水準割れ）**"
-        elif _held >= SWING_HOLD:
+        elif bool(r.get("dc_hit")):
+            _jd = "**手仕舞い（MACDのDC）**"
+        elif _held >= _hk:
             _jd = "**手仕舞い（期限）**"
         else:
             _jd = "保有継続"
         _lo = r.get("low_last")
         _los = f"{_lo:,.1f}" if _lo is not None and _lo == _lo else "—"
-        L.append(f"| {r['code'][:4]} | {r['name']} | {r['entry_ref']:,.1f} | {r['since']} | "
-                 f"{_held}/{SWING_HOLD}日 | {r['run_hi']:,.1f} | {r['trail_today']:,.1f} | {_los} | "
+        _rk = str(r.get("rule_k") or "")
+        _nm = r['name'] + (f"（本人の手順 {_rk}・{float(r['trail_k']):g}ATR）" if _rk and _rk != "nan" else "")
+        L.append(f"| {r['code'][:4]} | {_nm} | {r['entry_ref']:,.1f} | {r['since']} | "
+                 f"{_held}/{_hk}日 | {r['run_hi']:,.1f} | {r['trail_today']:,.1f} | {_los} | "
                  f"{_jd} | {r['trail_next']:,.1f} |")
     if not _n_tr:
         L.append("| — | スイングで管理している建玉なし | | | | | | | | |")
@@ -7356,6 +7853,74 @@ try:
     L.append(f"- 初期の手仕舞い水準 ＝ 建値 − {SWING_TRAIL:g}×ATR。以後は上の表の規則で毎日引き上げる。"
              "**建てたら、その約定日を起点日として保有に登録すること**（無いと水準を出せない）。")
     L.append("- 同じ銘柄の買い増しは検証していないので行わない。")
+
+    # ── 本人の手順（記録中）の候補 ─────────────────────────────────
+    try:
+        _kl = dict(_KQ_LIVE)
+        _ks = globals().get("KQ_SIG")
+        if _ks is not None and len(_ks):
+            _ks = kq_mark_picked(_ks, HOLD)
+            _ks.to_csv(KQ_SIG_PATH, index=False)
+            globals()["KQ_SIG"] = _ks
+        if _kl.get("rule_id"):
+            _sp = _kl["spec"]; _kt = float(_sp["trail"])
+            L.append(f"\n## 本人の手順の候補（記録中・現役 {_kl['rule_id']}）\n")
+            L.append(f"> 規則: {_kl['rule']}。現役になった日 {_kl.get('since')}（{_kl.get('why')}）。")
+            _bj = {}
+            try:
+                _bj = (json.load(open(f"{OUT}/backtest.json", encoding="utf-8")).get("koichi_evo") or {})
+            except Exception:
+                pass
+            _cb = ((_bj.get("promoted") or {}).get("res") if (_bj.get("promoted") or {}).get("id") == _kl["rule_id"]
+                   else ((_bj.get("champion_before") or {}).get("res") if (_bj.get("champion_before") or {}).get("id") == _kl["rule_id"] else None))
+            if _cb:
+                _a = _cb.get("all") or {}
+                L.append(f"> 過去検証（全期間）: 全銘柄の平均との差 年{_a.get('ann_diff_pct')}%・t={_a.get('t_nw')}"
+                         f"（合格点 {BT_T_THRESHOLD} には届いていない）・月{_a.get('per_month')}件・平均保有{_a.get('avg_bars')}日。"
+                         "この数字は候補を**全部買った場合の平均**。どれを買うかは本人が選ぶ。")
+            if _kl.get("provisional"):
+                L.append("> ★**前場までの値での暫定判定**。大引けで条件が崩れることがある（台帳には大引け後の判定だけを載せる）。")
+            _cs = _kl.get("cands") or []
+            if not _cs:
+                L.append(f"\n今日の候補なし（MACDがGC付近 {_kl.get('pre', 0)}銘柄を確かめて、条件を満たすものが無かった）。")
+            else:
+                L.append(f"\n今日の候補 {len(_cs)}件（売買代金の大きい順。上位{min(KQ_SHOW, len(_cs))}件を表示）\n")
+                L.append("| コード | 銘柄 | 終値 | RSI | ATR% | 売買代金(億) | 株数 | 概算金額 | 初期の手仕舞い水準 |")
+                L.append("|---|---|--:|--:|--:|--:|--:|--:|--:|")
+                for c in _cs[:KQ_SHOW]:
+                    _w = _kt * c["atr"]
+                    n_atr = int(RISK_PER_TRADE // _w) if _w > 0 else 0
+                    n_cap = int(SW_BUDGET * MAX_WEIGHT // c["close"]) if c["close"] > 0 else 0
+                    n_cash = int(SW_CASH // c["close"]) if c["close"] > 0 else 0
+                    _n = (min(n_atr, n_cap, n_cash) // LOT) * LOT
+                    L.append(f"| {c['code'][:4]} | {c.get('name') or '—'} | {c['close']:,.1f} | {c['rsi']:.0f} | "
+                             f"{c['atr_pct']:.1f} | {c['turnover']/1e8:,.1f} | "
+                             + (f"{_n:,} | ¥{_n*c['close']:,.0f}" if _n > 0 else "単元未満 | —")
+                             + f" | {c['stop0']:,.1f} |")
+                if len(_cs) > KQ_SHOW:
+                    L.append(f"\n> ほか {len(_cs) - KQ_SHOW}件は data/koichi_signals.csv（大引け後の判定）。")
+                L.append(f"\n> 株数はスイング枠と同じ考え方（許容損失 ¥{RISK_PER_TRADE:,.0f} ÷ {_kt:g}×ATR、1銘柄上限・現金の範囲・{LOT}株単位）。"
+                         f"手仕舞いは建ててからの最高値−{_kt:g}ATR" + ("・日足MACDのDC" if _sp.get("dc") else "")
+                         + f"・最長{_sp['maxhold']}日。**建てたら positions.json に since（約定日）を入れる**と、"
+                         "手仕舞い水準の表にこの規則で出て、台帳にも「本人が選んだ」と記録される。")
+            _sm = kq_summary(globals().get("KQ_SIG"))
+            if _sm:
+                L.append("\n**台帳の成績（前向き・決着したものだけ。比べる相手は同じ期間の1306）**\n")
+                L.append("| 規則 | 未決着 | 決着 | 勝率 | 平均 | 1306との差 | 平均保有 | 本人が建てた分（決着） | その平均 | 1306との差 |")
+                L.append("|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|")
+                def _fz(x, f):
+                    return (f % x) if isinstance(x, (int, float)) else "—"
+                for rid, o in _sm.items():
+                    a = o.get("all") or {}; pk = o.get("picked") or {}
+                    L.append(f"| {rid}{'（現役）' if rid == _kl['rule_id'] else ''} | {o['open']} | {o['closed']} | "
+                             f"{_fz(a.get('win_pct'), '%.0f%%')} | {_fz(a.get('avg_ret_pct'), '%+.2f%%')} | "
+                             f"{_fz(a.get('avg_excess_pct'), '%+.2f%%')} | {_fz(a.get('avg_bars'), '%.0f日')} | "
+                             f"{pk.get('n', 0)}（建玉中 {o.get('picked_open', 0)}） | {_fz(pk.get('avg_ret_pct'), '%+.2f%%')} | "
+                             f"{_fz(pk.get('avg_excess_pct'), '%+.2f%%')} |")
+                L.append("\n> 30件たまるまでは偶然の幅が大きい。「本人が建てた分」と「全部」の差が、目で選ぶことの上乗せ。")
+    except Exception as e:
+        meta["errors"].append(f"koichi report: {type(e).__name__}: {e}"[:160])
+        L.append(f"\n> 本人の手順の候補を表示できなかった: {type(e).__name__}")
     if len(T_OUT):
         L.append("\n## 対象外（別口の取り組み）\n")
         L.append("> **この運用（総額・枠・点数・推奨）の外。** 表示だけで、この仕組みは売買を判断しない。\n")
@@ -7986,6 +8551,43 @@ try:
                             L.append(f"| {lab} | {_vv(k, d.get('value'))} | {_g2(a.get('avg_ann_diff'), '%+.1f%%')} | "
                                      f"{_g2(a.get('avg_t'), '%+.2f')} | {_g2(o.get('avg_ann_diff'), '%+.1f%%')} | "
                                      f"{_g2(o.get('avg_t'), '%+.2f')} |")
+
+        _ke = bt.get("koichi_evo") or {}
+        if _ke:
+            L.append("\n**本人の手順の進化（過去検証を作り直すたびに、部品を1つ変えた規則と比べる）**\n")
+            if _ke.get("error"):
+                L.append(f"> 測れなかった: {_ke['error']}")
+            else:
+                _cb = _ke.get("champion_before") or {}
+                _ca = (_cb.get("res") or {})
+                def _gz(x, f):
+                    return (f % x) if isinstance(x, (int, float)) else "—"
+                L.append(f"> 現役 {_cb.get('id')}（{_cb.get('since')}から）: {_cb.get('rule')}。"
+                         f"前半 差{_gz((_ca.get('is') or {}).get('ann_diff_pct'), '%+.1f%%')}・"
+                         f"後半 差{_gz((_ca.get('oos') or {}).get('ann_diff_pct'), '%+.1f%%')}・"
+                         f"全期間 t={_gz((_ca.get('all') or {}).get('t_nw'), '%+.2f')}。")
+                _pr = _ke.get("promoted")
+                if _pr:
+                    L.append(f"> **入れ替えた**: {_pr['id']} {_pr['rule']}。明日の候補からこの規則で出す。")
+                elif _ke.get("passed"):
+                    L.append(f"> 条件を満たした挑戦者が {len(_ke['passed'])} 件あるが、前回の入れ替えから"
+                             f"{KOICHI_PROMO_COOLDOWN}日たっていないので見送り（あと{_ke.get('cooldown_left')}日）。次の見直しでも条件を満たせば入れ替える。")
+                else:
+                    L.append("> 条件を満たす挑戦者は無し。現役のまま。")
+                L.append(f"> 昇格の条件: 前半・後半の**両方で**現役より良い／全期間の t が {KOICHI_PROMO_T_MARGIN} 以上高い／"
+                         f"月{KOICHI_MIN_PM:g}件以上／前回の入れ替えから{KOICHI_PROMO_COOLDOWN}日以上。挑戦者 {_ke.get('tried')}通り。")
+                L.append("")
+                L.append("| 変えた部品 | 前半 差 | 後半 差 | 全期間 t | 月あたり | 平均保有 | 判定 |")
+                L.append("|---|--:|--:|--:|--:|--:|---|")
+                for r in _ke.get("top") or []:
+                    rs = r.get("res") or {}
+                    a, o, al = rs.get("is") or {}, rs.get("oos") or {}, rs.get("all") or {}
+                    L.append(f"| {_kq_gene_label(r.get('gene'), r.get('value'))} | {_gz(a.get('ann_diff_pct'), '%+.1f%%')} | "
+                             f"{_gz(o.get('ann_diff_pct'), '%+.1f%%')} | {_gz(al.get('t_nw'), '%+.2f')} | "
+                             f"{_gz(al.get('per_month'), '%.0f')} | {_gz(al.get('avg_bars'), '%.0f日')} | "
+                             f"{'条件を満たす' if not r.get('fail') else '・'.join(r['fail'])} |")
+                L.append("\n> 同じ過去を毎月見直すので、過去の成績はだんだん楽観的になる。"
+                         "規則の良し悪しの最後の判断は、上の「台帳の成績」（実際に出た候補のその後）で行う。")
 
         rg = bt.get("regime", {})
         if rg.get("above200") and rg.get("below200"):
