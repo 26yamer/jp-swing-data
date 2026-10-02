@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-02T11:47:02.915324+09:00",
+ "fetched_at_jst": "2026-10-02T13:19:09.495104+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -55,9 +55,7 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [
-  "fetch_feed('財経新聞', 'https://www.zaikei.co.jp/rss/'): ConnectTimeout: HTTPSConnectionPool(host='www.zaikei.co.jp', port=443): Max retries exceeded with url: /rss/ (Caused by ConnectTimeoutError(<HTTPSConnection(host='www.zaikei.co.jp', port=443) at 0x7f53e4e91280>, 'Connection to www.zaikei.co.jp timed out. (connect timeout=25)'))"
- ],
+ "errors": [],
  "versions": {
   "python": "3.12.14",
   "pandas": "3.0.6",
@@ -97,7 +95,7 @@
  "n_ok": 53,
  "n_total": 53,
  "holdings_ok": 7,
- "news_ok": 45,
+ "news_ok": 42,
  "jgb": {
   "date": "2026-10-01",
   "age_days": 1,
@@ -117,19 +115,27 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-10-02",
- "signals_settled": 2,
+ "signals_settled": 0,
+ "koichi_live": {
+  "rule": "k32ecdd",
+  "pre": 205,
+  "checked": 201,
+  "cands": 20,
+  "provisional": true,
+  "ledger": 0
+ },
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1763,
+  "passed": 1768,
   "named": true,
   "source": "jpx_master"
  },
  "fund": {
   "reused": true,
-  "reason": "場中（11:47 JST）は取り直さない（大引け後の実行で更新）",
+  "reason": "場中（13:19 JST）は取り直さない（大引け後の実行で更新）",
   "age_days": 0,
-  "age_hours": 19.8,
+  "age_hours": 21.4,
   "fetched_at_jst": "2026-10-01T15:56:54.357761+09:00",
   "asof_latest_disclosure": "2026-07-06",
   "pool": 1763,
@@ -196,27 +202,27 @@
  },
  "cand_earnings": {
   "asked": 20,
-  "ok": 6,
+  "ok": 5,
   "from_jquants": 0,
   "from_jpx": 0,
-  "from_yf": 6,
+  "from_yf": 5,
   "recent": 0,
   "estimate": 0,
-  "unknown": 14,
+  "unknown": 15,
   "error": 0
  },
  "signals_appended": false,
- "skip_reason": "場中（11:47 JST）のため当日足が未確定",
+ "skip_reason": "場中（13:19 JST）のため当日足が未確定",
  "backtest_status": {
   "file_exists": true,
   "age_days": 2,
-  "same_config": true,
+  "same_config": false,
   "max_age_d": 30,
   "min_indep": 20,
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "場中（11:47 JST）",
+ "backtest_skipped": "場中（13:19 JST）",
  "signals": {
   "closed": 13,
   "open": 33,
@@ -273,23 +279,18 @@
   }
  },
  "regime": {
-  "px": 430.0,
-  "vs200": 9.28,
-  "vs25": 0.65,
+  "px": 430.8999938964844,
+  "vs200": 9.51,
+  "vs25": 0.85,
   "above200": true,
-  "breadth": "4/17",
-  "breadth_pct": 24.0,
+  "breadth": "5/17",
+  "breadth_pct": 29.0,
   "b_suggest": 0.6
  },
  "swing_gate": {
   "open": false,
-  "why": "誤差の範囲（t=+2.02 < 3.46）",
-  "rule": "value・trail3atr・最長60日",
-  "t_used": 2.02,
-  "n_days": 528,
-  "thr": 3.46,
-  "mean_diff_R_day": 0.0119,
-  "ann_diff_pct": 13.82
+  "why": "過去検証が今の設定と違う条件で作られている（作り直し待ち）",
+  "rule": "value・trail3atr・最長60日"
  },
  "analysis": "ok",
  "commit_guard": {
