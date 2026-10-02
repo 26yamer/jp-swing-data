@@ -6131,6 +6131,11 @@ KQ_COLS = ["date", "rule", "code", "name", "entry", "atr", "adjf", "trail", "max
 KQ_PRE_TOL = 0.05        # 6か月足での GC 付近の幅（ATRに対する比）。最終判定は2年分で取り直す
 KQ_PICK_DAYS = 7         # 候補の日から何日以内に建てていれば「本人が選んだ」とみなすか
 KQ_SHOW = 15
+# ★本人の手順の1トレードの許容損失（総額に対する比）。2026-10-02 本人決定（選択肢b）。
+#   スイング枠の決まり（枠の0.9%＝総額の0.45%）のままだと、4ATRの幅では候補の8割が100株に届かず
+#   買える銘柄が安い・値動きの小さい銘柄に偏った（実測 10/2: 20件中4件）。総額の0.9%で 20件中12件。
+#   1回の損切りで失う額はスイング枠の手順の2倍になる。
+KOICHI_RISK_P = 0.009
 _KQ_LIVE = {}
 _KQ_BENCH = {}
 
@@ -7884,12 +7889,21 @@ try:
             if not _cs:
                 L.append(f"\n今日の候補なし（MACDがGC付近 {_kl.get('pre', 0)}銘柄を確かめて、条件を満たすものが無かった）。")
             else:
-                L.append(f"\n今日の候補 {len(_cs)}件（売買代金の大きい順。上位{min(KQ_SHOW, len(_cs))}件を表示）\n")
+                L.append(f"\n今日の候補 {len(_cs)}件（100株で買えるものを先に、その中は売買代金の大きい順。上位{min(KQ_SHOW, len(_cs))}件を表示）\n")
                 L.append("| コード | 銘柄 | 終値 | RSI | ATR% | 売買代金(億) | 株数 | 概算金額 | 初期の手仕舞い水準 |")
                 L.append("|---|---|--:|--:|--:|--:|--:|--:|--:|")
+                _KR = TOT * KOICHI_RISK_P
+                def _kq_n(c):
+                    _w = _kt * c["atr"]
+                    n_atr = int(_KR // _w) if _w > 0 else 0
+                    n_cap = int(SW_BUDGET * MAX_WEIGHT // c["close"]) if c["close"] > 0 else 0
+                    n_cash = int(SW_CASH // c["close"]) if c["close"] > 0 else 0
+                    return (min(n_atr, n_cap, n_cash) // LOT) * LOT
+                # 100株で買えるものを先に（その中は売買代金の大きい順のまま）
+                _cs = sorted(_cs, key=lambda c: 0 if _kq_n(c) > 0 else 1)
                 for c in _cs[:KQ_SHOW]:
                     _w = _kt * c["atr"]
-                    n_atr = int(RISK_PER_TRADE // _w) if _w > 0 else 0
+                    n_atr = int(_KR // _w) if _w > 0 else 0
                     n_cap = int(SW_BUDGET * MAX_WEIGHT // c["close"]) if c["close"] > 0 else 0
                     n_cash = int(SW_CASH // c["close"]) if c["close"] > 0 else 0
                     _n = (min(n_atr, n_cap, n_cash) // LOT) * LOT
@@ -7899,7 +7913,8 @@ try:
                              + f" | {c['stop0']:,.1f} |")
                 if len(_cs) > KQ_SHOW:
                     L.append(f"\n> ほか {len(_cs) - KQ_SHOW}件は data/koichi_signals.csv（大引け後の判定）。")
-                L.append(f"\n> 株数はスイング枠と同じ考え方（許容損失 ¥{RISK_PER_TRADE:,.0f} ÷ {_kt:g}×ATR、1銘柄上限・現金の範囲・{LOT}株単位）。"
+                L.append(f"\n> 株数 ＝ 許容損失 ¥{_KR:,.0f}（総額の{KOICHI_RISK_P:.1%}。スイング枠の手順の約2倍・本人決定）÷ {_kt:g}×ATR、"
+                         f"1銘柄上限・スイング枠の現金の範囲・{LOT}株単位。"
                          f"手仕舞いは建ててからの最高値−{_kt:g}ATR" + ("・日足MACDのDC" if _sp.get("dc") else "")
                          + f"・最長{_sp['maxhold']}日。**建てたら positions.json に since（約定日）を入れる**と、"
                          "手仕舞い水準の表にこの規則で出て、台帳にも「本人が選んだ」と記録される。")
