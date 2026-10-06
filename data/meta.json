@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-06T11:48:54.647357+09:00",
+ "fetched_at_jst": "2026-10-06T13:13:54.813008+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -105,7 +105,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 44,
+ "news_ok": 42,
  "jgb": {
   "date": "2026-10-05",
   "age_days": 1,
@@ -125,11 +125,11 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-10-06",
- "signals_settled": 2,
+ "signals_settled": 0,
  "koichi_live": {
   "rule": "k32ecdd",
-  "pre": 274,
-  "checked": 271,
+  "pre": 266,
+  "checked": 263,
   "cands": 34,
   "provisional": true,
   "ledger": 38
@@ -137,15 +137,15 @@
  "screen": {
   "universe": 4247,
   "scanned": 4247,
-  "passed": 1758,
+  "passed": 1759,
   "named": true,
   "source": "jpx_master"
  },
  "fund": {
   "reused": true,
-  "reason": "場中（11:48 JST）は取り直さない（大引け後の実行で更新）",
+  "reason": "場中（13:13 JST）は取り直さない（大引け後の実行で更新）",
   "age_days": 0,
-  "age_hours": 19.8,
+  "age_hours": 21.2,
   "fetched_at_jst": "2026-10-05T16:01:32.114438+09:00",
   "asof_latest_disclosure": "2026-07-10",
   "pool": 1785,
@@ -222,7 +222,7 @@
   "error": 0
  },
  "signals_appended": false,
- "skip_reason": "場中（11:48 JST）のため当日足が未確定",
+ "skip_reason": "場中（13:13 JST）のため当日足が未確定",
  "backtest_status": {
   "file_exists": true,
   "age_days": 3,
@@ -232,7 +232,7 @@
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "場中（11:48 JST）",
+ "backtest_skipped": "場中（13:13 JST）",
  "signals": {
   "closed": 18,
   "open": 33,
@@ -295,9 +295,9 @@
   ]
  },
  "regime": {
-  "px": 437.7999877929688,
-  "vs200": 11.01,
-  "vs25": 2.31,
+  "px": 438.3999938964844,
+  "vs200": 11.16,
+  "vs25": 2.45,
   "above200": true,
   "breadth": "8/17",
   "breadth_pct": 47.0,
