@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-08T18:24:44.891656+09:00",
+ "fetched_at_jst": "2026-10-08T23:00:04.495381+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -59,7 +59,7 @@
  },
  "errors": [],
  "versions": {
-  "python": "3.12.14",
+  "python": "3.12.15",
   "pandas": "3.0.6",
   "numpy": "2.5.3",
   "yfinance": "1.7.0"
@@ -105,7 +105,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 41,
+ "news_ok": 36,
  "jgb": {
   "date": "2026-10-07",
   "age_days": 1,
@@ -125,7 +125,7 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-10-08",
- "signals_settled": 1,
+ "signals_settled": 0,
  "koichi_live": {
   "rule": "k32ecdd",
   "pre": 194,
@@ -142,8 +142,8 @@
   "source": "jpx_master"
  },
  "splits": {
-  "events": 966,
-  "split_codes": 849,
+  "events": 967,
+  "split_codes": 850,
   "adjusted_rows": 3178,
   "adjusted_codes": 531,
   "examples": [
@@ -173,12 +173,12 @@
   "names": 4180,
   "with_inv": 2172,
   "listed_days": 45,
-  "todo": 59,
+  "todo": 41,
   "todo_priority": 0,
   "priority_given": 89,
-  "downloaded": 59,
-  "parsed": 58,
-  "req": 104,
+  "downloaded": 41,
+  "parsed": 41,
+  "req": 86,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -204,7 +204,7 @@
   "hist_from": "2022-03-23",
   "hist_to": "2026-10-07",
   "nomatch": {
-   "120:連結と個別が混在": 9,
+   "120:連結と個別が混在": 7,
    "160:連結と個別が混在": 34
   },
   "probe": [
@@ -329,9 +329,7 @@
     }
    }
   ],
-  "err": {
-   "zip:BadZipFile": 1
-  }
+  "err": {}
  },
  "kiyohara": {
   "universe": 4100,
