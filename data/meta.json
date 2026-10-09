@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-09T18:33:00.661142+09:00",
+ "fetched_at_jst": "2026-10-09T22:43:28.147255+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -105,7 +105,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 35,
+ "news_ok": 32,
  "jgb": {
   "date": "2026-10-08",
   "age_days": 1,
@@ -125,7 +125,7 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-10-09",
- "signals_settled": 1,
+ "signals_settled": 0,
  "koichi_live": {
   "rule": "k32ecdd",
   "pre": 297,
@@ -173,12 +173,12 @@
   "names": 4180,
   "with_inv": 2171,
   "listed_days": 45,
-  "todo": 46,
-  "todo_priority": 1,
+  "todo": 41,
+  "todo_priority": 0,
   "priority_given": 85,
-  "downloaded": 46,
-  "parsed": 46,
-  "req": 91,
+  "downloaded": 41,
+  "parsed": 41,
+  "req": 86,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
