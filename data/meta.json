@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-09T22:43:28.147255+09:00",
+ "fetched_at_jst": "2026-10-12T18:41:05.110158+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -61,7 +61,7 @@
  "versions": {
   "python": "3.12.15",
   "pandas": "3.0.6",
-  "numpy": "2.5.3",
+  "numpy": "2.5.4",
   "yfinance": "1.7.0"
  },
  "anomalies": [
@@ -105,10 +105,10 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 32,
+ "news_ok": 35,
  "jgb": {
   "date": "2026-10-08",
-  "age_days": 1,
+  "age_days": 4,
   "y2": 1.936,
   "y10": 3.089,
   "y30": 4.136
@@ -128,8 +128,8 @@
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k32ecdd",
-  "pre": 297,
-  "checked": 294,
+  "pre": 298,
+  "checked": 295,
   "cands": 39,
   "provisional": false,
   "ledger": 160
@@ -144,7 +144,7 @@
  "splits": {
   "events": 967,
   "split_codes": 850,
-  "adjusted_rows": 3177,
+  "adjusted_rows": 3175,
   "adjusted_codes": 531,
   "examples": [
    "1333",
@@ -171,14 +171,14 @@
   "bs_bad": 0,
   "refetch_bad": 41,
   "names": 4180,
-  "with_inv": 2171,
+  "with_inv": 2170,
   "listed_days": 45,
-  "todo": 41,
-  "todo_priority": 0,
-  "priority_given": 85,
-  "downloaded": 41,
-  "parsed": 41,
-  "req": 86,
+  "todo": 63,
+  "todo_priority": 2,
+  "priority_given": 84,
+  "downloaded": 63,
+  "parsed": 63,
+  "req": 108,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -195,14 +195,14 @@
    "値"
   ],
   "dtypes": {
-   "120": 2008,
-   "160": 1112
+   "120": 2005,
+   "160": 1115
   },
-  "hist_rows": 2467,
-  "hist_codes": 2267,
-  "hist_multi": 180,
+  "hist_rows": 2489,
+  "hist_codes": 2270,
+  "hist_multi": 199,
   "hist_from": "2022-03-23",
-  "hist_to": "2026-10-08",
+  "hist_to": "2026-10-09",
   "nomatch": {
    "120:連結と個別が混在": 7,
    "160:連結と個別が混在": 34
@@ -332,7 +332,7 @@
   "err": {}
  },
  "kiyohara": {
-  "universe": 4098,
+  "universe": 4097,
   "passed": 29,
   "shown": 29,
   "sure": 0,
@@ -353,57 +353,57 @@
   },
   "dropped": {
    "時価総額>500億円": 22,
-   "財務が引けない": 349,
-   "売買代金が薄い": 753,
-   "PER>8倍": 2361,
-   "PBR>0.8倍": 95,
+   "財務が引けない": 347,
+   "売買代金が薄い": 755,
+   "PER>8倍": 2364,
+   "PBR>0.8倍": 93,
    "流動資産≤負債合計(実測)": 35,
-   "予想PERが出ない(赤字予想)": 275,
-   "ネットキャッシュ比率<0.8(実測)": 21,
+   "予想PERが出ない(赤字予想)": 274,
+   "ネットキャッシュ比率<0.8(実測)": 20,
    "銀行・金融（式が成立しない）": 156,
    "本業が赤字": 2
   }
  },
  "fund_raw": {
-  "n_bps": 4059,
+  "n_bps": 4060,
   "n_feps": 3879,
-  "n_eq": 4124,
-  "n_ta": 4124,
+  "n_eq": 4125,
+  "n_ta": 4125,
   "n_cash": 4088,
-  "n_sh": 4122,
-  "n_op": 4010,
-  "n_div": 4044,
-  "n_codes": 4124
+  "n_sh": 4123,
+  "n_op": 4011,
+  "n_div": 4045,
+  "n_codes": 4125
  },
  "fund": {
-  "asof_latest_disclosure": "2026-07-14",
+  "asof_latest_disclosure": "2026-07-17",
   "pool": 1770,
   "n_codes": 1686,
   "coverage": {
    "has": 1686,
    "value": 1686,
    "ep": 1612,
-   "bp": 1684,
+   "bp": 1685,
    "netcash": 1685,
    "kiyohara": 1686,
    "payout": 1685,
    "quality": 1686,
    "moat": 1582,
-   "revision": 1276,
-   "growth": 1657,
+   "revision": 1267,
+   "growth": 1658,
    "ky_grow": 1686
   },
   "jq": {
-   "dates_asked": 522,
+   "dates_asked": 523,
    "dates_with_data": 485,
-   "rows": 37547,
-   "codes": 4129,
-   "req": 522,
+   "rows": 37670,
+   "codes": 4130,
+   "req": 523,
    "n429": 0,
    "blocked": null,
    "resp_key": "data",
    "err": {
-    "HTTP 400": 2
+    "HTTP 400": 3
    }
   },
   "holdings_added": 2
@@ -425,18 +425,18 @@
   "tried": [
    "予定日=今後40営業日"
   ],
-  "rows": 33,
+  "rows": 28,
   "ahead_bd": 40,
   "days_asked": 40,
   "days_with_rows": 4,
-  "data_to": "2026-10-15",
-  "covered_to": "2026-12-03",
+  "data_to": "2026-10-16",
+  "covered_to": "2026-12-04",
   "rows_by_probe": {
-   "予定日=今後40営業日": 33
+   "予定日=今後40営業日": 28
   },
   "used": "予定日=今後40営業日",
   "http_err": {
-   "HTTP 400": 2
+   "HTTP 400": 3
   },
   "sample_keys": [
    "CoName",
@@ -449,7 +449,7 @@
   ],
   "code_key": "Code",
   "date_key": "SchDate",
-  "codes": 33,
+  "codes": 28,
   "past_rows": 0,
   "result": "ok"
  },
@@ -457,8 +457,8 @@
   "asked": 20,
   "ok": 17,
   "from_jquants": 0,
-  "from_jpx": 17,
-  "from_yf": 0,
+  "from_jpx": 16,
+  "from_yf": 1,
   "recent": 0,
   "estimate": 0,
   "unknown": 3,
@@ -468,14 +468,14 @@
  "signals_bar": "2026-10-09",
  "backtest_status": {
   "file_exists": true,
-  "age_days": 7,
+  "age_days": 10,
   "same_config": true,
   "max_age_d": 30,
   "min_indep": 20,
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "前回から7日（30日ごと）・設定変更なし",
+ "backtest_skipped": "前回から10日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 47,
   "open": 11,
