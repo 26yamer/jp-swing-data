@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-13T01:04:36.045768+09:00",
+ "fetched_at_jst": "2026-10-13T18:42:22.920615+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -79,7 +79,7 @@
    "col": "Adj Close",
    "dates": [
     "2025-07-08",
-    "2026-10-06",
+    "2026-10-05",
     "2026-10-07"
    ],
    "n": 3
@@ -107,13 +107,13 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 35,
+ "news_ok": 48,
  "jgb": {
-  "date": "2026-10-08",
-  "age_days": 5,
-  "y2": 1.936,
-  "y10": 3.089,
-  "y30": 4.136
+  "date": "2026-10-09",
+  "age_days": 4,
+  "y2": 1.911,
+  "y10": 3.027,
+  "y30": 4.085
  },
  "events_ok": 8,
  "n_anomalies": 10,
@@ -126,20 +126,21 @@
   "skipped": "TDNET_ENABLED=False（JPXがスクレイピングの自動取得を控えるよう求めており、robots.txtも拒否しているため）"
  },
  "universe_source": "jpx_master",
- "screen_last_bar": "2026-10-09",
+ "screen_last_bar": "2026-10-13",
+ "koichi_settled": 2,
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k32ecdd",
-  "pre": 298,
-  "checked": 295,
-  "cands": 39,
+  "pre": 351,
+  "checked": 344,
+  "cands": 60,
   "provisional": false,
-  "ledger": 160
+  "ledger": 213
  },
  "screen": {
   "universe": 4250,
   "scanned": 4250,
-  "passed": 1767,
+  "passed": 1758,
   "named": true,
   "source": "jpx_master"
  },
@@ -162,7 +163,7 @@
   ]
  },
  "netcash": {
-  "pool": 1769,
+  "pool": 1760,
   "shortlist": 60,
   "sure": 0
  },
@@ -177,7 +178,7 @@
   "listed_days": 45,
   "todo": 41,
   "todo_priority": 0,
-  "priority_given": 84,
+  "priority_given": 81,
   "downloaded": 41,
   "parsed": 41,
   "req": 86,
@@ -334,34 +335,34 @@
   "err": {}
  },
  "kiyohara": {
-  "universe": 4097,
+  "universe": 4092,
   "passed": 29,
   "shown": 29,
   "sure": 0,
   "likely": 0,
   "no_div": 1,
-  "with_real": 27,
-  "real_ge1": 19,
-  "real_near": 8,
+  "with_real": 28,
+  "real_ge1": 17,
+  "real_near": 11,
   "bands": {
-   "real_ge1": 16,
+   "real_ge1": 17,
    "real_near": 11,
    "real_lo": 0,
    "sure": 0,
    "likely": 0,
    "maybe": 0,
-   "thin": 2,
+   "thin": 1,
    "unknown": 0
   },
   "dropped": {
-   "時価総額>500億円": 22,
-   "財務が引けない": 347,
-   "売買代金が薄い": 755,
-   "PER>8倍": 2364,
-   "PBR>0.8倍": 93,
-   "流動資産≤負債合計(実測)": 35,
+   "PER>8倍": 2371,
+   "財務が引けない": 348,
+   "売買代金が薄い": 745,
+   "PBR>0.8倍": 94,
+   "流動資産≤負債合計(実測)": 32,
    "予想PERが出ない(赤字予想)": 274,
    "ネットキャッシュ比率<0.8(実測)": 20,
+   "時価総額>500億円": 21,
    "銀行・金融（式が成立しない）": 156,
    "本業が赤字": 2
   }
@@ -379,21 +380,21 @@
  },
  "fund": {
   "asof_latest_disclosure": "2026-07-17",
-  "pool": 1769,
-  "n_codes": 1686,
+  "pool": 1760,
+  "n_codes": 1677,
   "coverage": {
-   "has": 1686,
-   "value": 1686,
-   "ep": 1612,
-   "bp": 1685,
-   "netcash": 1685,
-   "kiyohara": 1686,
-   "payout": 1685,
-   "quality": 1686,
-   "moat": 1582,
-   "revision": 1267,
-   "growth": 1658,
-   "ky_grow": 1686
+   "has": 1677,
+   "value": 1677,
+   "ep": 1603,
+   "bp": 1676,
+   "netcash": 1676,
+   "kiyohara": 1677,
+   "payout": 1676,
+   "quality": 1677,
+   "moat": 1574,
+   "revision": 1263,
+   "growth": 1649,
+   "ky_grow": 1677
   },
   "jq": {
    "dates_asked": 522,
@@ -459,25 +460,25 @@
   "asked": 20,
   "ok": 17,
   "from_jquants": 0,
-  "from_jpx": 16,
-  "from_yf": 1,
+  "from_jpx": 17,
+  "from_yf": 0,
   "recent": 0,
   "estimate": 0,
   "unknown": 3,
   "error": 0
  },
  "signals_appended": true,
- "signals_bar": "2026-10-09",
+ "signals_bar": "2026-10-13",
  "backtest_status": {
   "file_exists": true,
-  "age_days": 10,
+  "age_days": 11,
   "same_config": true,
   "max_age_d": 30,
   "min_indep": 20,
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "前回から10日（30日ごと）・設定変更なし",
+ "backtest_skipped": "前回から11日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 47,
   "open": 11,
@@ -541,12 +542,12 @@
  },
  "regime": {
   "px": 432.5,
-  "vs200": 9.3,
-  "vs25": 1.07,
+  "vs200": 9.19,
+  "vs25": 0.99,
   "above200": true,
-  "breadth": "6/17",
-  "breadth_pct": 35.0,
-  "b_suggest": 0.6
+  "breadth": "7/17",
+  "breadth_pct": 41.0,
+  "b_suggest": 0.7
  },
  "swing_gate": {
   "open": false,
