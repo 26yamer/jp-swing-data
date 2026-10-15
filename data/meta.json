@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-15T16:41:54.625493+09:00",
+ "fetched_at_jst": "2026-10-15T21:04:52.420342+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -57,9 +57,7 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [
-  "jgb: 履歴: https://www.mof.go.jp/jgbs/reference/interest_rate/jgbcm_all.csv -> HTTP 404"
- ],
+ "errors": [],
  "versions": {
   "python": "3.12.15",
   "pandas": "3.0.6",
@@ -109,7 +107,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 51,
+ "news_ok": 45,
  "jgb": {
   "date": "2026-10-14",
   "age_days": 1,
@@ -129,7 +127,6 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-10-15",
- "koichi_settled": 19,
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k32ecdd",
@@ -178,12 +175,12 @@
   "names": 4182,
   "with_inv": 2167,
   "listed_days": 45,
-  "todo": 110,
-  "todo_priority": 2,
+  "todo": 41,
+  "todo_priority": 0,
   "priority_given": 88,
-  "downloaded": 110,
-  "parsed": 110,
-  "req": 155,
+  "downloaded": 41,
+  "parsed": 41,
+  "req": 86,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -463,8 +460,8 @@
   "asked": 20,
   "ok": 17,
   "from_jquants": 0,
-  "from_jpx": 16,
-  "from_yf": 1,
+  "from_jpx": 17,
+  "from_yf": 0,
   "recent": 0,
   "estimate": 0,
   "unknown": 3,
