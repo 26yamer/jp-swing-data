@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-16T16:29:03.982016+09:00",
+ "fetched_at_jst": "2026-10-16T20:52:58.647027+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -107,7 +107,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 45,
+ "news_ok": 41,
  "jgb": {
   "date": "2026-10-15",
   "age_days": 1,
@@ -139,7 +139,7 @@
  "screen": {
   "universe": 4250,
   "scanned": 4250,
-  "passed": 1716,
+  "passed": 1717,
   "named": true,
   "source": "jpx_master"
  },
@@ -162,7 +162,7 @@
   ]
  },
  "netcash": {
-  "pool": 1718,
+  "pool": 1719,
   "shortlist": 60,
   "sure": 0
  },
@@ -175,12 +175,12 @@
   "names": 4182,
   "with_inv": 2168,
   "listed_days": 45,
-  "todo": 113,
+  "todo": 41,
   "todo_priority": 0,
   "priority_given": 86,
-  "downloaded": 113,
-  "parsed": 113,
-  "req": 158,
+  "downloaded": 41,
+  "parsed": 41,
+  "req": 86,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -379,21 +379,21 @@
  },
  "fund": {
   "asof_latest_disclosure": "2026-07-21",
-  "pool": 1718,
-  "n_codes": 1637,
+  "pool": 1719,
+  "n_codes": 1638,
   "coverage": {
-   "has": 1637,
-   "value": 1637,
-   "ep": 1567,
-   "bp": 1636,
-   "netcash": 1636,
-   "kiyohara": 1637,
-   "payout": 1637,
-   "quality": 1637,
-   "moat": 1534,
-   "revision": 1236,
-   "growth": 1610,
-   "ky_grow": 1637
+   "has": 1638,
+   "value": 1638,
+   "ep": 1568,
+   "bp": 1637,
+   "netcash": 1637,
+   "kiyohara": 1638,
+   "payout": 1638,
+   "quality": 1638,
+   "moat": 1535,
+   "revision": 1237,
+   "growth": 1611,
+   "ky_grow": 1638
   },
   "jq": {
    "dates_asked": 522,
