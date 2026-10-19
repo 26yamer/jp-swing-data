@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-19T17:03:06.685576+09:00",
+ "fetched_at_jst": "2026-10-19T22:55:23.569704+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -127,8 +127,7 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-10-19",
- "koichi_settled": 2,
- "signals_settled": 1,
+ "signals_settled": 0,
  "koichi_live": {
   "rule": "k32ecdd",
   "pre": 308,
@@ -176,12 +175,12 @@
   "names": 4182,
   "with_inv": 2169,
   "listed_days": 45,
-  "todo": 43,
+  "todo": 42,
   "todo_priority": 0,
   "priority_given": 85,
-  "downloaded": 43,
-  "parsed": 43,
-  "req": 88,
+  "downloaded": 42,
+  "parsed": 41,
+  "req": 87,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -332,10 +331,12 @@
     }
    }
   ],
-  "err": {}
+  "err": {
+   "zip:BadZipFile": 1
+  }
  },
  "kiyohara": {
-  "universe": 4089,
+  "universe": 4088,
   "passed": 31,
   "shown": 31,
   "sure": 0,
@@ -357,7 +358,7 @@
   "dropped": {
    "PER>8倍": 2391,
    "財務が引けない": 341,
-   "売買代金が薄い": 716,
+   "売買代金が薄い": 715,
    "予想PERが出ない(赤字予想)": 279,
    "PBR>0.8倍": 96,
    "流動資産≤負債合計(実測)": 32,
