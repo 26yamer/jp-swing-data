@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-21T16:57:45.724590+09:00",
+ "fetched_at_jst": "2026-10-21T21:21:14.431433+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -127,7 +127,6 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-10-21",
- "koichi_settled": 1,
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k32ecdd",
@@ -176,12 +175,12 @@
   "names": 4182,
   "with_inv": 2170,
   "listed_days": 45,
-  "todo": 43,
+  "todo": 42,
   "todo_priority": 0,
   "priority_given": 88,
-  "downloaded": 43,
-  "parsed": 42,
-  "req": 88,
+  "downloaded": 42,
+  "parsed": 41,
+  "req": 87,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -337,7 +336,7 @@
   }
  },
  "kiyohara": {
-  "universe": 4087,
+  "universe": 4086,
   "passed": 34,
   "shown": 34,
   "sure": 0,
@@ -366,7 +365,7 @@
    "流動資産≤負債合計(実測)": 33,
    "ネットキャッシュ比率<0.8(実測)": 21,
    "銀行・金融（式が成立しない）": 156,
-   "本業が赤字": 2
+   "本業が赤字": 1
   }
  },
  "fund_raw": {
