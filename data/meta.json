@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-22T21:22:38.429073+09:00",
+ "fetched_at_jst": "2026-10-23T16:53:19.827839+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -109,11 +109,11 @@
  "holdings_ok": 9,
  "news_ok": 39,
  "jgb": {
-  "date": "2026-10-21",
+  "date": "2026-10-22",
   "age_days": 1,
   "y2": 1.914,
-  "y10": 2.923,
-  "y30": 3.98
+  "y10": 2.914,
+  "y30": 3.952
  },
  "events_ok": 8,
  "n_anomalies": 10,
@@ -126,28 +126,29 @@
   "skipped": "TDNET_ENABLED=False（JPXがスクレイピングの自動取得を控えるよう求めており、robots.txtも拒否しているため）"
  },
  "universe_source": "jpx_master",
- "screen_last_bar": "2026-10-22",
- "signals_settled": 0,
+ "screen_last_bar": "2026-10-23",
+ "koichi_settled": 14,
+ "signals_settled": 5,
  "koichi_live": {
   "rule": "k32ecdd",
-  "pre": 244,
-  "checked": 243,
-  "cands": 20,
+  "pre": 210,
+  "checked": 207,
+  "cands": 16,
   "provisional": false,
-  "ledger": 419
+  "ledger": 431
  },
  "screen": {
   "universe": 4250,
   "scanned": 4250,
-  "passed": 1637,
+  "passed": 1660,
   "named": true,
   "source": "jpx_master"
  },
  "splits": {
   "events": 967,
   "split_codes": 850,
-  "adjusted_rows": 3137,
-  "adjusted_codes": 526,
+  "adjusted_rows": 3121,
+  "adjusted_codes": 525,
   "examples": [
    "1333",
    "1414",
@@ -162,7 +163,7 @@
   ]
  },
  "netcash": {
-  "pool": 1640,
+  "pool": 1661,
   "shortlist": 60,
   "sure": 0
  },
@@ -173,14 +174,14 @@
   "bs_bad": 0,
   "refetch_bad": 41,
   "names": 4182,
-  "with_inv": 2171,
+  "with_inv": 2175,
   "listed_days": 45,
-  "todo": 42,
+  "todo": 52,
   "todo_priority": 0,
-  "priority_given": 89,
-  "downloaded": 42,
-  "parsed": 41,
-  "req": 87,
+  "priority_given": 90,
+  "downloaded": 52,
+  "parsed": 51,
+  "req": 97,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -197,14 +198,14 @@
    "値"
   ],
   "dtypes": {
-   "120": 1998,
-   "160": 1124
+   "120": 2008,
+   "160": 1114
   },
-  "hist_rows": 2658,
+  "hist_rows": 2668,
   "hist_codes": 2287,
-  "hist_multi": 351,
+  "hist_multi": 361,
   "hist_from": "2022-03-23",
-  "hist_to": "2026-10-21",
+  "hist_to": "2026-10-22",
   "nomatch": {
    "120:連結と個別が混在": 7,
    "160:連結と個別が混在": 34
@@ -336,35 +337,35 @@
   }
  },
  "kiyohara": {
-  "universe": 4085,
-  "passed": 35,
-  "shown": 35,
+  "universe": 4083,
+  "passed": 36,
+  "shown": 36,
   "sure": 0,
   "likely": 0,
   "no_div": 1,
   "with_real": 32,
-  "real_ge1": 22,
-  "real_near": 10,
+  "real_ge1": 24,
+  "real_near": 8,
   "bands": {
    "real_ge1": 22,
    "real_near": 10,
    "real_lo": 0,
    "sure": 0,
    "likely": 0,
-   "maybe": 2,
+   "maybe": 3,
    "thin": 1,
    "unknown": 0
   },
   "dropped": {
-   "時価総額>500億円": 23,
+   "PER>8倍": 2375,
    "財務が引けない": 343,
-   "売買代金が薄い": 714,
-   "予想PERが出ない(赤字予想)": 275,
-   "PER>8倍": 2390,
-   "PBR>0.8倍": 95,
-   "流動資産≤負債合計(実測)": 33,
-   "ネットキャッシュ比率<0.8(実測)": 21,
+   "売買代金が薄い": 726,
+   "予想PERが出ない(赤字予想)": 274,
+   "PBR>0.8倍": 96,
+   "流動資産≤負債合計(実測)": 31,
+   "ネットキャッシュ比率<0.8(実測)": 23,
    "銀行・金融（式が成立しない）": 155,
+   "時価総額>500億円": 23,
    "本業が赤字": 1
   }
  },
@@ -380,37 +381,37 @@
   "n_codes": 4124
  },
  "fund": {
-  "asof_latest_disclosure": "2026-07-27",
-  "pool": 1640,
-  "n_codes": 1561,
+  "asof_latest_disclosure": "2026-07-28",
+  "pool": 1661,
+  "n_codes": 1568,
   "coverage": {
-   "has": 1561,
-   "value": 1561,
-   "ep": 1489,
-   "bp": 1559,
-   "netcash": 1559,
-   "kiyohara": 1561,
-   "payout": 1560,
-   "quality": 1561,
-   "moat": 1463,
-   "revision": 1150,
-   "growth": 1539,
-   "ky_grow": 1561
+   "has": 1568,
+   "value": 1568,
+   "ep": 1496,
+   "bp": 1567,
+   "netcash": 1567,
+   "kiyohara": 1568,
+   "payout": 1567,
+   "quality": 1568,
+   "moat": 1472,
+   "revision": 1145,
+   "growth": 1548,
+   "ky_grow": 1568
   },
   "jq": {
-   "dates_asked": 521,
+   "dates_asked": 522,
    "dates_with_data": 484,
-   "rows": 37502,
+   "rows": 37427,
    "codes": 4129,
-   "req": 521,
+   "req": 522,
    "n429": 0,
    "blocked": null,
    "resp_key": "data",
    "err": {
-    "HTTP 400": 1
+    "HTTP 400": 2
    }
   },
-  "holdings_added": 3
+  "holdings_added": 1
  },
  "earnings_hist": {
   "skipped": "TDNET_ENABLED=False",
@@ -419,29 +420,29 @@
  },
  "jpx_earnings": {
   "files": [
-   "kessan09_1016.xlsx:2881件",
+   "kessan09_1023.xlsx:2920件",
    "kessan08_1002.xlsx:454件",
-   "kessan.xlsx:8件"
+   "kessan.xlsx:4件"
   ],
-  "codes": 3335
+  "codes": 3374
  },
  "jq_earn": {
   "path": "/v2/fins/earnings-date",
   "tried": [
    "予定日=今後40営業日"
   ],
-  "rows": 6,
+  "rows": 20,
   "ahead_bd": 40,
   "days_asked": 40,
   "days_with_rows": 3,
-  "data_to": "2026-10-28",
-  "covered_to": "2026-12-16",
+  "data_to": "2026-10-29",
+  "covered_to": "2026-12-17",
   "rows_by_probe": {
-   "予定日=今後40営業日": 6
+   "予定日=今後40営業日": 20
   },
   "used": "予定日=今後40営業日",
   "http_err": {
-   "HTTP 400": 1
+   "HTTP 400": 2
   },
   "sample_keys": [
    "CoName",
@@ -454,7 +455,7 @@
   ],
   "code_key": "Code",
   "date_key": "SchDate",
-  "codes": 6,
+  "codes": 20,
   "past_rows": 0,
   "result": "ok"
  },
@@ -470,30 +471,30 @@
   "error": 0
  },
  "signals_appended": true,
- "signals_bar": "2026-10-22",
+ "signals_bar": "2026-10-23",
  "backtest_status": {
   "file_exists": true,
-  "age_days": 20,
+  "age_days": 21,
   "same_config": true,
   "max_age_d": 30,
   "min_indep": 20,
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "前回から20日（30日ごと）・設定変更なし",
+ "backtest_skipped": "前回から21日（30日ごと）・設定変更なし",
  "signals": {
-  "closed": 49,
-  "open": 14,
-  "days": 14,
+  "closed": 54,
+  "open": 13,
+  "days": 15,
   "value_trend": {
-   "n": 6,
+   "n": 11,
    "win_pct": 0.0,
-   "avg_r": -1.302,
-   "sum_r": -7.81,
+   "avg_r": -1.315,
+   "sum_r": -14.47,
    "target": 0,
-   "stop": 6,
+   "stop": 11,
    "timeout": 0,
-   "avg_bars": 4.7
+   "avg_bars": 5.8
   },
   "value": {
    "n": 23,
@@ -526,14 +527,14 @@
    "avg_bars": 13.0
   },
   "all": {
-   "n": 49,
-   "win_pct": 49.0,
-   "avg_r": -0.162,
-   "sum_r": -7.96,
+   "n": 54,
+   "win_pct": 44.4,
+   "avg_r": -0.271,
+   "sum_r": -14.62,
    "target": 10,
-   "stop": 17,
+   "stop": 22,
    "timeout": 22,
-   "avg_bars": 11.3
+   "avg_bars": 11.0
   }
  },
  "holdings_sync": {
@@ -543,12 +544,12 @@
   ]
  },
  "regime": {
-  "px": 420.6000061035156,
-  "vs200": 5.48,
-  "vs25": -1.83,
+  "px": 416.29998779296875,
+  "vs200": 4.32,
+  "vs25": -2.77,
   "above200": true,
-  "breadth": "10/17",
-  "breadth_pct": 59.0,
+  "breadth": "9/17",
+  "breadth_pct": 53.0,
   "b_suggest": 0.7
  },
  "swing_gate": {
