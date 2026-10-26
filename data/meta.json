@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-23T21:04:02.575714+09:00",
+ "fetched_at_jst": "2026-10-26T17:04:11.182039+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -107,13 +107,13 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 40,
+ "news_ok": 42,
  "jgb": {
-  "date": "2026-10-22",
-  "age_days": 1,
-  "y2": 1.914,
-  "y10": 2.914,
-  "y30": 3.952
+  "date": "2026-10-23",
+  "age_days": 3,
+  "y2": 1.872,
+  "y10": 2.837,
+  "y30": 3.904
  },
  "events_ok": 8,
  "n_anomalies": 10,
@@ -126,28 +126,29 @@
   "skipped": "TDNET_ENABLED=False（JPXがスクレイピングの自動取得を控えるよう求めており、robots.txtも拒否しているため）"
  },
  "universe_source": "jpx_master",
- "screen_last_bar": "2026-10-23",
+ "screen_last_bar": "2026-10-26",
+ "koichi_settled": 4,
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k32ecdd",
-  "pre": 210,
-  "checked": 207,
+  "pre": 220,
+  "checked": 219,
   "cands": 16,
   "provisional": false,
-  "ledger": 431
+  "ledger": 443
  },
  "screen": {
   "universe": 4250,
   "scanned": 4250,
-  "passed": 1660,
+  "passed": 1646,
   "named": true,
   "source": "jpx_master"
  },
  "splits": {
   "events": 967,
   "split_codes": 850,
-  "adjusted_rows": 3121,
-  "adjusted_codes": 525,
+  "adjusted_rows": 3045,
+  "adjusted_codes": 514,
   "examples": [
    "1333",
    "1414",
@@ -162,7 +163,7 @@
   ]
  },
  "netcash": {
-  "pool": 1661,
+  "pool": 1647,
   "shortlist": 60,
   "sure": 0
  },
@@ -173,14 +174,14 @@
   "bs_bad": 0,
   "refetch_bad": 41,
   "names": 4182,
-  "with_inv": 2175,
+  "with_inv": 2177,
   "listed_days": 45,
-  "todo": 42,
+  "todo": 50,
   "todo_priority": 0,
-  "priority_given": 90,
-  "downloaded": 42,
-  "parsed": 41,
-  "req": 87,
+  "priority_given": 82,
+  "downloaded": 50,
+  "parsed": 49,
+  "req": 95,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -197,14 +198,14 @@
    "値"
   ],
   "dtypes": {
-   "120": 2008,
-   "160": 1114
+   "120": 2015,
+   "160": 1107
   },
-  "hist_rows": 2668,
+  "hist_rows": 2676,
   "hist_codes": 2287,
-  "hist_multi": 361,
+  "hist_multi": 369,
   "hist_from": "2022-03-23",
-  "hist_to": "2026-10-22",
+  "hist_to": "2026-10-23",
   "nomatch": {
    "120:連結と個別が混在": 7,
    "160:連結と個別が混在": 34
@@ -336,78 +337,78 @@
   }
  },
  "kiyohara": {
-  "universe": 4083,
-  "passed": 36,
-  "shown": 36,
+  "universe": 4082,
+  "passed": 31,
+  "shown": 31,
   "sure": 0,
   "likely": 0,
-  "no_div": 1,
-  "with_real": 32,
-  "real_ge1": 24,
-  "real_near": 8,
+  "no_div": 2,
+  "with_real": 28,
+  "real_ge1": 21,
+  "real_near": 7,
   "bands": {
-   "real_ge1": 22,
-   "real_near": 10,
+   "real_ge1": 21,
+   "real_near": 7,
    "real_lo": 0,
    "sure": 0,
    "likely": 0,
-   "maybe": 3,
-   "thin": 1,
+   "maybe": 1,
+   "thin": 2,
    "unknown": 0
   },
   "dropped": {
-   "PER>8倍": 2375,
-   "財務が引けない": 343,
-   "売買代金が薄い": 726,
-   "予想PERが出ない(赤字予想)": 274,
-   "PBR>0.8倍": 96,
+   "PER>8倍": 2383,
+   "財務が引けない": 338,
+   "売買代金が薄い": 735,
+   "予想PERが出ない(赤字予想)": 268,
+   "PBR>0.8倍": 99,
    "流動資産≤負債合計(実測)": 31,
-   "ネットキャッシュ比率<0.8(実測)": 23,
+   "ネットキャッシュ比率<0.8(実測)": 20,
    "銀行・金融（式が成立しない）": 155,
-   "時価総額>500億円": 23,
-   "本業が赤字": 1
+   "時価総額>500億円": 18,
+   "本業が赤字": 4
   }
  },
  "fund_raw": {
-  "n_bps": 4059,
-  "n_feps": 3879,
-  "n_eq": 4124,
-  "n_ta": 4124,
-  "n_cash": 4088,
-  "n_sh": 4122,
-  "n_op": 4010,
-  "n_div": 4045,
-  "n_codes": 4124
+  "n_bps": 4058,
+  "n_feps": 3874,
+  "n_eq": 4119,
+  "n_ta": 4119,
+  "n_cash": 4085,
+  "n_sh": 4117,
+  "n_op": 4006,
+  "n_div": 4040,
+  "n_codes": 4119
  },
  "fund": {
-  "asof_latest_disclosure": "2026-07-28",
-  "pool": 1661,
-  "n_codes": 1568,
+  "asof_latest_disclosure": "2026-07-31",
+  "pool": 1647,
+  "n_codes": 1564,
   "coverage": {
-   "has": 1568,
-   "value": 1568,
-   "ep": 1496,
-   "bp": 1567,
-   "netcash": 1567,
-   "kiyohara": 1568,
-   "payout": 1567,
-   "quality": 1568,
-   "moat": 1472,
-   "revision": 1145,
-   "growth": 1548,
-   "ky_grow": 1568
+   "has": 1564,
+   "value": 1564,
+   "ep": 1491,
+   "bp": 1563,
+   "netcash": 1563,
+   "kiyohara": 1564,
+   "payout": 1563,
+   "quality": 1564,
+   "moat": 1467,
+   "revision": 913,
+   "growth": 1543,
+   "ky_grow": 1564
   },
   "jq": {
-   "dates_asked": 522,
+   "dates_asked": 523,
    "dates_with_data": 484,
-   "rows": 37427,
-   "codes": 4129,
-   "req": 522,
+   "rows": 37433,
+   "codes": 4124,
+   "req": 523,
    "n429": 0,
    "blocked": null,
    "resp_key": "data",
    "err": {
-    "HTTP 400": 2
+    "HTTP 400": 3
    }
   },
   "holdings_added": 1
@@ -421,7 +422,7 @@
   "files": [
    "kessan09_1023.xlsx:2920件",
    "kessan08_1002.xlsx:454件",
-   "kessan.xlsx:4件"
+   "kessan.xlsx:24件"
   ],
   "codes": 3374
  },
@@ -430,18 +431,18 @@
   "tried": [
    "予定日=今後40営業日"
   ],
-  "rows": 20,
+  "rows": 36,
   "ahead_bd": 40,
   "days_asked": 40,
   "days_with_rows": 3,
-  "data_to": "2026-10-29",
-  "covered_to": "2026-12-17",
+  "data_to": "2026-10-30",
+  "covered_to": "2026-12-18",
   "rows_by_probe": {
-   "予定日=今後40営業日": 20
+   "予定日=今後40営業日": 36
   },
   "used": "予定日=今後40営業日",
   "http_err": {
-   "HTTP 400": 2
+   "HTTP 400": 3
   },
   "sample_keys": [
    "CoName",
@@ -454,7 +455,7 @@
   ],
   "code_key": "Code",
   "date_key": "SchDate",
-  "codes": 20,
+  "codes": 36,
   "past_rows": 0,
   "result": "ok"
  },
@@ -470,21 +471,21 @@
   "error": 0
  },
  "signals_appended": true,
- "signals_bar": "2026-10-23",
+ "signals_bar": "2026-10-26",
  "backtest_status": {
   "file_exists": true,
-  "age_days": 21,
+  "age_days": 24,
   "same_config": true,
   "max_age_d": 30,
   "min_indep": 20,
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "前回から21日（30日ごと）・設定変更なし",
+ "backtest_skipped": "前回から24日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 54,
-  "open": 13,
-  "days": 15,
+  "open": 14,
+  "days": 16,
   "value_trend": {
    "n": 11,
    "win_pct": 0.0,
@@ -543,12 +544,12 @@
   ]
  },
  "regime": {
-  "px": 416.29998779296875,
-  "vs200": 4.32,
-  "vs25": -2.77,
+  "px": 418.3999938964844,
+  "vs200": 4.76,
+  "vs25": -2.25,
   "above200": true,
-  "breadth": "9/17",
-  "breadth_pct": 53.0,
+  "breadth": "10/17",
+  "breadth_pct": 59.0,
   "b_suggest": 0.7
  },
  "swing_gate": {
