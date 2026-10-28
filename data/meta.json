@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-10-28T17:55:51.776191+09:00",
+ "fetched_at_jst": "2026-10-28T22:31:03.301670+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -21,6 +21,7 @@
   "8411.T": "yfinance",
   "7203.T": "yfinance",
   "6758.T": "yfinance",
+  "6501.T": "yfinance",
   "9984.T": "yfinance",
   "6857.T": "yfinance",
   "8035.T": "yfinance",
@@ -56,10 +57,7 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [
-  "fetch_daily_stooq('6501.T',): RuntimeError: stooq HTTP 404",
-  "no-daily: 6501.T"
- ],
+ "errors": [],
  "versions": {
   "python": "3.12.15",
   "pandas": "3.1.0",
@@ -106,10 +104,10 @@
    "n": 2
   }
  ],
- "n_ok": 54,
+ "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 37,
+ "news_ok": 35,
  "jgb": {
   "date": "2026-10-27",
   "age_days": 1,
@@ -129,12 +127,11 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-10-28",
- "koichi_settled": 19,
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k32ecdd",
-  "pre": 202,
-  "checked": 200,
+  "pre": 203,
+  "checked": 201,
   "cands": 18,
   "provisional": false,
   "ledger": 474
@@ -142,7 +139,7 @@
  "screen": {
   "universe": 4250,
   "scanned": 4250,
-  "passed": 1726,
+  "passed": 1725,
   "named": true,
   "source": "jpx_master"
  },
@@ -165,7 +162,7 @@
   ]
  },
  "netcash": {
-  "pool": 1729,
+  "pool": 1728,
   "shortlist": 60,
   "sure": 0
  },
@@ -178,12 +175,12 @@
   "names": 4182,
   "with_inv": 2181,
   "listed_days": 45,
-  "todo": 57,
+  "todo": 42,
   "todo_priority": 0,
   "priority_given": 79,
-  "downloaded": 57,
-  "parsed": 56,
-  "req": 102,
+  "downloaded": 42,
+  "parsed": 41,
+  "req": 87,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -339,7 +336,7 @@
   }
  },
  "kiyohara": {
-  "universe": 4085,
+  "universe": 4084,
   "passed": 29,
   "shown": 29,
   "sure": 0,
@@ -361,7 +358,7 @@
   "dropped": {
    "時価総額>500億円": 19,
    "財務が引けない": 335,
-   "売買代金が薄い": 765,
+   "売買代金が薄い": 764,
    "予想PERが出ない(赤字予想)": 268,
    "PER>8倍": 2358,
    "PBR>0.8倍": 102,
@@ -384,7 +381,7 @@
  },
  "fund": {
   "asof_latest_disclosure": "2026-07-31",
-  "pool": 1729,
+  "pool": 1728,
   "n_codes": 1647,
   "coverage": {
    "has": 1647,

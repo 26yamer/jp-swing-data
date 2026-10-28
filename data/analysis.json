@@ -1,5 +1,5 @@
 {
- "generated_at_jst": "2026-10-28T17:55:51.776191+09:00",
+ "generated_at_jst": "2026-10-28T22:31:03.301670+09:00",
  "total": 5959556.0,
  "cash": 3011000.0,
  "benchmark": "1306.T",
@@ -217,7 +217,7 @@
    "rule_k": "",
    "dc_k": false,
    "dc_hit": false,
-   "next_earnings": "",
+   "next_earnings": "2027-01-28",
    "sleeve": "swing",
    "swingable": true,
    "avg_corr": 0.428,
