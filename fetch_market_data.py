@@ -1525,7 +1525,30 @@ def jq_metrics(rows_upto):
         feps_cur, fop_cur = _fr.get("feps"), _fr.get("fop")
         if feps_cur is None and _fr.get("fnp") is not None and sh:
             feps_cur = _fr["fnp"] / sh
+    # ── 営業収益力の分子（年間の営業利益）──────────────────────────
+    #   四半期の開示の営業利益は期首からの累計なので、そのままでは年間にならない。
+    #   直近12か月 ＝ 前の通期 ＋ 今期の累計 − 前年同期の累計（同じ四半期どうし）。
+    #   前年同期が無ければ直近の通期の値。どれも rows_upto の範囲内だけ（未来は混ぜない）。
+    op_ttm = None
+    try:
+        _fyr = [r for r in fin if r.get("per") == "FY" and r.get("op") is not None]
+        _lo = last if last.get("op") is not None else None
+        if _lo is not None and _lo.get("per") == "FY":
+            op_ttm = _lo["op"]
+        elif _lo is not None and _fyr:
+            _pfy = _fyr[-1]
+            _same = [r for r in fin if r.get("per") == _lo.get("per") and r.get("op") is not None
+                     and r.get("fyend") and _pfy.get("fyend") and r["fyend"] == _pfy["fyend"]]
+            if _same:
+                op_ttm = _pfy["op"] + _lo["op"] - _same[-1]["op"]
+            else:
+                op_ttm = _pfy["op"]
+        elif _fyr:
+            op_ttm = _fyr[-1]["op"]
+    except Exception:
+        op_ttm = None
     return {"bps": L("bps"), "feps": feps_cur, "fop": fop_cur, "eqar": L("eqar"),
+            "op_ttm": op_ttm,
             "opm": opm, "opm_stab": stab, "rev": rev, "cfoa": cfoa,
             "g_sales": g_sales, "g_op": g_op, "g_fop": g_fop,
             "n_growth": n_gs + n_go,
@@ -1592,7 +1615,7 @@ def jq_metrics_at(hist, pit, code, i):
 #                される会社は株主に返さない）。
 #   value は比較のため残す（混ぜたものが分解したものより良いかを見る）。
 FUND_FACTORS = ("value", "ep", "bp", "netcash", "kiyohara", "payout",
-                "quality", "moat", "revision", "growth", "ky_grow")
+                "quality", "moat", "revision", "growth", "ky_grow", "opprof")
 
 # ★実運用で並べ替えに使う因子。過去検証で基準（t≥2.8）を通ったものだけを置く。
 #   いま通っているのは value（2026-09-17 の補正後の検証）。
@@ -1647,6 +1670,10 @@ def fund_scores(df, fmap):
     #     伸び率の絶対値ではなく、その日の母集団の中での位置で効く。
     gsl  = col(lambda m, p: m.get("g_sales"))
     gop  = col(lambda m, p: m.get("g_op"))
+    # 営業収益力（2026-10-19 本人指定。Fama-French 2015 の operating profitability）。
+    #   過去検証では支払利息が取れない（J-Quantsに無い）ので、営業利益(直近12か月)÷純資産で測る。
+    opp  = col(lambda m, p: (m["op_ttm"] / m["eq"])
+               if (m.get("op_ttm") is not None and m.get("eq") and m["eq"] > 0) else None)
 
     # ネットキャッシュ比率の下限版（清原式の保守的な近似）
     #   負債合計＝総資産−純資産、時価総額＝株価×(発行済−自己株)
@@ -1681,7 +1708,8 @@ def fund_scores(df, fmap):
            # 成長そのものと、「割安かつ成長」の組み合わせ。
            # 過去検証（BT_FACTORS）に載せて、効いているかを先に見る。
            "growth":   _mean_pct([pr(gsl), pr(gop)]),
-           "ky_grow":  _mean_pct([_ep, _nc, pr(gsl), pr(gop)])}
+           "ky_grow":  _mean_pct([_ep, _nc, pr(gsl), pr(gop)]),
+           "opprof":   pr(opp)}
     # ファンダが引けた銘柄。ここに入らない銘柄は
     # ファンダ側の母集団から外す（基準線も同じ母集団の平均を取る）。
     has = (~bp.isna()) | (~ep.isna())
@@ -1749,7 +1777,10 @@ ED_HIST_COLS  = ("code", "docid", "submit", "period", "dtype",
                   "ca", "inv", "liab", "ta", "na", "solo", "mixed", "bs_ok",
                   # 提出者名（PDL1.0＝出典明記で再配布できる）。
                   # 公開リポジトリに出す銘柄名はここから取る。
-                  "name")
+                  "name",
+                  # 営業収益力に要る（2026-10-19 追加。古い行は空）
+                  "opi", "intx", "sub", "pl")
+ED_PL_REFETCH = 30              # 営業収益力のために有報を読み直す上限（1回の実行で）
 ED_HIST_MAX   = 150_000         # 行数の上限（古い提出日から捨てる）。
                                  # 6年×約4,000銘柄×年2回 ≒ 48,000行の見込みで、
                                  # 1行約90バイトなので150,000行で約13MB。
@@ -1785,7 +1816,17 @@ ED_ELEM = {
     "liab": ("jppfs_cor:Liabilities", "jpigp_cor:LiabilitiesIFRS"),
     "ta":   ("jppfs_cor:Assets", "jpigp_cor:AssetsIFRS"),
     "na":   ("jppfs_cor:NetAssets", "jpigp_cor:EquityIFRS"),
+    # ★営業収益力（2026-10-19 本人指定）＝(営業利益−支払利息)÷(純資産−新株予約権)。
+    #   営業利益＝売上高−売上原価−販管費。純資産−新株予約権＝簿価自己資本＋非支配持分。
+    #   IFRSには「支払利息」に一対一の要素が無いので金融費用（FinanceCosts）で代える（やや大きく出る＝保守的）。
+    "sub":  ("jppfs_cor:SubscriptionRightsToShares",),
+    "opi":  ("jppfs_cor:OperatingIncome", "jpigp_cor:OperatingProfitLossIFRS"),
+    "intx": ("jppfs_cor:InterestExpensesNOE", "jppfs_cor:InterestExpenses",
+             "jpigp_cor:FinanceCostsIFRS"),
 }
+# 損益計算書の要素（期間の値）。貸借対照表（時点の値）とはコンテキストが違う。
+ED_PL_KEYS = ("opi", "intx")
+ED_BS_KEYS = ("ca", "inv", "liab", "ta", "na", "sub")
 _ED = {"req": 0, "n429": 0, "err": {}, "blocked": None,
        "enc": None, "sep": None, "cols": None, "docs": 0, "parsed": 0,
        # ★読めなかった書類の理由と、そのとき実際に入っていた要素ID／
@@ -1922,6 +1963,18 @@ def _ed_ctx_rank(cx):
         return None            # 議決権行使基準日・最近日・予定日は貸借ではない
     return (2, solo)
 
+def _ed_ctx_rank_dur(cx):
+    """損益計算書（期間）のコンテキスト。当期（有報）＝0、中間期（半期報告書）＝1。
+       前期・セグメント・子会社は使わない（_ed_ctx_rank と同じ規律）。"""
+    if not cx or "Duration" not in cx: return None
+    if "Prior" in cx: return None
+    head, _sep, tail = cx.partition("_")
+    if tail not in ED_CTX_TAIL_OK: return None
+    solo = (tail == "NonConsolidatedMember")
+    if head.startswith("CurrentYear"): return (0, solo)
+    if head.startswith("Interim"):     return (1, solo)
+    return None
+
 def ed_bs_ok(v, tol=0.005):
     """貸借対照表として成立しているか。
          資産合計 ＝ 負債合計 ＋ 純資産合計
@@ -2001,7 +2054,7 @@ def ed_parse_csv(zip_bytes, dtype=None):
                 continue
             cx = f[i_cx]
             if len(seen_ctx) < 12: seen_ctx.add(cx)
-            rk = _ed_ctx_rank(cx)
+            rk = (_ed_ctx_rank_dur(cx) if want[el] in ED_PL_KEYS else _ed_ctx_rank(cx))
             if rk is None: continue        # 前期・提出日時点・セグメントは使わない
             crank, solo = rk
             if i_cs is not None and len(f) > i_cs and f[i_cs] == "個別":
@@ -2028,12 +2081,13 @@ def ed_parse_csv(zip_bytes, dtype=None):
                                  "ctx": sorted(seen_ctx)[:8]})
         return None
     out = {k: v for k, (v, _s, _c) in got.items()}
-    out["solo"] = all(s for _v, s, _c in got.values())
+    out["solo"] = all(s for k, (_v, s, _c) in got.items() if k in ED_BS_KEYS)
+    out["pl"] = True        # この書類を新しい読み方（損益計算書の要素も見る）で読んだ印
     # どのコンテキストから取れたか（当期本体以外なら印を残す）
-    out["ctx_alt"] = any(c > 0 for _v, _s, c in got.values())
+    out["ctx_alt"] = any(c > 0 for k, (_v, _s, c) in got.items() if k in ED_BS_KEYS)
     # ★比率の式に効くのは ca と liab。この2つの基準（連結/個別）が
     #   違っていたら、その比率は意味を持たないので使わない。
-    _base = {k: s for k, (_v, s, _c) in got.items()}
+    _base = {k: s for k, (_v, s, _c) in got.items() if k in ED_BS_KEYS}
     out["mixed"] = ("ca" in _base and "liab" in _base
                     and _base["ca"] != _base["liab"])
     # ★投資有価証券だけ基準が違うのは異常ではない。IFRS採用会社は連結に
@@ -2103,13 +2157,13 @@ def ed_hist_load():
                      "dtype": (row.get("dtype") or "").strip(),
                      # 古いキャッシュには name 列が無い。空で読む（落とさない）。
                      "name": (row.get("name") or "").strip()}
-                for k in ("ca", "inv", "liab", "ta", "na"):
+                for k in ("ca", "inv", "liab", "ta", "na", "opi", "intx", "sub"):
                     v = (row.get(k) or "").strip()
                     try:
                         r[k] = float(v) if v != "" else None
                     except ValueError:
                         r[k] = None
-                for k in ("solo", "mixed", "bs_ok"):
+                for k in ("solo", "mixed", "bs_ok", "pl"):
                     v = (row.get(k) or "").strip()
                     r[k] = True if v == "1" else (False if v == "0" else None)
                 out[did] = r
@@ -2135,7 +2189,10 @@ def ed_hist_save(hist):
                            + ["" if r.get(k) is None else repr(r[k])
                               for k in ("ca", "inv", "liab", "ta", "na")]
                            + [_b(r.get("solo")), _b(r.get("mixed")),
-                              _b(r.get("bs_ok")), r.get("name", "")])
+                              _b(r.get("bs_ok")), r.get("name", "")]
+                           + ["" if r.get(k) is None else repr(r[k])
+                              for k in ("opi", "intx", "sub")]
+                           + [_b(r.get("pl"))])
     except Exception as e:
         meta["errors"].append(f"edinet hist write: {type(e).__name__}")
     return len(rows)
@@ -2257,7 +2314,27 @@ def ed_update(priority=None):
             if v.get("docid") and (v.get("mixed") is True or ed_bs_ok(v) is False)]
     _fix = [f for f in _fix if not any(t["docid"] == f["docid"] for t in todo)]
     _nfix = len(_fix)
-    todo = _fix + todo            # 直しを最優先
+    # ★営業収益力（2026-10-19）: 清原枠の候補で、有報の損益（営業利益・支払利息）をまだ
+    #   読んでいない銘柄は、手持ちの有報を docid で引き直す（新しい有報を待つと半年以上かかる）。
+    _plfix = []
+    try:
+        _h120 = {}
+        for _r in hist.values():
+            if _r.get("dtype") != "120" or not _r.get("code"): continue
+            _o = _h120.get(_r["code"])
+            if _o is None or (_r.get("submit") or "") > (_o.get("submit") or ""):
+                _h120[_r["code"]] = _r
+        for _c in [str(x) for x in (priority or ())]:
+            _r = _h120.get(_c)
+            if not _r or _r.get("pl"): continue
+            if (rows.get(_c) or {}).get("pl120"): continue
+            if any(t["docid"] == _r["docid"] for t in _fix + todo): continue
+            _plfix.append({"code": _c, "docid": _r["docid"], "submit": _r.get("submit") or "",
+                           "period": _r.get("period") or "", "dtype": "120", "name": _r.get("name", "")})
+            if len(_plfix) >= ED_PL_REFETCH: break
+    except Exception as e:
+        meta["errors"].append(f"edinet pl refetch: {type(e).__name__}")
+    todo = _fix + _plfix + todo   # 直しを最優先、次に営業収益力の読み直し
     for f in todo[:ED_MAX_DOCS]:
         if _ED["blocked"]: break
         b = _ed_get(f"/documents/{f['docid']}", {"type": 5}, binary=True)
@@ -2274,11 +2351,23 @@ def ed_update(priority=None):
                             "liab": v.get("liab"), "ta": v.get("ta"),
                             "na": v.get("na"), "solo": v.get("solo"),
                             "mixed": v.get("mixed"), "bs_ok": v.get("bs_ok"),
-                            "name": f.get("name", "")}
+                            "name": f.get("name", ""),
+                            "opi": v.get("opi"), "intx": v.get("intx"), "sub": v.get("sub"),
+                            "pl": bool(v.get("pl"))}
+        # ★営業収益力は年間の損益で測る＝有価証券報告書(120)の値だけを銘柄ごとに持つ。
+        #   rows の本体（最新の開示）が半期報告書でも、こちらは有報の最新を保つ。
+        if f.get("dtype") == "120" and v.get("pl"):
+            _c0 = rows.setdefault(f["code"], {})
+            _p0 = _c0.get("pl120") or {}
+            if (_p0.get("submit") or "") <= f["submit"]:
+                _c0["pl120"] = {"submit": f["submit"], "period": f["period"], "docid": f["docid"],
+                                "opi": v.get("opi"), "intx": v.get("intx"),
+                                "sub": v.get("sub"), "na": v.get("na")}
         # rows は「銘柄ごとの最新」。古い提出で上書きしない。
         _cur = rows.get(f["code"])
         if _cur and (_cur.get("submit") or "") > f["submit"]:
             continue
+        _keep_pl = (rows.get(f["code"]) or {}).get("pl120")
         rows[f["code"]] = {"docid": f["docid"], "submit": f["submit"],
                            "period": f["period"], "dtype": f["dtype"],
                            "ca": v.get("ca"), "inv": v.get("inv"),
@@ -2286,6 +2375,7 @@ def ed_update(priority=None):
                            "na": v.get("na"), "solo": v.get("solo"),
                            "ctx_alt": v.get("ctx_alt"),
                            "mixed": v.get("mixed"), "bs_ok": v.get("bs_ok")}
+        if _keep_pl: rows[f["code"]]["pl120"] = _keep_pl
     cache["rows"] = rows
     cache["seen_dates"] = sorted(seen)[-1200:]
     cache["attribution"] = ED_ATTRIB
@@ -2322,7 +2412,8 @@ def ed_update(priority=None):
     cache["hist_multi"] = _multi
     meta["edinet"] = {"codes": len(rows), "with_ca": cache["with_ca"],
                       "usable": cache["usable"], "bs_bad": cache["bs_bad"],
-                      "refetch_bad": _nfix, "names": _nnames,
+                      "refetch_bad": _nfix, "refetch_pl": len(_plfix), "names": _nnames,
+                      "with_pl120": sum(1 for v in rows.values() if v.get("pl120")),
                       "with_inv": cache["with_inv"], "listed_days": listed,
                       "todo": len(todo), "todo_priority": _npri,
                       "priority_given": len(_pri), "downloaded": _ED["docs"],
@@ -2492,6 +2583,37 @@ def ky_grow(m):
         return gf > KY_GROW_MIN
     return None
 
+KY_OP_LO, KY_OP_HI = 0.05, 0.15      # 営業収益力の帯（5%未満＝低、15%以上＝高）
+KY_PL_MAX_AGE_D = 550                 # 有報の損益をいつまで使うか（決算期を1つまたぐまで）
+
+def ky_opprof(m, ed_row=None):
+    """営業収益力 OP ＝ (売上高−売上原価−販管費−支払利息) ÷ (簿価自己資本＋非支配持分)
+                     ＝ (営業利益−支払利息) ÷ (純資産−新株予約権)   （2026-10-19 本人指定）
+       ① EDINETの有価証券報告書（年間・実測）があればそれを使う。
+       ② 無ければ J-Quants の営業利益(直近12か月)÷純資産で概算（支払利息は取れないので引かない＝やや高めに出る）。
+       作れなければ None（推測しない）。"""
+    pl = (ed_row or {}).get("pl120") or {}
+    try:
+        _age = (NOW.date() - dt.date.fromisoformat(str(pl.get("submit"))[:10])).days if pl.get("submit") else 9999
+    except Exception:
+        _age = 9999
+    if pl.get("opi") is not None and pl.get("na") and _age <= KY_PL_MAX_AGE_D:
+        den = pl["na"] - (pl.get("sub") or 0.0)
+        if den > 0:
+            return {"opprof": (pl["opi"] - (pl.get("intx") or 0.0)) / den, "opprof_src": "実測",
+                    "opprof_int": pl.get("intx") is not None}
+    if m and m.get("op_ttm") is not None and m.get("eq") and m["eq"] > 0:
+        return {"opprof": m["op_ttm"] / m["eq"], "opprof_src": "概算", "opprof_int": False}
+    return {"opprof": None, "opprof_src": None, "opprof_int": False}
+
+def ky_op_tag(k):
+    """営業収益力の帯。数値は書かない（J-Quants由来の概算から純資産が逆算できないように）。"""
+    if not k or k.get("opprof") is None: return "—"
+    v = k["opprof"]
+    t = ("マイナス" if v <= 0 else "低（5%未満）" if v < KY_OP_LO
+         else "中（5〜15%）" if v < KY_OP_HI else "高（15%以上）")
+    return t + ("" if k.get("opprof_src") == "実測" else "・概算")
+
 def ky_metrics(m, price, ed_rows=None, code=None):
     """清原枠の判定に使う数字。作れないものは None のまま返す（推測しない）。
 
@@ -2531,6 +2653,7 @@ def ky_metrics(m, price, ed_rows=None, code=None):
             "grow": ky_grow(m),
             "div": m.get("div"), "div_up": m.get("div_up"),
             "buyback": m.get("buyback"), "opm": m.get("opm"),
+            **ky_opprof(m, (ed_rows or {}).get(str(code)) if (ed_rows and code) else None),
             "asof": m.get("asof")}
 
 def ky_pass(k):
@@ -2552,6 +2675,10 @@ def ky_pass(k):
     _d, _e = k.get("div"), k.get("feps")
     if _d is not None and _e is not None and _d > 0 and _e > 0 and _d > _e:
         return False, KY_WHY_CAP
+    # ★営業収益力（2026-10-19 本人指定）: 本業の利益で金利を払ったあと、自己資本に対して
+    #   利益が残っていなければ還元を続ける体力が無い。0以下は落とす（帯の高低は表示と判定の材料）。
+    if k.get("opprof") is not None and k["opprof"] <= 0:
+        return False, KY_WHY_OP
     # ★本物の比率が取れている銘柄には、指定された条件をそのまま課す。
     #   取れていない銘柄は落とさない（EDINETのキャッシュは日々積み上がる途中で、
     #   ここで落とすと「まだ取っていないだけ」の銘柄が消える）。
@@ -2566,6 +2693,7 @@ def ky_pass(k):
 # 実測で落としたときの理由。レポート側でも同じ字を使うので定数にする。
 KY_WHY_GROW = "売上も営業利益も伸びていない"   # 表示・集計用（2026-09-26 から条件ではない）
 KY_WHY_CAP = "予想利益で配当を賄えていない"
+KY_WHY_OP = "営業収益力がマイナス（本業の利益で金利を払えていない）"
 KY_WHY_CA = "流動資産≤負債合計(実測)"
 KY_WHY_NC = f"ネットキャッシュ比率<{KY_NC_MIN}(実測)"
 
@@ -2702,6 +2830,7 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
             held_rows[cc] = {"pass": bool(_okh), "why": _whyh,
                              "ret": ky_return_tag(_kh) if _kh else "—",
                              "cap": ky_capacity_tag(_kh), "fcst": ky_fcst_tag(_kh),
+                             "opq": ky_op_tag(_kh),
                              "div_cut": bool(_kh and (_kh.get("div_up") or 0) < 0),
                              "nc_real": (round(_kh["nc_real"], 2)
                                          if _kh and _kh.get("nc_real") is not None else None)}
@@ -2730,6 +2859,7 @@ def kiyohara_screen(sc_all, fmap, names=None, s17=None, ed_rows=None,
                      #   日次タスクが外部サイトを見に行かなくても、推奨を付けられるようにする。
                      "cap": ky_capacity_tag(k),
                      "fcst": ky_fcst_tag(k),
+                     "opq": ky_op_tag(k),
                      "grow": ky_grow_tag(k),
                      # 「測れた」のか「まだ数字が無い」のかを区別して残す
                      "grow_ok": k.get("grow"),
@@ -3130,7 +3260,8 @@ def fund_today(sc, refetch=True):
             "value":    "bpとepの等ウェイト合成（従来版・比較用）",
             "quality":  "予想ROE・営業利益率・自己資本比率の合成",
             "moat":     "営業利益率の水準とばらつきの小ささ。競争優位の代理指標であって測定ではない",
-            "revision": "会社予想の改定方向（高いほど上方修正）"},
+            "revision": "会社予想の改定方向（高いほど上方修正）",
+            "opprof":   "営業収益力＝営業利益(直近12か月)÷純資産（支払利息は引けないので除く。Fama-French 2015 の収益性）"},
         "ranked_by": RANK_BY,
         "coverage": fund_coverage(out, has),
         "used_in_score": False,
@@ -3678,6 +3809,7 @@ BT_FACTOR_JA = {
     "quality": "クオリティ（財務）", "moat": "競争優位の代理（財務）",
     "revision": "業績修正方向（財務）",
     "growth": "成長（増収・増益／財務）", "ky_grow": "清原式＋成長",
+    "opprof": "営業収益力（財務・利息除く）",
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -7066,7 +7198,7 @@ try:
                         "feps_rule": "latest-forecast-row-v1",
                         # ★成長を条件から外し、還元の体力（予想利益≥予想配当）を課した（2026-09-26）
                         "growth_rule": "capacity-v1",
-                        "koichi": "v2-daily-macd-trail", "koichi_grid": "v2-96-rsimax-split60", "koichi_evo": "v1",
+                        "koichi": "v2-daily-macd-trail", "koichi_grid": "v2-96-rsimax-split60", "koichi_evo": "v1", "opprof": "v1-op-ttm-over-eq",
                         # ★運用中の手順と暦日ポートフォリオ法（2026-09-25）
                         "swing_rule": f"{SWING_FACTOR}|{SWING_EXIT}|{SWING_HOLD}",
                         "calendar": "ct-v1",
@@ -7730,8 +7862,8 @@ try:
     _ky_held = t[t["sleeve"] == SLV_KY]
     if len(_ky_held):
         L.append("\n## 清原枠の保有（スイングの判定・損切りは当てない）\n")
-        L.append("| コード | 銘柄 | 株価 | 損益% | 比率(実測) | 株主還元 | 還元の体力 | 今期の会社予想 | 点検 |")
-        L.append("|---|---|--:|--:|--:|:-:|:-:|:-:|---|")
+        L.append("| コード | 銘柄 | 株価 | 損益% | 比率(実測) | 株主還元 | 還元の体力 | 営業収益力 | 今期の会社予想 | 点検 |")
+        L.append("|---|---|--:|--:|--:|:-:|:-:|:-:|:-:|---|")
         _kyh = {}
         try:
             _kyh = (json.load(open(f"{OUT}/kiyohara.json", encoding="utf-8"))
@@ -7748,6 +7880,7 @@ try:
             if _h.get("div_cut"): _flags.append("**減配**")
             if _h.get("fcst") == "営業赤字予想": _flags.append("**営業赤字予想**")
             if _h.get("cap") == "配当が利益を超える": _flags.append("**配当が利益を超える**")
+            if str(_h.get("opq", "")).startswith("マイナス"): _flags.append("**営業収益力がマイナス**")
             if _h.get("nc_real") is not None and _h["nc_real"] < KY_NC_MIN:
                 _flags.append(f"**比率が{KY_NC_MIN}を割った**")
             if r["pl_pct"] >= 100: _flags.append("2倍に到達（持ち続けるか本人が判断）")
@@ -7756,7 +7889,7 @@ try:
             _nr = _h.get("nc_real")
             L.append(f"| {_c4} | {r['name']} | {r['close']:,.1f} | {r['pl_pct']:+.2f} | "
                      f"{('%.2f' % _nr) if _nr is not None else '—'} | {_h.get('ret', '—')} | "
-                     f"{_h.get('cap', '—')} | {_h.get('fcst', '—')} | {_chk} |")
+                     f"{_h.get('cap', '—')} | {_h.get('opq', '—')} | {_h.get('fcst', '—')} | {_chk} |")
         L.append("\n> **清原枠にATRの損切りは当てない。** 降りるのは投資仮説が"
                  "崩れたとき（本業の悪化・株主還元の後退・経営者の言動の不一致）。"
                  "**含み損だけを理由に降りない。** 最低2倍を狙う建玉で、"
@@ -7889,30 +8022,43 @@ try:
             if not _cs:
                 L.append(f"\n今日の候補なし（MACDがGC付近 {_kl.get('pre', 0)}銘柄を確かめて、条件を満たすものが無かった）。")
             else:
-                L.append(f"\n今日の候補 {len(_cs)}件（100株で買えるものを先に、その中は売買代金の大きい順。上位{min(KQ_SHOW, len(_cs))}件を表示）\n")
-                L.append("| コード | 銘柄 | 終値 | RSI | ATR% | 売買代金(億) | 株数 | 概算金額 | 初期の手仕舞い水準 |")
-                L.append("|---|---|--:|--:|--:|--:|--:|--:|--:|")
                 _KR = TOT * KOICHI_RISK_P
-                def _kq_n(c):
+                def _kq_size(c):
+                    """(株数, 効いた制約)。100株に届かない理由も返す（情報として出すため）。"""
                     _w = _kt * c["atr"]
-                    n_atr = int(_KR // _w) if _w > 0 else 0
-                    n_cap = int(SW_BUDGET * MAX_WEIGHT // c["close"]) if c["close"] > 0 else 0
-                    n_cash = int(SW_CASH // c["close"]) if c["close"] > 0 else 0
-                    return (min(n_atr, n_cap, n_cash) // LOT) * LOT
-                # 100株で買えるものを先に（その中は売買代金の大きい順のまま）
-                _cs = sorted(_cs, key=lambda c: 0 if _kq_n(c) > 0 else 1)
-                for c in _cs[:KQ_SHOW]:
-                    _w = _kt * c["atr"]
-                    n_atr = int(_KR // _w) if _w > 0 else 0
-                    n_cap = int(SW_BUDGET * MAX_WEIGHT // c["close"]) if c["close"] > 0 else 0
-                    n_cash = int(SW_CASH // c["close"]) if c["close"] > 0 else 0
-                    _n = (min(n_atr, n_cap, n_cash) // LOT) * LOT
-                    L.append(f"| {c['code'][:4]} | {c.get('name') or '—'} | {c['close']:,.1f} | {c['rsi']:.0f} | "
-                             f"{c['atr_pct']:.1f} | {c['turnover']/1e8:,.1f} | "
-                             + (f"{_n:,} | ¥{_n*c['close']:,.0f}" if _n > 0 else "単元未満 | —")
-                             + f" | {c['stop0']:,.1f} |")
-                if len(_cs) > KQ_SHOW:
-                    L.append(f"\n> ほか {len(_cs) - KQ_SHOW}件は data/koichi_signals.csv（大引け後の判定）。")
+                    lim = [(int(_KR // _w) if _w > 0 else 0, "許容損失"),
+                           (int(SW_BUDGET * MAX_WEIGHT // c["close"]) if c["close"] > 0 else 0, "1銘柄上限"),
+                           (int(SW_CASH // c["close"]) if c["close"] > 0 else 0, "スイング枠の現金")]
+                    n, why = min(lim, key=lambda z: z[0])
+                    return (n // LOT) * LOT, why
+                # ★2026-10-20 本人: 単元未満でも情報としては出す。買える候補と単元未満の候補を分けて、両方とも出す。
+                _buy = [c for c in _cs if _kq_size(c)[0] > 0]
+                _odd = [c for c in _cs if _kq_size(c)[0] <= 0]
+                L.append(f"\n今日の候補 {len(_cs)}件（100株で買える {len(_buy)}件・単元未満 {len(_odd)}件。それぞれ売買代金の大きい順）\n")
+                if _buy:
+                    L.append("| コード | 銘柄 | 終値 | RSI | ATR% | 売買代金(億) | 株数 | 概算金額 | 初期の手仕舞い水準 |")
+                    L.append("|---|---|--:|--:|--:|--:|--:|--:|--:|")
+                    for c in _buy[:KQ_SHOW]:
+                        _n = _kq_size(c)[0]
+                        L.append(f"| {c['code'][:4]} | {c.get('name') or '—'} | {c['close']:,.1f} | {c['rsi']:.0f} | "
+                                 f"{c['atr_pct']:.1f} | {c['turnover']/1e8:,.1f} | {_n:,} | ¥{_n*c['close']:,.0f} | {c['stop0']:,.1f} |")
+                    if len(_buy) > KQ_SHOW:
+                        L.append(f"\n> 100株で買える候補はほかに {len(_buy) - KQ_SHOW}件（data/koichi_signals.csv）。")
+                else:
+                    L.append("100株で買える候補は今日は無い。")
+                if _odd:
+                    L.append(f"\n**単元未満の候補（参考。今の決まりでは100株に届かない）**\n")
+                    L.append("| コード | 銘柄 | 終値 | RSI | ATR% | 売買代金(億) | 100株の金額 | 100株で損切りした時の損失 | 届かない理由 | 初期の手仕舞い水準 |")
+                    L.append("|---|---|--:|--:|--:|--:|--:|--:|:-:|--:|")
+                    for c in _odd[:KQ_SHOW]:
+                        _why = _kq_size(c)[1]
+                        L.append(f"| {c['code'][:4]} | {c.get('name') or '—'} | {c['close']:,.1f} | {c['rsi']:.0f} | "
+                                 f"{c['atr_pct']:.1f} | {c['turnover']/1e8:,.1f} | ¥{LOT*c['close']:,.0f} | "
+                                 f"¥{LOT*_kt*c['atr']:,.0f} | {_why} | {c['stop0']:,.1f} |")
+                    if len(_odd) > KQ_SHOW:
+                        L.append(f"\n> 単元未満の候補はほかに {len(_odd) - KQ_SHOW}件（data/koichi_signals.csv）。")
+                    L.append(f"\n> 「100株で損切りした時の損失」が許容損失 ¥{_KR:,.0f} を超える銘柄は、100株買うと決まりより大きな損を負う。"
+                             "買うかは本人の判断（買えば台帳にも「本人が選んだ」と記録される）。")
                 L.append(f"\n> 株数 ＝ 許容損失 ¥{_KR:,.0f}（総額の{KOICHI_RISK_P:.1%}。スイング枠の手順の約2倍・本人決定）÷ {_kt:g}×ATR、"
                          f"1銘柄上限・スイング枠の現金の範囲・{LOT}株単位。"
                          f"手仕舞いは建ててからの最高値−{_kt:g}ATR" + ("・日足MACDのDC" if _sp.get("dc") else "")
@@ -9114,8 +9260,8 @@ try:
                 L.append(f"1銘柄あたりの目安 **¥{_per:,.0f}**"
                          f"（清原枠 ¥{KY_BUDGET:,.0f} ÷ {KY_NAMES}銘柄）／"
                          f"単元100株／今日使える清原枠の現金 **¥{KY_CASH:,.0f}**\n")
-                L.append("| 順 | コード | 銘柄名 | 株価 | 比率(実測) | 株主還元 | 還元の体力 | 今期の会社予想 | 株数 | 概算金額 | 判定 |")
-                L.append("|--:|---|---|--:|--:|:-:|:-:|:-:|--:|--:|:-:|")
+                L.append("| 順 | コード | 銘柄名 | 株価 | 比率(実測) | 株主還元 | 還元の体力 | 営業収益力 | 今期の会社予想 | 株数 | 概算金額 | 判定 |")
+                L.append("|--:|---|---|--:|--:|:-:|:-:|:-:|:-:|--:|--:|:-:|")
                 _left = KY_CASH
                 _n_built, _spend = 0, 0.0
                 for r in _ok[:KY_NAMES * 2]:
@@ -9157,7 +9303,7 @@ try:
                              f"{(r.get('name') or '—')[:14]} | "
                              f"{_p:,.1f} | "
                              f"{(('%.2f' % r['nc_real']) if r.get('nc_real') is not None else '—')} | "
-                             f"{r.get('ret', '—')} | {r.get('cap', '—')} | {r.get('fcst', '—')} | "
+                             f"{r.get('ret', '—')} | {r.get('cap', '—')} | {r.get('opq', '—')} | {r.get('fcst', '—')} | "
                              f"{(f'{_sh:,}' if _sh else '—')} | "
                              f"{(f'¥{_cost:,.0f}' if _sh else '—')} | {_v} |")
                 L.append(f"\n**今日建てられるのは {_n_built}銘柄・概算 ¥{_spend:,.0f}**"
@@ -9178,6 +9324,10 @@ try:
                 L.append("> **1日に1〜2銘柄までにして段階的に建てる**（本人の方針）。"
                          "一度に全部入れると、相場全体が下げた局面で"
                          "枠ごと含み損になり、判断が難しくなる。")
+                L.append("> **営業収益力**＝(営業利益−支払利息)÷(純資産−新株予約権)（本人指定 2026-10-19）。"
+                         "有価証券報告書の実測が取れた銘柄はそのまま、取れない銘柄は営業利益(直近12か月)÷純資産の**概算**"
+                         "（支払利息を引かないので高めに出る）。マイナスの銘柄は条件で落としてある。"
+                         "ネットキャッシュが厚い会社は分母に現金が入るので低めに出やすい（清原式と逆向きに働くことがある）。")
                 L.append(f"> 株数は**目安額にいちばん近い単元数**（100株単位）。"
                          f"目安の{KY_MIN_FILL:.0%}〜{KY_MAX_FILL:.0%}に収まる株数だけを使い、"
                          "今日の清原枠の現金を超えない。")
