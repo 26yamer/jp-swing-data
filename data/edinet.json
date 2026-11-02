@@ -1300,7 +1300,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2026-06-23",
+    "period": "2026-03-31",
+    "docid": "S100YFUA",
+    "opi": 14648000000.0,
+    "intx": 1696000000.0,
+    "sub": null,
+    "na": 82919000000.0
+   }
   },
   "7460": {
    "docid": "S100YHKP",
@@ -1573,17 +1582,17 @@
    "bs_ok": true
   },
   "5204": {
-   "docid": "S100YBU1",
-   "submit": "2026-06-17",
-   "period": "2026-03-20",
-   "dtype": "120",
-   "ca": 46083000000.0,
-   "inv": 7869000000.0,
-   "liab": 60702000000.0,
-   "ta": 99995000000.0,
-   "na": 39292000000.0,
+   "docid": "S100ZATO",
+   "submit": "2026-10-30",
+   "period": "2027-03-20",
+   "dtype": "160",
+   "ca": 48193000000.0,
+   "inv": 9610000000.0,
+   "liab": 60734000000.0,
+   "ta": 103068000000.0,
+   "na": 42333000000.0,
    "solo": false,
-   "ctx_alt": false,
+   "ctx_alt": true,
    "mixed": false,
    "bs_ok": true
   },
@@ -2560,7 +2569,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": true,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2026-06-30",
+    "period": "2026-03-31",
+    "docid": "S100YNCJ",
+    "opi": 393921000000.0,
+    "intx": null,
+    "sub": 192000000.0,
+    "na": 6481239000000.0
+   }
   },
   "4240": {
    "docid": "S100YNDU",
@@ -7135,7 +7153,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2026-09-28",
+    "period": "2026-06-30",
+    "docid": "S100Z4HA",
+    "opi": 7160735000.0,
+    "intx": 1034922000.0,
+    "sub": null,
+    "na": 47758439000.0
+   }
   },
   "6757": {
    "docid": "S100Z1RH",
@@ -10210,7 +10237,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": true,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2026-03-24",
+    "period": "2025-12-31",
+    "docid": "S100XSDT",
+    "opi": 10902000000.0,
+    "intx": 344000000.0,
+    "sub": null,
+    "na": 182143000000.0
+   }
   },
   "6250": {
    "docid": "S100XSYR",
@@ -14110,7 +14146,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-11-26",
+    "period": "2025-08-31",
+    "docid": "S100X6JZ",
+    "opi": 394807000.0,
+    "intx": 3571000.0,
+    "sub": null,
+    "na": 10650925000.0
+   }
   },
   "8551": {
    "docid": "S100WYK4",
@@ -14680,7 +14725,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-11-26",
+    "period": "2025-08-31",
+    "docid": "S100X6W8",
+    "opi": 2409620000.0,
+    "intx": 201227000.0,
+    "sub": 594000.0,
+    "na": 15200398000.0
+   }
   },
   "6668": {
    "docid": "S100X6VA",
@@ -21505,7 +21559,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-06-24",
+    "period": "2025-03-31",
+    "docid": "S100W38F",
+    "opi": 1220724000.0,
+    "intx": 23955000.0,
+    "sub": null,
+    "na": 14890286000.0
+   }
   },
   "3437": {
    "docid": "S100W8MT",
@@ -21598,17 +21661,17 @@
    "bs_ok": true
   },
   "9206": {
-   "docid": "S100W8W7",
-   "submit": "2025-06-30",
-   "period": "2025-03-31",
-   "dtype": "120",
-   "ca": 16326000000.0,
-   "inv": 37000000.0,
-   "liab": 20238000000.0,
-   "ta": 24531000000.0,
-   "na": 4293000000.0,
+   "docid": "S100ZAST",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 19253000000.0,
+   "inv": null,
+   "liab": 30617000000.0,
+   "ta": 36392000000.0,
+   "na": 5775000000.0,
    "solo": true,
-   "ctx_alt": false,
+   "ctx_alt": true,
    "mixed": false,
    "bs_ok": true
   },
@@ -21880,7 +21943,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-06-30",
+    "period": "2025-03-31",
+    "docid": "S100W97U",
+    "opi": 6810000000.0,
+    "intx": 234000000.0,
+    "sub": null,
+    "na": 98273000000.0
+   }
   },
   "7464": {
    "docid": "S100W91H",
@@ -22315,7 +22387,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-06-30",
+    "period": "2025-03-31",
+    "docid": "S100W8RC",
+    "opi": 990010000.0,
+    "intx": 92797000.0,
+    "sub": null,
+    "na": 39985779000.0
+   }
   },
   "5856": {
    "docid": "S100W9LX",
@@ -22600,7 +22681,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-06-30",
+    "period": "2025-03-31",
+    "docid": "S100W907",
+    "opi": 2798000000.0,
+    "intx": 5000000.0,
+    "sub": null,
+    "na": 37120000000.0
+   }
   },
   "2138": {
    "docid": "S100W9H3",
@@ -24925,7 +25015,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-03-28",
+    "period": "2024-12-31",
+    "docid": "S100VHCQ",
+    "opi": 404873000.0,
+    "intx": 40193000.0,
+    "sub": null,
+    "na": 3511827000.0
+   }
   },
   "6425": {
    "docid": "S100VIC2",
@@ -25135,7 +25234,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-03-28",
+    "period": "2024-12-31",
+    "docid": "S100VHDK",
+    "opi": 518713000.0,
+    "intx": null,
+    "sub": null,
+    "na": 4353340000.0
+   }
   },
   "7846": {
    "docid": "S100VHM6",
@@ -25390,7 +25498,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-03-28",
+    "period": "2024-12-31",
+    "docid": "S100VI9J",
+    "opi": 1374722000.0,
+    "intx": 68747000.0,
+    "sub": 552000.0,
+    "na": 10181779000.0
+   }
   },
   "6029": {
    "docid": "S100VI0R",
@@ -25495,7 +25612,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": true,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-03-28",
+    "period": "2024-12-31",
+    "docid": "S100VHZ5",
+    "opi": 52975000000.0,
+    "intx": 109948000000.0,
+    "sub": 41994000000.0,
+    "na": 1238514000000.0
+   }
   },
   "7870": {
    "docid": "S100VHTL",
@@ -28405,7 +28531,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-02-27",
+    "period": "2024-11-30",
+    "docid": "S100V9VB",
+    "opi": 2838147000.0,
+    "intx": 642724000.0,
+    "sub": null,
+    "na": 24907104000.0
+   }
   },
   "3139": {
    "docid": "S100VAPA",
@@ -29155,7 +29290,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2026-09-24",
+    "period": "2026-06-30",
+    "docid": "S100Z3PT",
+    "opi": 1120000000.0,
+    "intx": 839000000.0,
+    "sub": 7000000.0,
+    "na": 19018000000.0
+   }
   },
   "3538": {
    "docid": "S100Z40H",
@@ -29170,7 +29314,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2026-09-28",
+    "period": "2026-06-30",
+    "docid": "S100Z40H",
+    "opi": 1426838000.0,
+    "intx": 173211000.0,
+    "sub": 49353000.0,
+    "na": 12893666000.0
+   }
   },
   "6597": {
    "docid": "S100Z4KT",
@@ -32800,7 +32953,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2026-09-24",
+    "period": "2026-06-30",
+    "docid": "S100Z39B",
+    "opi": 2848101000.0,
+    "intx": 6982000.0,
+    "sub": null,
+    "na": 23189353000.0
+   }
   },
   "2385": {
    "docid": "S100Z3JY",
@@ -32830,7 +32992,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2026-09-24",
+    "period": "2026-06-30",
+    "docid": "S100Z3O7",
+    "opi": 3905000000.0,
+    "intx": 2000000.0,
+    "sub": null,
+    "na": 24084000000.0
+   }
   },
   "6340": {
    "docid": "S100Z359",
@@ -35545,7 +35716,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": true,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2024-06-28",
+    "period": "2024-03-31",
+    "docid": "S100TWH9",
+    "opi": 9409000000.0,
+    "intx": null,
+    "sub": 119000000.0,
+    "na": 843027000000.0
+   }
   },
   "2819": {
    "docid": "S100TWN4",
@@ -36445,7 +36625,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2024-06-28",
+    "period": "2024-03-31",
+    "docid": "S100TX4N",
+    "opi": -124272000.0,
+    "intx": 429548000.0,
+    "sub": null,
+    "na": 19367686000.0
+   }
   },
   "7111": {
    "docid": "S100TXZM",
@@ -36745,7 +36934,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2024-06-28",
+    "period": "2024-03-31",
+    "docid": "S100TXY2",
+    "opi": 792000000.0,
+    "intx": 155000000.0,
+    "sub": null,
+    "na": 36061000000.0
+   }
   },
   "4485": {
    "docid": "S100TWGK",
@@ -38005,7 +38203,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": true,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2023-06-30",
+    "period": "2023-03-31",
+    "docid": "S100R9J7",
+    "opi": 40247000000.0,
+    "intx": 7302000000.0,
+    "sub": 4140000000.0,
+    "na": 1748654000000.0
+   }
   },
   "6890": {
    "docid": "S100RA9A",
@@ -38110,7 +38317,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2023-06-30",
+    "period": "2023-03-31",
+    "docid": "S100R7M6",
+    "opi": 3134478000.0,
+    "intx": 117387000.0,
+    "sub": null,
+    "na": 41672776000.0
+   }
   },
   "4635": {
    "docid": "S100RAK4",
@@ -38173,17 +38389,17 @@
    "bs_ok": true
   },
   "2411": {
-   "docid": "S100R4V8",
-   "submit": "2023-06-30",
-   "period": "2023-03-31",
-   "dtype": "120",
-   "ca": 4847000000.0,
-   "inv": 128000000.0,
-   "liab": 1667000000.0,
-   "ta": 6056000000.0,
-   "na": 4389000000.0,
+   "docid": "S100ZAUK",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 4076000000.0,
+   "inv": null,
+   "liab": 1525000000.0,
+   "ta": 5409000000.0,
+   "na": 3884000000.0,
    "solo": false,
-   "ctx_alt": false,
+   "ctx_alt": true,
    "mixed": false,
    "bs_ok": true
   },
@@ -39280,7 +39496,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2023-06-29",
+    "period": "2023-03-31",
+    "docid": "S100R8DP",
+    "opi": 4355000000.0,
+    "intx": 92000000.0,
+    "sub": null,
+    "na": 46149000000.0
+   }
   },
   "7246": {
    "docid": "S100R78F",
@@ -40663,17 +40888,17 @@
    "bs_ok": true
   },
   "2152": {
-   "docid": "S100R0H2",
-   "submit": "2023-06-21",
-   "period": "2023-03-31",
-   "dtype": "120",
-   "ca": 8731703000.0,
-   "inv": 1945453000.0,
-   "liab": 3342908000.0,
-   "ta": 12095279000.0,
-   "na": 8752371000.0,
+   "docid": "S100ZAYT",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 10262215000.0,
+   "inv": 2815914000.0,
+   "liab": 3158359000.0,
+   "ta": 14391232000.0,
+   "na": 11232873000.0,
    "solo": true,
-   "ctx_alt": false,
+   "ctx_alt": true,
    "mixed": false,
    "bs_ok": true
   },
@@ -41470,7 +41695,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2023-06-21",
+    "period": "2023-03-31",
+    "docid": "S100R0WD",
+    "opi": 1460000000.0,
+    "intx": 61000000.0,
+    "sub": 2000000.0,
+    "na": 22562000000.0
+   }
   },
   "2767": {
    "docid": "S100R03J",
@@ -41545,7 +41779,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": true,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2023-06-21",
+    "period": "2023-03-31",
+    "docid": "S100R0XW",
+    "opi": 1181000000.0,
+    "intx": 3563000000.0,
+    "sub": 346000000.0,
+    "na": 32735000000.0
+   }
   },
   "6594": {
    "docid": "S100Z5CA",
@@ -41593,17 +41836,17 @@
    "bs_ok": true
   },
   "4929": {
-   "docid": "S100QY7D",
-   "submit": "2023-06-20",
-   "period": "2023-03-20",
-   "dtype": "120",
-   "ca": 3339446000.0,
-   "inv": 490498000.0,
-   "liab": 1064448000.0,
-   "ta": 5551595000.0,
-   "na": 4487146000.0,
+   "docid": "S100ZANJ",
+   "submit": "2026-10-30",
+   "period": "2027-03-20",
+   "dtype": "160",
+   "ca": 3226115000.0,
+   "inv": 384386000.0,
+   "liab": 969431000.0,
+   "ta": 5122105000.0,
+   "na": 4152674000.0,
    "solo": false,
-   "ctx_alt": false,
+   "ctx_alt": true,
    "mixed": false,
    "bs_ok": true
   },
@@ -41710,7 +41953,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2023-06-20",
+    "period": "2023-03-31",
+    "docid": "S100QY5V",
+    "opi": 1844000000.0,
+    "intx": 20000000.0,
+    "sub": null,
+    "na": 14453000000.0
+   }
   },
   "5933": {
    "docid": "S100QZO7",
@@ -41935,7 +42187,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2023-06-20",
+    "period": "2023-03-31",
+    "docid": "S100QZI7",
+    "opi": 8279000000.0,
+    "intx": 21000000.0,
+    "sub": null,
+    "na": 49147000000.0
+   }
   },
   "9551": {
    "docid": "S100QZE4",
@@ -42283,17 +42544,17 @@
    "bs_ok": true
   },
   "9640": {
-   "docid": "S100QZKP",
-   "submit": "2023-06-20",
-   "period": "2023-03-31",
-   "dtype": "120",
-   "ca": 17439016000.0,
-   "inv": 335348000.0,
-   "liab": 6556328000.0,
-   "ta": 21299058000.0,
-   "na": 14742730000.0,
+   "docid": "S100ZAT5",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 16211786000.0,
+   "inv": 1221441000.0,
+   "liab": 7460754000.0,
+   "ta": 21408238000.0,
+   "na": 13947484000.0,
    "solo": false,
-   "ctx_alt": false,
+   "ctx_alt": true,
    "mixed": false,
    "bs_ok": true
   },
@@ -42628,17 +42889,17 @@
    "bs_ok": true
   },
   "9474": {
-   "docid": "S100QYH4",
-   "submit": "2023-06-19",
-   "period": "2023-03-31",
-   "dtype": "120",
-   "ca": 28553000000.0,
-   "inv": 8592000000.0,
-   "liab": 24167000000.0,
-   "ta": 70130000000.0,
-   "na": 45962000000.0,
+   "docid": "S100ZAVX",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 22611000000.0,
+   "inv": 11619000000.0,
+   "liab": 21257000000.0,
+   "ta": 69129000000.0,
+   "na": 47871000000.0,
    "solo": false,
-   "ctx_alt": false,
+   "ctx_alt": true,
    "mixed": false,
    "bs_ok": true
   },
@@ -43435,7 +43696,16 @@
    "solo": true,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2022-06-29",
+    "period": "2022-03-31",
+    "docid": "S100OL98",
+    "opi": 1924000000.0,
+    "intx": 176000000.0,
+    "sub": null,
+    "na": 34532000000.0
+   }
   },
   "7887": {
    "docid": "S100OGZW",
@@ -43450,7 +43720,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2022-06-28",
+    "period": "2022-03-31",
+    "docid": "S100OGZW",
+    "opi": 2166165000.0,
+    "intx": 8150000.0,
+    "sub": null,
+    "na": 20856443000.0
+   }
   },
   "7551": {
    "docid": "S100OHIX",
@@ -44125,7 +44404,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2022-06-29",
+    "period": "2022-03-31",
+    "docid": "S100OKFG",
+    "opi": 2394000000.0,
+    "intx": 56000000.0,
+    "sub": null,
+    "na": 37501000000.0
+   }
   },
   "6804": {
    "docid": "S100OJUA",
@@ -44230,7 +44518,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2022-06-29",
+    "period": "2022-03-31",
+    "docid": "S100OKN2",
+    "opi": -533000000.0,
+    "intx": 83000000.0,
+    "sub": null,
+    "na": 8206000000.0
+   }
   },
   "5928": {
    "docid": "S100OIC9",
@@ -44350,7 +44647,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": true,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2022-06-29",
+    "period": "2022-03-31",
+    "docid": "S100OKQH",
+    "opi": 9000000.0,
+    "intx": 3000000.0,
+    "sub": null,
+    "na": 5033000000.0
+   }
   },
   "6647": {
    "docid": "S100OIMW",
@@ -45400,7 +45706,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2022-06-29",
+    "period": "2022-03-31",
+    "docid": "S100OF6A",
+    "opi": 1205331000.0,
+    "intx": 143690000.0,
+    "sub": null,
+    "na": 19092022000.0
+   }
   },
   "4624": {
    "docid": "S100OI9N",
@@ -46781,10 +47096,168 @@
    "ctx_alt": true,
    "mixed": false,
    "bs_ok": true
+  },
+  "7931": {
+   "docid": "S100ZAE8",
+   "submit": "2026-10-30",
+   "period": "2027-03-20",
+   "dtype": "160",
+   "ca": 44474000000.0,
+   "inv": 2700000000.0,
+   "liab": 13360000000.0,
+   "ta": 70976000000.0,
+   "na": 57615000000.0,
+   "solo": false,
+   "ctx_alt": true,
+   "mixed": false,
+   "bs_ok": true
+  },
+  "604A": {
+   "docid": "S100ZAWS",
+   "submit": "2026-10-30",
+   "period": "2026-07-31",
+   "dtype": "120",
+   "ca": 5329396000.0,
+   "inv": 46268000.0,
+   "liab": 4580817000.0,
+   "ta": 12156308000.0,
+   "na": 7575491000.0,
+   "solo": true,
+   "ctx_alt": false,
+   "mixed": false,
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2026-10-30",
+    "period": "2026-07-31",
+    "docid": "S100ZAWS",
+    "opi": 1009688000.0,
+    "intx": 58745000.0,
+    "sub": null,
+    "na": 7575491000.0
+   }
+  },
+  "296A": {
+   "docid": "S100ZAWY",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 3270108000.0,
+   "inv": 500000.0,
+   "liab": 1291630000.0,
+   "ta": 3948183000.0,
+   "na": 2656552000.0,
+   "solo": false,
+   "ctx_alt": true,
+   "mixed": false,
+   "bs_ok": true
+  },
+  "9040": {
+   "docid": "S100ZAR9",
+   "submit": "2026-10-30",
+   "period": "2027-03-20",
+   "dtype": "160",
+   "ca": 4109241000.0,
+   "inv": 563692000.0,
+   "liab": 3051433000.0,
+   "ta": 10076539000.0,
+   "na": 7025106000.0,
+   "solo": true,
+   "ctx_alt": true,
+   "mixed": false,
+   "bs_ok": true
+  },
+  "3153": {
+   "docid": "S100ZAV7",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 45143000000.0,
+   "inv": null,
+   "liab": 24325000000.0,
+   "ta": 60922000000.0,
+   "na": 36596000000.0,
+   "solo": false,
+   "ctx_alt": true,
+   "mixed": false,
+   "bs_ok": true
+  },
+  "3969": {
+   "docid": "S100ZAZ0",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 6316830000.0,
+   "inv": null,
+   "liab": 1496791000.0,
+   "ta": 7355263000.0,
+   "na": 5858471000.0,
+   "solo": true,
+   "ctx_alt": true,
+   "mixed": false,
+   "bs_ok": true
+  },
+  "4709": {
+   "docid": "S100ZAZI",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 14549191000.0,
+   "inv": 4526654000.0,
+   "liab": 6374511000.0,
+   "ta": 22028077000.0,
+   "na": 15653566000.0,
+   "solo": false,
+   "ctx_alt": true,
+   "mixed": false,
+   "bs_ok": true
+  },
+  "2804": {
+   "docid": "S100ZAPL",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 9414704000.0,
+   "inv": 14900568000.0,
+   "liab": 11325838000.0,
+   "ta": 37447401000.0,
+   "na": 26121563000.0,
+   "solo": false,
+   "ctx_alt": true,
+   "mixed": false,
+   "bs_ok": true
+  },
+  "6702": {
+   "docid": "S100ZB0O",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 1792114000000.0,
+   "inv": null,
+   "liab": 1247437000000.0,
+   "ta": 3310020000000.0,
+   "na": 2062583000000.0,
+   "solo": false,
+   "ctx_alt": true,
+   "mixed": false,
+   "bs_ok": true
+  },
+  "2393": {
+   "docid": "S100ZAU2",
+   "submit": "2026-10-30",
+   "period": "2027-03-31",
+   "dtype": "160",
+   "ca": 6714661000.0,
+   "inv": null,
+   "liab": 9732938000.0,
+   "ta": 28404511000.0,
+   "na": 18671573000.0,
+   "solo": false,
+   "ctx_alt": true,
+   "mixed": false,
+   "bs_ok": true
   }
  },
  "seen_dates": [
-  "2022-03-25",
   "2022-03-28",
   "2022-03-29",
   "2022-03-30",
@@ -47983,13 +48456,14 @@
   "2026-10-26",
   "2026-10-27",
   "2026-10-28",
-  "2026-10-29"
+  "2026-10-29",
+  "2026-10-30"
  ],
  "attribution": "出典：EDINET閲覧（提出）サイト（https://disclosure2.edinet-fsa.go.jp/）をもとに作成、PDL1.0",
- "generated_at_jst": "2026-10-30T22:31:32.129889+09:00",
+ "generated_at_jst": "2026-11-02T18:53:26.069815+09:00",
  "note": "有価証券報告書・半期報告書の貸借対照表から、流動資産合計・投資有価証券・負債合計・資産合計・純資産合計を取り出したもの。出典：EDINET閲覧（提出）サイト（https://disclosure2.edinet-fsa.go.jp/）をもとに作成、PDL1.0",
- "with_ca": 3069,
- "with_inv": 2181,
- "usable": 3028,
+ "with_ca": 3079,
+ "with_inv": 2185,
+ "usable": 3038,
  "bs_bad": 0
 }

@@ -1,10 +1,10 @@
 {
  "champion": {
-  "id": "k32ecdd",
+  "id": "k02366a",
   "spec": {
    "trend": "200up",
    "rsi_max": 70,
-   "adx_min": null,
+   "adx_min": 20,
    "volr_min": null,
    "zone": "any",
    "near_high": null,
@@ -13,10 +13,42 @@
    "trail": 4.0,
    "maxhold": 120
   },
-  "since": "2026-10-02",
-  "why": "2026-10-01 の96通りの前半1位。本人が採用を決定"
+  "since": "2026-11-02",
+  "why": "ADX≥20 を足す。前半・後半とも現役より良く、全期間 t 1.41→1.66",
+  "from": "k32ecdd"
  },
- "history": [],
+ "history": [
+  {
+   "id": "k32ecdd",
+   "spec": {
+    "trend": "200up",
+    "rsi_max": 70,
+    "adx_min": null,
+    "volr_min": null,
+    "zone": "any",
+    "near_high": null,
+    "dev25_max": null,
+    "dc": false,
+    "trail": 4.0,
+    "maxhold": 120
+   },
+   "since": "2026-10-02",
+   "why": "2026-10-01 の96通りの前半1位。本人が採用を決定",
+   "until": "2026-11-02",
+   "bt": {
+    "n_trades": 17762,
+    "per_month": 396.4,
+    "win_pct": 45.7,
+    "avg_ret_pct": 2.71,
+    "med_ret_pct": -1.21,
+    "avg_bars": 35.2,
+    "avg_open": 665.3,
+    "ann_diff_pct": 2.59,
+    "t_nw": 1.41,
+    "n_days": 940
+   }
+  }
+ ],
  "evals": [
   {
    "date": "2026-10-02",
@@ -24,6 +56,14 @@
    "tried": 20,
    "passed": 0,
    "promoted": null,
+   "cooldown_left": 0
+  },
+  {
+   "date": "2026-11-02",
+   "champion": "k32ecdd",
+   "tried": 20,
+   "passed": 1,
+   "promoted": "k02366a",
    "cooldown_left": 0
   }
  ]
