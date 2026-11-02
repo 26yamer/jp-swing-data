@@ -1,11 +1,11 @@
 {
- "generated_at_jst": "2026-11-02T18:53:26.069815+09:00",
+ "generated_at_jst": "2026-11-03T01:31:01.660549+09:00",
  "total": 5937284.0,
  "cash": 3011000.0,
  "benchmark": "1306.T",
  "jgb": {
   "date": "2026-10-30",
-  "age_days": 3,
+  "age_days": 4,
   "y2": 1.875,
   "y10": 2.817,
   "y30": 3.908
@@ -109,7 +109,7 @@
    "rule_k": "",
    "dc_k": false,
    "dc_hit": false,
-   "next_earnings": "2026-11-02",
+   "next_earnings": "",
    "sleeve": "swing",
    "swingable": true,
    "avg_corr": 0.442,
