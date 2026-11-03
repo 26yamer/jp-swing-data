@@ -1,5 +1,5 @@
 {
- "generated_at_jst": "2026-11-03T18:57:22.713894+09:00",
+ "generated_at_jst": "2026-11-03T23:38:31.081826+09:00",
  "universe": 4250,
  "scanned": 4250,
  "passed": 1748,
@@ -34,7 +34,7 @@
   "days_with_rows": 4,
   "covered_to": "2026-12-28",
   "data_to": "2026-11-09",
-  "codes": 50,
+  "codes": 51,
   "stopped": null
  },
  "earnings_hist": {

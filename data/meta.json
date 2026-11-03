@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-11-03T18:57:22.713894+09:00",
+ "fetched_at_jst": "2026-11-03T23:38:31.081826+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -106,7 +106,7 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 35,
+ "news_ok": 37,
  "jgb": {
   "date": "2026-10-30",
   "age_days": 4,
@@ -433,14 +433,14 @@
   "tried": [
    "予定日=今後40営業日"
   ],
-  "rows": 50,
+  "rows": 51,
   "ahead_bd": 40,
   "days_asked": 40,
   "days_with_rows": 4,
   "data_to": "2026-11-09",
   "covered_to": "2026-12-28",
   "rows_by_probe": {
-   "予定日=今後40営業日": 50
+   "予定日=今後40営業日": 51
   },
   "used": "予定日=今後40営業日",
   "http_err": {
@@ -457,7 +457,7 @@
   ],
   "code_key": "Code",
   "date_key": "SchDate",
-  "codes": 50,
+  "codes": 51,
   "past_rows": 0,
   "result": "ok"
  },
