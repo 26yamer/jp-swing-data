@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-11-10T01:50:13.166702+09:00",
+ "fetched_at_jst": "2026-11-10T19:17:43.438895+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -11,6 +11,7 @@
   "8697.T": "yfinance",
   "9401.T": "yfinance",
   "1321.T": "yfinance",
+  "1699.T": "yfinance",
   "2510.T": "yfinance",
   "1343.T": "yfinance",
   "2559.T": "yfinance",
@@ -56,10 +57,7 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [
-  "fetch_daily_stooq('1699.T',): RuntimeError: stooq HTTP 404",
-  "no-daily: 1699.T"
- ],
+ "errors": [],
  "versions": {
   "python": "3.12.16",
   "pandas": "3.1.1",
@@ -105,16 +103,16 @@
    "n": 2
   }
  ],
- "n_ok": 54,
+ "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 40,
+ "news_ok": 45,
  "jgb": {
-  "date": "2026-11-06",
-  "age_days": 4,
-  "y2": 1.732,
-  "y10": 2.696,
-  "y30": 3.898
+  "date": "2026-11-09",
+  "age_days": 1,
+  "y2": 1.778,
+  "y10": 2.724,
+  "y30": 3.911
  },
  "events_ok": 8,
  "n_anomalies": 9,
@@ -127,20 +125,21 @@
   "skipped": "TDNET_ENABLED=False（JPXがスクレイピングの自動取得を控えるよう求めており、robots.txtも拒否しているため）"
  },
  "universe_source": "jpx_master",
- "screen_last_bar": "2026-11-06",
+ "screen_last_bar": "2026-11-10",
+ "koichi_settled": 7,
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k02366a",
-  "pre": 118,
-  "checked": 117,
-  "cands": 3,
+  "pre": 371,
+  "checked": 367,
+  "cands": 27,
   "provisional": false,
-  "ledger": 586
+  "ledger": 602
  },
  "screen": {
   "universe": 4250,
   "scanned": 4250,
-  "passed": 1763,
+  "passed": 1815,
   "named": true,
   "source": "jpx_master"
  },
@@ -163,7 +162,7 @@
   ]
  },
  "netcash": {
-  "pool": 1764,
+  "pool": 1816,
   "shortlist": 60,
   "sure": 0
  },
@@ -173,17 +172,17 @@
   "usable": 3210,
   "bs_bad": 0,
   "refetch_bad": 41,
-  "refetch_pl": 0,
+  "refetch_pl": 1,
   "names": 4185,
-  "with_pl120": 55,
+  "with_pl120": 56,
   "with_inv": 2268,
   "listed_days": 45,
-  "todo": 149,
-  "todo_priority": 4,
-  "priority_given": 133,
-  "downloaded": 149,
-  "parsed": 148,
-  "req": 194,
+  "todo": 45,
+  "todo_priority": 0,
+  "priority_given": 125,
+  "downloaded": 45,
+  "parsed": 44,
+  "req": 90,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -339,36 +338,36 @@
   }
  },
  "kiyohara": {
-  "universe": 4075,
-  "passed": 57,
+  "universe": 4083,
+  "passed": 50,
   "shown": 40,
   "sure": 0,
-  "likely": 0,
+  "likely": 1,
   "no_div": 2,
-  "with_real": 35,
-  "real_ge1": 26,
-  "real_near": 9,
+  "with_real": 30,
+  "real_ge1": 22,
+  "real_near": 8,
   "bands": {
-   "real_ge1": 26,
-   "real_near": 9,
+   "real_ge1": 22,
+   "real_near": 8,
    "real_lo": 0,
    "sure": 0,
-   "likely": 0,
-   "maybe": 4,
-   "thin": 1,
+   "likely": 1,
+   "maybe": 5,
+   "thin": 4,
    "unknown": 0
   },
   "dropped": {
-   "時価総額>500億円": 33,
-   "財務が引けない": 344,
-   "売買代金が薄い": 706,
+   "時価総額>500億円": 27,
+   "財務が引けない": 348,
+   "売買代金が薄い": 680,
    "予想PERが出ない(赤字予想)": 230,
-   "PER>8倍": 2321,
+   "PER>8倍": 2376,
    "ネットキャッシュ比率<0.8(実測)": 35,
-   "PBR>0.8倍": 135,
-   "本業が赤字": 16,
-   "流動資産≤負債合計(実測)": 41,
-   "銀行・金融（式が成立しない）": 157
+   "PBR>0.8倍": 124,
+   "本業が赤字": 14,
+   "流動資産≤負債合計(実測)": 40,
+   "銀行・金融（式が成立しない）": 159
   }
  },
  "fund_raw": {
@@ -384,22 +383,22 @@
  },
  "fund": {
   "asof_latest_disclosure": "2026-08-14",
-  "pool": 1764,
-  "n_codes": 1656,
+  "pool": 1816,
+  "n_codes": 1703,
   "coverage": {
-   "has": 1656,
-   "value": 1656,
-   "ep": 1553,
-   "bp": 1650,
-   "netcash": 1653,
-   "kiyohara": 1656,
-   "payout": 1642,
-   "quality": 1656,
-   "moat": 1568,
-   "revision": 445,
-   "growth": 1636,
-   "ky_grow": 1656,
-   "opprof": 1561
+   "has": 1703,
+   "value": 1703,
+   "ep": 1593,
+   "bp": 1696,
+   "netcash": 1699,
+   "kiyohara": 1703,
+   "payout": 1689,
+   "quality": 1703,
+   "moat": 1614,
+   "revision": 459,
+   "growth": 1681,
+   "ky_grow": 1703,
+   "opprof": 1606
   },
   "jq": {
    "dates_asked": 522,
@@ -425,7 +424,7 @@
   "files": [
    "kessan10_1106.xlsx:219件",
    "kessan09_1106.xlsx:2958件",
-   "kessan.xlsx:204件"
+   "kessan.xlsx:218件"
   ],
   "codes": 3177
  },
@@ -474,21 +473,21 @@
   "error": 0
  },
  "signals_appended": true,
- "signals_bar": "2026-11-06",
+ "signals_bar": "2026-11-10",
  "backtest_status": {
   "file_exists": true,
-  "age_days": 7,
+  "age_days": 8,
   "same_config": true,
   "max_age_d": 30,
   "min_indep": 20,
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "前回から7日（30日ごと）・設定変更なし",
+ "backtest_skipped": "前回から8日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 77,
-  "open": 15,
-  "days": 22,
+  "open": 16,
+  "days": 23,
   "value_trend": {
    "n": 34,
    "win_pct": 5.9,
@@ -547,13 +546,13 @@
   ]
  },
  "regime": {
-  "px": 402.1000061035156,
-  "vs200": 0.07,
-  "vs25": -4.81,
+  "px": 410.5,
+  "vs200": 2.12,
+  "vs25": -2.64,
   "above200": true,
-  "breadth": "6/17",
-  "breadth_pct": 35.0,
-  "b_suggest": 0.6
+  "breadth": "7/17",
+  "breadth_pct": 41.0,
+  "b_suggest": 0.7
  },
  "swing_gate": {
   "open": false,
