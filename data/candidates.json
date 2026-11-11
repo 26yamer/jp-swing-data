@@ -1,5 +1,5 @@
 {
- "generated_at_jst": "2026-11-11T18:47:26.554433+09:00",
+ "generated_at_jst": "2026-11-11T23:41:35.043365+09:00",
  "universe": 4250,
  "scanned": 4250,
  "passed": 1854,
@@ -11,13 +11,13 @@
  "skipped": {},
  "cand_earnings": {
   "asked": 20,
-  "ok": 15,
+  "ok": 17,
   "from_jquants": 0,
   "from_jpx": 12,
-  "from_yf": 3,
+  "from_yf": 5,
   "recent": 0,
   "estimate": 0,
-  "unknown": 5,
+  "unknown": 3,
   "error": 0
  },
  "jpx_earnings": {
@@ -34,7 +34,7 @@
   "days_with_rows": 4,
   "covered_to": "2027-01-05",
   "data_to": "2026-11-16",
-  "codes": 193,
+  "codes": 196,
   "stopped": null
  },
  "earnings_hist": {
@@ -84,10 +84,10 @@
    "kind": "株式",
    "news": [],
    "overlap": [],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_src": "",
+   "earn_status": "ok",
+   "earn_next": "2027-02-09",
+   "earn_days": 90,
+   "earn_src": "yf",
    "earn_last": "",
    "earn_since": null,
    "earn_soon": false,
@@ -877,10 +877,10 @@
    "overlap": [
     "8697"
    ],
-   "earn_status": "unknown",
-   "earn_next": "",
-   "earn_days": null,
-   "earn_src": "",
+   "earn_status": "ok",
+   "earn_next": "2027-02-16",
+   "earn_days": 97,
+   "earn_src": "yf",
    "earn_last": "",
    "earn_since": null,
    "earn_soon": false,

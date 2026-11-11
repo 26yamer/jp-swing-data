@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-11-11T18:47:26.554433+09:00",
+ "fetched_at_jst": "2026-11-11T23:41:35.043365+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -47,7 +47,6 @@
   "1633.T": "yfinance",
   "^N225": "yfinance",
   "^GSPC": "yfinance",
-  "^IXIC": "yfinance",
   "^VIX": "yfinance",
   "^TNX": "yfinance",
   "^TYX": "yfinance",
@@ -57,7 +56,9 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [],
+ "errors": [
+  "no-daily: ^IXIC"
+ ],
  "versions": {
   "python": "3.12.16",
   "pandas": "3.1.1",
@@ -103,7 +104,7 @@
    "n": 2
   }
  ],
- "n_ok": 55,
+ "n_ok": 54,
  "n_total": 55,
  "holdings_ok": 9,
  "news_ok": 43,
@@ -126,7 +127,6 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-11-11",
- "koichi_settled": 7,
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k02366a",
@@ -177,12 +177,12 @@
   "with_pl120": 58,
   "with_inv": 2319,
   "listed_days": 45,
-  "todo": 49,
+  "todo": 44,
   "todo_priority": 0,
   "priority_given": 117,
-  "downloaded": 49,
-  "parsed": 48,
-  "req": 94,
+  "downloaded": 44,
+  "parsed": 43,
+  "req": 89,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -433,14 +433,14 @@
   "tried": [
    "予定日=今後40営業日"
   ],
-  "rows": 193,
+  "rows": 196,
   "ahead_bd": 40,
   "days_asked": 40,
   "days_with_rows": 4,
   "data_to": "2026-11-16",
   "covered_to": "2027-01-05",
   "rows_by_probe": {
-   "予定日=今後40営業日": 193
+   "予定日=今後40営業日": 196
   },
   "used": "予定日=今後40営業日",
   "http_err": {
@@ -457,33 +457,33 @@
   ],
   "code_key": "Code",
   "date_key": "SchDate",
-  "codes": 193,
+  "codes": 196,
   "past_rows": 0,
   "result": "ok"
  },
  "cand_earnings": {
   "asked": 20,
-  "ok": 15,
+  "ok": 17,
   "from_jquants": 0,
   "from_jpx": 12,
-  "from_yf": 3,
+  "from_yf": 5,
   "recent": 0,
   "estimate": 0,
-  "unknown": 5,
+  "unknown": 3,
   "error": 0
  },
  "signals_appended": true,
  "signals_bar": "2026-11-11",
  "backtest_status": {
   "file_exists": true,
-  "age_days": 8,
+  "age_days": 9,
   "same_config": true,
   "max_age_d": 30,
   "min_indep": 20,
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "前回から8日（30日ごと）・設定変更なし",
+ "backtest_skipped": "前回から9日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 77,
   "open": 16,
