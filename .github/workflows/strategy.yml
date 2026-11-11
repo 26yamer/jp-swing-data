@@ -1,0 +1,52 @@
+name: strategy-report
+
+# 新戦略（長期保有・配分管理）のための価格取得。
+# 重い本体（fetch-market-data）とは別に、数十銘柄の価格とビットコインの判定だけを更新する。
+# このリポジトリは公開なので、保有銘柄と金額はここでは扱わない（Claude 側の非公開の台帳にある）。
+on:
+  schedule:
+    - cron: '7 2 * * 1-5'    # 11:07 JST（昼の定期タスクが読む前に終わらせる）
+    - cron: '7 7 * * 1-5'    # 16:07 JST（大引け後の値で更新）
+  workflow_dispatch:
+  # 変更のPRでは動作確認だけ行い、コミットはしない。
+  pull_request:
+    paths:
+      - strategy_report.py
+      - strategy_watchlist.json
+      - .github/workflows/strategy.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: strategy
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install "yfinance>=0.2.55" "curl_cffi>=0.7"
+      - name: Fetch prices
+        run: python strategy_report.py --fetch
+
+      - name: Commit
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name  "market-data-bot"
+          git config user.email "bot@users.noreply.github.com"
+          # 自分の出力だけを add する（本体のファイルには触れない）。
+          git add data/strategy_market.json data/strategy_px
+          git diff --staged --quiet && exit 0
+          git commit -m "strategy: $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST')"
+          # 本体のコミットと重なっても落ちないよう、取り込み直して最大3回試す。
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && git push && exit 0
+            sleep 5
+          done
+          exit 1
