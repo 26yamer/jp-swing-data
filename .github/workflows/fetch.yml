@@ -83,4 +83,10 @@ jobs:
           # ★data だけを add する。cache/ は JPX由来なのでコミットしない。
           git add -A data
           git diff --staged --quiet || git commit -m "data: $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST')"
-          git push
+          # 実行中に strategy-report が先にコミットしていると push が弾かれる。
+          # 取り込み直して最大3回試す（触るファイルは別なので衝突はしない）。
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && git push && exit 0
+            sleep 10
+          done
+          exit 1
