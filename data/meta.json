@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-11-13T18:54:48.034804+09:00",
+ "fetched_at_jst": "2026-11-13T23:53:34.454334+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -31,6 +31,7 @@
   "1617.T": "yfinance",
   "1618.T": "yfinance",
   "1619.T": "yfinance",
+  "1620.T": "yfinance",
   "1621.T": "yfinance",
   "1622.T": "yfinance",
   "1623.T": "yfinance",
@@ -56,10 +57,7 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [
-  "fetch_daily_stooq('1620.T',): RuntimeError: stooq HTTP 404",
-  "no-daily: 1620.T"
- ],
+ "errors": [],
  "versions": {
   "python": "3.12.16",
   "pandas": "3.1.1",
@@ -105,10 +103,10 @@
    "n": 2
   }
  ],
- "n_ok": 54,
+ "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 36,
+ "news_ok": 37,
  "jgb": {
   "date": "2026-11-12",
   "age_days": 1,
@@ -128,7 +126,6 @@
  },
  "universe_source": "jpx_master",
  "screen_last_bar": "2026-11-13",
- "koichi_settled": 8,
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k02366a",
@@ -169,21 +166,21 @@
   "sure": 0
  },
  "edinet": {
-  "codes": 3571,
-  "with_ca": 3509,
-  "usable": 3468,
+  "codes": 3656,
+  "with_ca": 3594,
+  "usable": 3553,
   "bs_bad": 0,
   "refetch_bad": 40,
   "refetch_pl": 0,
   "names": 4193,
   "with_pl120": 58,
-  "with_inv": 2407,
+  "with_inv": 2434,
   "listed_days": 45,
-  "todo": 497,
-  "todo_priority": 15,
+  "todo": 317,
+  "todo_priority": 0,
   "priority_given": 112,
   "downloaded": 220,
-  "parsed": 219,
+  "parsed": 218,
   "req": 265,
   "n429": 0,
   "blocked": null,
@@ -201,18 +198,18 @@
    "値"
   ],
   "dtypes": {
-   "120": 1649,
-   "160": 1922
+   "120": 1565,
+   "160": 2091
   },
-  "hist_rows": 3595,
-  "hist_codes": 2787,
-  "hist_multi": 786,
+  "hist_rows": 3773,
+  "hist_codes": 2889,
+  "hist_multi": 861,
   "hist_from": "2022-03-23",
   "hist_to": "2026-11-12",
   "nomatch": {
    "120:連結と個別が混在": 6,
    "160:連結と個別が混在": 34,
-   "160:要素IDが一致しない": 1
+   "160:要素IDが一致しない": 2
   },
   "probe": [
    {
@@ -403,15 +400,15 @@
   },
   "jq": {
    "dates_asked": 522,
-   "dates_with_data": 484,
-   "rows": 37544,
+   "dates_with_data": 483,
+   "rows": 37543,
    "codes": 4111,
    "req": 522,
    "n429": 0,
    "blocked": null,
    "resp_key": "data",
    "err": {
-    "HTTP 400": 2
+    "HTTP 400": 3
    }
   },
   "holdings_added": 1
@@ -445,7 +442,7 @@
   },
   "used": "予定日=今後40営業日",
   "http_err": {
-   "HTTP 400": 2
+   "HTTP 400": 3
   },
   "sample_keys": [
    "CoName",

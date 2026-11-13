@@ -1,5 +1,5 @@
 {
- "generated_at_jst": "2026-11-13T18:54:48.034804+09:00",
+ "generated_at_jst": "2026-11-13T23:53:34.454334+09:00",
  "asof_latest_disclosure": "2026-08-18",
  "pool": 1821,
  "n_codes": 1704,
@@ -36,15 +36,15 @@
  "used_in_score": false,
  "jq": {
   "dates_asked": 522,
-  "dates_with_data": 484,
-  "rows": 37544,
+  "dates_with_data": 483,
+  "rows": 37543,
   "codes": 4111,
   "req": 522,
   "n429": 0,
   "blocked": null,
   "resp_key": "data",
   "err": {
-   "HTTP 400": 2
+   "HTTP 400": 3
   }
  },
  "pct": {
