@@ -35,7 +35,7 @@
    }
   ],
   "ttm_dividend": 7.9,
-  "ttm_yield_pct": 1.91
+  "ttm_yield_pct": 1.9
  },
  "1615.T": {
   "dividends": [
@@ -73,7 +73,7 @@
    }
   ],
   "ttm_dividend": 20.9,
-  "ttm_yield_pct": 2.85
+  "ttm_yield_pct": 2.86
  },
  "2563.T": {
   "dividends": [
@@ -214,7 +214,7 @@
    }
   ],
   "ttm_dividend": 42.0,
-  "ttm_yield_pct": 2.4,
+  "ttm_yield_pct": 2.43,
   "earnings_dates": [
    "2027-02-04",
    "2026-11-01",
@@ -279,7 +279,7 @@
    }
   ],
   "ttm_dividend": 5.35,
-  "ttm_yield_pct": 3.19,
+  "ttm_yield_pct": 3.18,
   "earnings_dates": [
    "2027-02-04",
    "2026-11-03",
@@ -344,7 +344,7 @@
    }
   ],
   "ttm_dividend": 77.0,
-  "ttm_yield_pct": 3.5,
+  "ttm_yield_pct": 3.47,
   "earnings_dates": [
    "2027-01-28",
    "2026-10-26",
@@ -409,7 +409,7 @@
    }
   ],
   "ttm_dividend": 99.0,
-  "ttm_yield_pct": 1.6,
+  "ttm_yield_pct": 1.57,
   "earnings_dates": [
    "2027-02-04",
    "2020-02-05",
