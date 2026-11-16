@@ -1,10 +1,10 @@
 {
- "generated_at_jst": "2026-11-16T18:25:12.549839+09:00",
- "codes": 54,
+ "generated_at_jst": "2026-11-17T05:16:34.658834+09:00",
+ "codes": 50,
  "errors": {},
  "btc_last": {
   "date": "2026-11-16",
-  "close": 10246514.0
+  "close": 10354978.0
  },
  "btc_trend": {
   "month": "2026-10",
