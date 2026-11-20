@@ -22375,7 +22375,16 @@
    "solo": false,
    "ctx_alt": true,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2025-06-30",
+    "period": "2025-03-31",
+    "docid": "S100W3KO",
+    "opi": 1911793000.0,
+    "intx": 8248000.0,
+    "sub": null,
+    "na": 24805855000.0
+   }
   },
   "7851": {
    "docid": "S100ZH53",
@@ -30004,7 +30013,16 @@
    "solo": false,
    "ctx_alt": false,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2026-09-28",
+    "period": "2026-06-30",
+    "docid": "S100Z3L6",
+    "opi": 1645657000.0,
+    "intx": 1884000.0,
+    "sub": null,
+    "na": 20357589000.0
+   }
   },
   "4391": {
    "docid": "S100Z2RN",
@@ -37546,7 +37564,16 @@
    "solo": false,
    "ctx_alt": true,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2024-06-28",
+    "period": "2024-03-31",
+    "docid": "S100TXVR",
+    "opi": 477866000.0,
+    "intx": 55513000.0,
+    "sub": 6171000.0,
+    "na": 6148758000.0
+   }
   },
   "3199": {
    "docid": "S100ZFE5",
@@ -46333,7 +46360,16 @@
    "solo": false,
    "ctx_alt": true,
    "mixed": false,
-   "bs_ok": true
+   "bs_ok": true,
+   "pl120": {
+    "submit": "2022-06-29",
+    "period": "2022-03-31",
+    "docid": "S100OCEW",
+    "opi": 1379669000.0,
+    "intx": 62042000.0,
+    "sub": null,
+    "na": 26957940000.0
+   }
   },
   "4926": {
    "docid": "S100ZGT9",
@@ -62653,7 +62689,7 @@
   "2026-11-19"
  ],
  "attribution": "出典：EDINET閲覧（提出）サイト（https://disclosure2.edinet-fsa.go.jp/）をもとに作成、PDL1.0",
- "generated_at_jst": "2026-11-20T01:02:00.265486+09:00",
+ "generated_at_jst": "2026-11-20T19:23:26.293267+09:00",
  "note": "有価証券報告書・半期報告書の貸借対照表から、流動資産合計・投資有価証券・負債合計・資産合計・純資産合計を取り出したもの。出典：EDINET閲覧（提出）サイト（https://disclosure2.edinet-fsa.go.jp/）をもとに作成、PDL1.0",
  "with_ca": 3993,
  "with_inv": 2604,
