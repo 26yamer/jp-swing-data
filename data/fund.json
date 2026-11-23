@@ -1,5 +1,5 @@
 {
- "generated_at_jst": "2026-11-23T20:08:38.779812+09:00",
+ "generated_at_jst": "2026-11-24T03:43:27.154090+09:00",
  "asof_latest_disclosure": "2026-08-28",
  "pool": 1741,
  "n_codes": 1623,
@@ -35,16 +35,16 @@
  },
  "used_in_score": false,
  "jq": {
-  "dates_asked": 523,
-  "dates_with_data": 484,
-  "rows": 37555,
+  "dates_asked": 522,
+  "dates_with_data": 482,
+  "rows": 37536,
   "codes": 4111,
-  "req": 523,
-  "n429": 0,
+  "req": 526,
+  "n429": 6,
   "blocked": null,
   "resp_key": "data",
   "err": {
-   "HTTP 400": 3
+   "HTTP 400": 2
   }
  },
  "pct": {
@@ -327,7 +327,7 @@
    "quality": 56,
    "moat": 40,
    "revision": 43,
-   "growth": 94,
+   "growth": 93,
    "ky_grow": 71,
    "opprof": 95
   },
@@ -498,7 +498,7 @@
    "payout": 45,
    "quality": 51,
    "moat": 64,
-   "growth": 62,
+   "growth": 61,
    "ky_grow": 59,
    "opprof": 74
   },
@@ -524,7 +524,7 @@
    "payout": 24,
    "quality": 18,
    "moat": 15,
-   "growth": 78,
+   "growth": 77,
    "ky_grow": 45,
    "opprof": 4
   },
@@ -1061,7 +1061,7 @@
    "kiyohara": 49,
    "payout": 75,
    "quality": 50,
-   "moat": 51,
+   "moat": 52,
    "growth": 86,
    "ky_grow": 67,
    "opprof": 67
@@ -1565,7 +1565,7 @@
    "quality": 18,
    "moat": 51,
    "revision": 0,
-   "growth": 11,
+   "growth": 12,
    "ky_grow": 14,
    "opprof": 2
   },
@@ -2026,7 +2026,7 @@
    "kiyohara": 30,
    "payout": 31,
    "quality": 63,
-   "moat": 67,
+   "moat": 68,
    "growth": 71,
    "ky_grow": 55,
    "opprof": 72
@@ -2790,7 +2790,7 @@
    "payout": 33,
    "quality": 36,
    "moat": 30,
-   "growth": 60,
+   "growth": 61,
    "ky_grow": 48,
    "opprof": 5
   },
@@ -2962,7 +2962,7 @@
    "kiyohara": 32,
    "payout": 26,
    "quality": 48,
-   "moat": 62,
+   "moat": 63,
    "growth": 22,
    "ky_grow": 29,
    "opprof": 43
@@ -3672,8 +3672,8 @@
    "payout": 41,
    "quality": 45,
    "moat": 26,
-   "growth": 11,
-   "ky_grow": 35,
+   "growth": 9,
+   "ky_grow": 34,
    "opprof": 86
   },
   "3180": {
@@ -3871,7 +3871,7 @@
    "kiyohara": 59,
    "payout": 58,
    "quality": 43,
-   "moat": 65,
+   "moat": 66,
    "growth": 46,
    "ky_grow": 47,
    "opprof": 56
@@ -4022,7 +4022,7 @@
    "payout": 43,
    "quality": 72,
    "moat": 88,
-   "growth": 28,
+   "growth": 29,
    "ky_grow": 30,
    "opprof": 7
   },
@@ -4322,7 +4322,7 @@
    "kiyohara": 45,
    "payout": 49,
    "quality": 37,
-   "moat": 38,
+   "moat": 39,
    "revision": 43,
    "growth": 17,
    "ky_grow": 29,
@@ -4725,7 +4725,7 @@
    "payout": 36,
    "quality": 66,
    "moat": 53,
-   "growth": 84,
+   "growth": 83,
    "ky_grow": 66,
    "opprof": 76
   },
@@ -4778,7 +4778,7 @@
    "quality": 62,
    "moat": 50,
    "growth": 51,
-   "ky_grow": 54,
+   "ky_grow": 53,
    "opprof": 91
   },
   "3561": {
@@ -4882,7 +4882,7 @@
    "payout": 98,
    "quality": 39,
    "moat": 35,
-   "growth": 67,
+   "growth": 66,
    "ky_grow": 63,
    "opprof": 15
   },
@@ -6221,7 +6221,7 @@
    "kiyohara": 76,
    "payout": 57,
    "quality": 66,
-   "moat": 69,
+   "moat": 70,
    "growth": 38,
    "ky_grow": 58,
    "opprof": 21
@@ -6338,7 +6338,7 @@
    "kiyohara": 52,
    "payout": 77,
    "quality": 36,
-   "moat": 55,
+   "moat": 56,
    "growth": 18,
    "ky_grow": 31,
    "opprof": 22
@@ -6563,7 +6563,7 @@
    "quality": 60,
    "moat": 52,
    "growth": 9,
-   "ky_grow": 32,
+   "ky_grow": 33,
    "opprof": 33
   },
   "4218": {
@@ -7076,7 +7076,7 @@
    "kiyohara": 51,
    "payout": 43,
    "quality": 25,
-   "moat": 53,
+   "moat": 54,
    "growth": 64,
    "ky_grow": 53,
    "opprof": 30
@@ -7089,7 +7089,7 @@
    "kiyohara": 28,
    "payout": 62,
    "quality": 73,
-   "moat": 67,
+   "moat": 68,
    "growth": 87,
    "ky_grow": 63,
    "opprof": 99
@@ -7975,7 +7975,7 @@
    "kiyohara": 34,
    "payout": 30,
    "quality": 93,
-   "moat": 86,
+   "moat": 87,
    "growth": 66,
    "ky_grow": 56,
    "opprof": 73
@@ -8104,7 +8104,7 @@
    "kiyohara": 73,
    "payout": 76,
    "quality": 72,
-   "moat": 79,
+   "moat": 80,
    "growth": 48,
    "ky_grow": 57,
    "opprof": 98
@@ -8118,7 +8118,7 @@
    "payout": 47,
    "quality": 51,
    "moat": 5,
-   "growth": 58,
+   "growth": 57,
    "ky_grow": 57,
    "opprof": 87
   },
@@ -8604,10 +8604,10 @@
    "kiyohara": 37,
    "payout": 22,
    "quality": 72,
-   "moat": 48,
+   "moat": 49,
    "revision": 82,
-   "growth": 64,
-   "ky_grow": 56,
+   "growth": 78,
+   "ky_grow": 63,
    "opprof": 58
   },
   "4922": {
@@ -8662,7 +8662,7 @@
    "quality": 77,
    "moat": 62,
    "revision": 43,
-   "growth": 12,
+   "growth": 13,
    "ky_grow": 32,
    "opprof": 75
   },
@@ -8864,7 +8864,7 @@
    "payout": 61,
    "quality": 58,
    "moat": 46,
-   "growth": 84,
+   "growth": 83,
    "ky_grow": 70,
    "opprof": 54
   },
@@ -9210,7 +9210,7 @@
    "kiyohara": 76,
    "payout": 38,
    "quality": 65,
-   "moat": 61,
+   "moat": 62,
    "growth": 38,
    "ky_grow": 58,
    "opprof": 9
@@ -9238,7 +9238,7 @@
    "quality": 60,
    "moat": 40,
    "growth": 60,
-   "ky_grow": 62,
+   "ky_grow": 61,
    "opprof": 49
   },
   "5201": {
@@ -9317,7 +9317,7 @@
    "kiyohara": 12,
    "payout": 25,
    "quality": 29,
-   "moat": 45,
+   "moat": 46,
    "growth": 56,
    "ky_grow": 36,
    "opprof": 23
@@ -9543,7 +9543,7 @@
    "quality": 64,
    "moat": 59,
    "growth": 16,
-   "ky_grow": 51,
+   "ky_grow": 52,
    "opprof": 15
   },
   "5393": {
@@ -9808,7 +9808,7 @@
    "kiyohara": 66,
    "payout": 57,
    "quality": 48,
-   "moat": 58,
+   "moat": 59,
    "growth": 5,
    "ky_grow": 30,
    "opprof": 47
@@ -10002,7 +10002,7 @@
    "kiyohara": 64,
    "payout": 65,
    "quality": 33,
-   "moat": 55,
+   "moat": 56,
    "growth": 66,
    "ky_grow": 59,
    "opprof": 43
@@ -10418,7 +10418,7 @@
    "payout": 60,
    "quality": 30,
    "moat": 42,
-   "growth": 54,
+   "growth": 53,
    "ky_grow": 53,
    "opprof": 43
   },
@@ -10831,7 +10831,7 @@
    "payout": 48,
    "quality": 67,
    "moat": 57,
-   "growth": 30,
+   "growth": 31,
    "ky_grow": 45,
    "opprof": 51
   },
@@ -11189,7 +11189,7 @@
    "kiyohara": 34,
    "payout": 64,
    "quality": 36,
-   "moat": 24,
+   "moat": 25,
    "revision": 2,
    "growth": 22,
    "ky_grow": 33,
@@ -11604,7 +11604,7 @@
    "payout": 51,
    "quality": 36,
    "moat": 23,
-   "growth": 82,
+   "growth": 81,
    "ky_grow": 58,
    "opprof": 68
   },
@@ -13014,7 +13014,7 @@
    "payout": 68,
    "quality": 66,
    "moat": 68,
-   "growth": 48,
+   "growth": 47,
    "ky_grow": 49,
    "opprof": 65
   },
@@ -13066,7 +13066,7 @@
    "payout": 82,
    "quality": 48,
    "moat": 40,
-   "growth": 59,
+   "growth": 58,
    "ky_grow": 58,
    "opprof": 49
   },
@@ -13251,7 +13251,7 @@
    "kiyohara": 61,
    "payout": 45,
    "quality": 37,
-   "moat": 50,
+   "moat": 51,
    "growth": 26,
    "ky_grow": 41,
    "opprof": 22
@@ -14797,7 +14797,7 @@
    "payout": 43,
    "quality": 54,
    "moat": 49,
-   "growth": 38,
+   "growth": 39,
    "ky_grow": 54,
    "opprof": 36
   },
@@ -15246,7 +15246,7 @@
    "quality": 48,
    "moat": 22,
    "growth": 24,
-   "ky_grow": 38,
+   "ky_grow": 39,
    "opprof": 69
   },
   "7747": {
@@ -16275,7 +16275,7 @@
    "kiyohara": 47,
    "payout": 39,
    "quality": 56,
-   "moat": 59,
+   "moat": 60,
    "growth": 62,
    "ky_grow": 55,
    "opprof": 82
@@ -16288,7 +16288,7 @@
    "kiyohara": 61,
    "payout": 57,
    "quality": 44,
-   "moat": 52,
+   "moat": 53,
    "revision": 43,
    "growth": 91,
    "ky_grow": 72,
@@ -17010,7 +17010,7 @@
    "kiyohara": 29,
    "payout": 42,
    "quality": 44,
-   "moat": 71,
+   "moat": 72,
    "growth": 18,
    "ky_grow": 23,
    "opprof": 45
@@ -17215,7 +17215,7 @@
    "payout": 45,
    "quality": 10,
    "growth": 48,
-   "ky_grow": 29
+   "ky_grow": 30
   },
   "8306": {
    "value": 35,
@@ -17883,7 +17883,7 @@
    "payout": 55,
    "quality": 68,
    "moat": 48,
-   "growth": 82,
+   "growth": 81,
    "ky_grow": 71,
    "opprof": 43
   },
@@ -18258,7 +18258,7 @@
    "kiyohara": 77,
    "payout": 42,
    "quality": 65,
-   "moat": 81,
+   "moat": 80,
    "growth": 56,
    "ky_grow": 63,
    "opprof": 72
@@ -18402,7 +18402,7 @@
    "kiyohara": 42,
    "payout": 46,
    "quality": 71,
-   "moat": 74,
+   "moat": 75,
    "growth": 81,
    "ky_grow": 64,
    "opprof": 95
@@ -18507,9 +18507,9 @@
    "kiyohara": 36,
    "payout": 43,
    "quality": 68,
-   "moat": 90,
-   "growth": 29,
-   "ky_grow": 31,
+   "moat": 97,
+   "growth": 25,
+   "ky_grow": 29,
    "opprof": 9
   },
   "8953": {
@@ -18761,7 +18761,7 @@
    "kiyohara": 56,
    "payout": 58,
    "quality": 45,
-   "moat": 64,
+   "moat": 65,
    "growth": 27,
    "ky_grow": 36,
    "opprof": 38
@@ -18787,7 +18787,7 @@
    "kiyohara": 29,
    "payout": 70,
    "quality": 45,
-   "moat": 66,
+   "moat": 67,
    "growth": 26,
    "ky_grow": 26,
    "opprof": 39
@@ -18801,7 +18801,7 @@
    "payout": 15,
    "quality": 50,
    "moat": 61,
-   "growth": 46,
+   "growth": 45,
    "ky_grow": 46,
    "opprof": 44
   },
@@ -18933,7 +18933,7 @@
    "quality": 29,
    "moat": 52,
    "growth": 56,
-   "ky_grow": 51,
+   "ky_grow": 50,
    "opprof": 40
   },
   "9037": {
@@ -19023,7 +19023,7 @@
    "payout": 72,
    "quality": 29,
    "moat": 53,
-   "growth": 18,
+   "growth": 19,
    "ky_grow": 31,
    "opprof": 19
   },
@@ -19423,7 +19423,7 @@
    "payout": 51,
    "quality": 11,
    "moat": 50,
-   "growth": 10,
+   "growth": 11,
    "ky_grow": 19,
    "opprof": 42
   },
@@ -21074,7 +21074,7 @@
    "quality": 45,
    "moat": 53,
    "growth": 81,
-   "ky_grow": 61,
+   "ky_grow": 60,
    "opprof": 59
   },
   "9902": {
@@ -21219,7 +21219,7 @@
    "moat": 67,
    "revision": 82,
    "growth": 80,
-   "ky_grow": 61,
+   "ky_grow": 60,
    "opprof": 86
   },
   "9987": {

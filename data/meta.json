@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-11-23T20:08:38.779812+09:00",
+ "fetched_at_jst": "2026-11-24T03:43:27.154090+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -20,7 +20,6 @@
   "8316.T": "yfinance",
   "8411.T": "yfinance",
   "7203.T": "yfinance",
-  "6758.T": "yfinance",
   "6501.T": "yfinance",
   "9984.T": "yfinance",
   "6857.T": "yfinance",
@@ -57,7 +56,10 @@
   "SI=F": "yfinance",
   "^SOX": "yfinance"
  },
- "errors": [],
+ "errors": [
+  "fetch_daily_stooq('6758.T',): ConnectTimeout: HTTPSConnectionPool(host='stooq.com', port=443): Max retries exceeded with url: /q/d/l/?s=6758.jp&i=d (Caused by ConnectTimeoutError(<HTTPSConnection(host='stooq.com', port=443) at 0x7479a06cdc10>, 'Connection to stooq.com timed out. (connect timeout=30)'))",
+  "no-daily: 6758.T"
+ ],
  "versions": {
   "python": "3.12.16",
   "pandas": "3.1.1",
@@ -103,13 +105,13 @@
    "n": 2
   }
  ],
- "n_ok": 55,
+ "n_ok": 54,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 35,
+ "news_ok": 38,
  "jgb": {
   "date": "2026-11-19",
-  "age_days": 4,
+  "age_days": 5,
   "y2": 1.853,
   "y10": 2.87,
   "y30": 4.03
@@ -145,8 +147,8 @@
  "splits": {
   "events": 981,
   "split_codes": 863,
-  "adjusted_rows": 2799,
-  "adjusted_codes": 477,
+  "adjusted_rows": 2797,
+  "adjusted_codes": 476,
   "examples": [
    "1333",
    "1414",
@@ -170,18 +172,18 @@
   "with_ca": 3993,
   "usable": 3954,
   "bs_bad": 0,
-  "refetch_bad": 20,
+  "refetch_bad": 22,
   "refetch_pl": 0,
   "names": 4206,
   "with_pl120": 84,
   "with_inv": 2604,
   "listed_days": 45,
-  "todo": 44,
+  "todo": 43,
   "todo_priority": 0,
   "priority_given": 145,
-  "downloaded": 44,
+  "downloaded": 43,
   "parsed": 41,
-  "req": 89,
+  "req": 88,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -209,7 +211,7 @@
   "nomatch": {
    "120:連結と個別が混在": 5,
    "160:連結と個別が混在": 36,
-   "160:要素IDが一致しない": 2
+   "160:要素IDが一致しない": 1
   },
   "probe": [
    {
@@ -402,16 +404,16 @@
    "opprof": 1534
   },
   "jq": {
-   "dates_asked": 523,
-   "dates_with_data": 484,
-   "rows": 37555,
+   "dates_asked": 522,
+   "dates_with_data": 482,
+   "rows": 37536,
    "codes": 4111,
-   "req": 523,
-   "n429": 0,
+   "req": 526,
+   "n429": 6,
    "blocked": null,
    "resp_key": "data",
    "err": {
-    "HTTP 400": 3
+    "HTTP 400": 2
    }
   },
   "holdings_added": 1
@@ -433,18 +435,18 @@
   "tried": [
    "予定日=今後40営業日"
   ],
-  "rows": 2,
+  "rows": 3,
   "ahead_bd": 40,
   "days_asked": 40,
-  "days_with_rows": 1,
-  "data_to": "2026-11-26",
-  "covered_to": "2027-01-15",
+  "days_with_rows": 2,
+  "data_to": "2026-11-30",
+  "covered_to": "2027-01-18",
   "rows_by_probe": {
-   "予定日=今後40営業日": 2
+   "予定日=今後40営業日": 3
   },
   "used": "予定日=今後40営業日",
   "http_err": {
-   "HTTP 400": 3
+   "HTTP 400": 2
   },
   "sample_keys": [
    "CoName",
@@ -457,7 +459,7 @@
   ],
   "code_key": "Code",
   "date_key": "SchDate",
-  "codes": 2,
+  "codes": 3,
   "past_rows": 0,
   "result": "ok"
  },
