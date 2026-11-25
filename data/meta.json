@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-11-25T03:16:18.187908+09:00",
+ "fetched_at_jst": "2026-11-25T20:39:25.302074+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -106,13 +106,13 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 40,
+ "news_ok": 36,
  "jgb": {
-  "date": "2026-11-20",
-  "age_days": 5,
-  "y2": 1.826,
-  "y10": 2.838,
-  "y30": 4.014
+  "date": "2026-11-24",
+  "age_days": 1,
+  "y2": 1.783,
+  "y10": 2.781,
+  "y30": 3.99
  },
  "events_ok": 8,
  "n_anomalies": 9,
@@ -125,20 +125,21 @@
   "skipped": "TDNET_ENABLED=False（JPXがスクレイピングの自動取得を控えるよう求めており、robots.txtも拒否しているため）"
  },
  "universe_source": "jpx_master",
- "screen_last_bar": "2026-11-20",
+ "screen_last_bar": "2026-11-25",
+ "koichi_settled": 10,
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k02366a",
-  "pre": 123,
-  "checked": 123,
-  "cands": 2,
+  "pre": 381,
+  "checked": 380,
+  "cands": 15,
   "provisional": false,
-  "ledger": 741
+  "ledger": 749
  },
  "screen": {
   "universe": 4250,
   "scanned": 4250,
-  "passed": 1743,
+  "passed": 1745,
   "named": true,
   "source": "jpx_master"
  },
@@ -161,7 +162,7 @@
   ]
  },
  "netcash": {
-  "pool": 1744,
+  "pool": 1746,
   "shortlist": 60,
   "sure": 0
  },
@@ -170,18 +171,18 @@
   "with_ca": 3994,
   "usable": 3955,
   "bs_bad": 0,
-  "refetch_bad": 22,
+  "refetch_bad": 20,
   "refetch_pl": 0,
   "names": 4209,
   "with_pl120": 110,
   "with_inv": 2605,
   "listed_days": 45,
-  "todo": 72,
+  "todo": 43,
   "todo_priority": 0,
-  "priority_given": 145,
-  "downloaded": 72,
-  "parsed": 70,
-  "req": 117,
+  "priority_given": 141,
+  "downloaded": 43,
+  "parsed": 41,
+  "req": 88,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -208,7 +209,7 @@
   "hist_to": "2026-11-24",
   "nomatch": {
    "120:連結と個別が混在": 5,
-   "160:連結と個別が混在": 38,
+   "160:連結と個別が混在": 36,
    "160:要素IDが一致しない": 1
   },
   "probe": [
@@ -338,15 +339,15 @@
   }
  },
  "kiyohara": {
-  "universe": 4077,
-  "passed": 55,
+  "universe": 4078,
+  "passed": 53,
   "shown": 40,
   "sure": 0,
   "likely": 0,
   "no_div": 2,
-  "with_real": 55,
-  "real_ge1": 36,
-  "real_near": 19,
+  "with_real": 53,
+  "real_ge1": 35,
+  "real_near": 18,
   "bands": {
    "real_ge1": 28,
    "real_near": 12,
@@ -358,16 +359,16 @@
    "unknown": 0
   },
   "dropped": {
-   "時価総額>500億円": 38,
-   "財務が引けない": 352,
-   "予想PERが出ない(赤字予想)": 225,
-   "売買代金が薄い": 642,
-   "PER>8倍": 2351,
+   "時価総額>500億円": 35,
+   "財務が引けない": 350,
+   "予想PERが出ない(赤字予想)": 229,
+   "売買代金が薄い": 641,
+   "PER>8倍": 2353,
    "ネットキャッシュ比率<0.8(実測)": 36,
    "本業が赤字": 20,
-   "PBR>0.8倍": 143,
-   "流動資産≤負債合計(実測)": 54,
-   "銀行・金融（式が成立しない）": 160,
+   "PBR>0.8倍": 149,
+   "流動資産≤負債合計(実測)": 52,
+   "銀行・金融（式が成立しない）": 159,
    "営業収益力がマイナス（本業の利益で金利を払えていない）": 1
   }
  },
@@ -384,22 +385,22 @@
  },
  "fund": {
   "asof_latest_disclosure": "2026-08-28",
-  "pool": 1744,
-  "n_codes": 1623,
+  "pool": 1746,
+  "n_codes": 1620,
   "coverage": {
-   "has": 1623,
-   "value": 1623,
+   "has": 1620,
+   "value": 1620,
    "ep": 1525,
-   "bp": 1617,
-   "netcash": 1620,
-   "kiyohara": 1623,
-   "payout": 1612,
-   "quality": 1623,
-   "moat": 1542,
-   "revision": 433,
-   "growth": 1605,
-   "ky_grow": 1623,
-   "opprof": 1534
+   "bp": 1614,
+   "netcash": 1617,
+   "kiyohara": 1620,
+   "payout": 1608,
+   "quality": 1620,
+   "moat": 1540,
+   "revision": 435,
+   "growth": 1601,
+   "ky_grow": 1620,
+   "opprof": 1532
   },
   "jq": {
    "dates_asked": 521,
@@ -463,31 +464,31 @@
  },
  "cand_earnings": {
   "asked": 20,
-  "ok": 6,
+  "ok": 5,
   "from_jquants": 0,
   "from_jpx": 2,
-  "from_yf": 4,
+  "from_yf": 3,
   "recent": 0,
   "estimate": 0,
-  "unknown": 14,
+  "unknown": 15,
   "error": 0
  },
  "signals_appended": true,
- "signals_bar": "2026-11-20",
+ "signals_bar": "2026-11-25",
  "backtest_status": {
   "file_exists": true,
-  "age_days": 22,
+  "age_days": 23,
   "same_config": true,
   "max_age_d": 30,
   "min_indep": 20,
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "前回から22日（30日ごと）・設定変更なし",
+ "backtest_skipped": "前回から23日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 93,
-  "open": 13,
-  "days": 30,
+  "open": 14,
+  "days": 31,
   "value_trend": {
    "n": 50,
    "win_pct": 18.0,
@@ -546,12 +547,12 @@
   ]
  },
  "regime": {
-  "px": 395.8999938964844,
-  "vs200": -1.87,
-  "vs25": -3.88,
+  "px": 394.70001220703125,
+  "vs200": -2.2,
+  "vs25": -3.87,
   "above200": false,
-  "breadth": "4/17",
-  "breadth_pct": 24.0,
+  "breadth": "6/17",
+  "breadth_pct": 35.0,
   "b_suggest": 0.2
  },
  "swing_gate": {
