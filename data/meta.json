@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-11-25T20:39:25.302074+09:00",
+ "fetched_at_jst": "2026-11-26T02:36:25.926939+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -106,10 +106,10 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 36,
+ "news_ok": 41,
  "jgb": {
   "date": "2026-11-24",
-  "age_days": 1,
+  "age_days": 2,
   "y2": 1.783,
   "y10": 2.781,
   "y30": 3.99
@@ -125,28 +125,27 @@
   "skipped": "TDNET_ENABLED=False（JPXがスクレイピングの自動取得を控えるよう求めており、robots.txtも拒否しているため）"
  },
  "universe_source": "jpx_master",
- "screen_last_bar": "2026-11-25",
- "koichi_settled": 10,
+ "screen_last_bar": "2026-11-24",
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k02366a",
-  "pre": 381,
-  "checked": 380,
-  "cands": 15,
+  "pre": 234,
+  "checked": 234,
+  "cands": 3,
   "provisional": false,
   "ledger": 749
  },
  "screen": {
   "universe": 4250,
   "scanned": 4250,
-  "passed": 1745,
+  "passed": 1764,
   "named": true,
   "source": "jpx_master"
  },
  "splits": {
   "events": 981,
   "split_codes": 863,
-  "adjusted_rows": 2799,
+  "adjusted_rows": 2801,
   "adjusted_codes": 477,
   "examples": [
    "1333",
@@ -162,7 +161,7 @@
   ]
  },
  "netcash": {
-  "pool": 1746,
+  "pool": 1765,
   "shortlist": 60,
   "sure": 0
  },
@@ -173,16 +172,16 @@
   "bs_bad": 0,
   "refetch_bad": 20,
   "refetch_pl": 0,
-  "names": 4209,
-  "with_pl120": 110,
+  "names": 4210,
+  "with_pl120": 131,
   "with_inv": 2605,
   "listed_days": 45,
-  "todo": 43,
-  "todo_priority": 0,
-  "priority_given": 141,
-  "downloaded": 43,
-  "parsed": 41,
-  "req": 88,
+  "todo": 78,
+  "todo_priority": 1,
+  "priority_given": 137,
+  "downloaded": 78,
+  "parsed": 76,
+  "req": 123,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -202,14 +201,14 @@
    "120": 1096,
    "160": 2967
   },
-  "hist_rows": 4888,
+  "hist_rows": 4922,
   "hist_codes": 3405,
-  "hist_multi": 1442,
+  "hist_multi": 1472,
   "hist_from": "2022-03-23",
-  "hist_to": "2026-11-24",
+  "hist_to": "2026-11-25",
   "nomatch": {
    "120:連結と個別が混在": 5,
-   "160:連結と個別が混在": 36,
+   "160:連結と個別が混在": 39,
    "160:要素IDが一致しない": 1
   },
   "probe": [
@@ -339,14 +338,14 @@
   }
  },
  "kiyohara": {
-  "universe": 4078,
-  "passed": 53,
+  "universe": 4079,
+  "passed": 51,
   "shown": 40,
   "sure": 0,
   "likely": 0,
   "no_div": 2,
-  "with_real": 53,
-  "real_ge1": 35,
+  "with_real": 51,
+  "real_ge1": 33,
   "real_near": 18,
   "bands": {
    "real_ge1": 28,
@@ -359,15 +358,15 @@
    "unknown": 0
   },
   "dropped": {
-   "時価総額>500億円": 35,
-   "財務が引けない": 350,
+   "時価総額>500億円": 36,
+   "財務が引けない": 352,
    "予想PERが出ない(赤字予想)": 229,
-   "売買代金が薄い": 641,
-   "PER>8倍": 2353,
-   "ネットキャッシュ比率<0.8(実測)": 36,
-   "本業が赤字": 20,
-   "PBR>0.8倍": 149,
-   "流動資産≤負債合計(実測)": 52,
+   "売買代金が薄い": 638,
+   "PER>8倍": 2360,
+   "ネットキャッシュ比率<0.8(実測)": 33,
+   "本業が赤字": 19,
+   "PBR>0.8倍": 148,
+   "流動資産≤負債合計(実測)": 53,
    "銀行・金融（式が成立しない）": 159,
    "営業収益力がマイナス（本業の利益で金利を払えていない）": 1
   }
@@ -384,28 +383,28 @@
   "n_codes": 4109
  },
  "fund": {
-  "asof_latest_disclosure": "2026-08-28",
-  "pool": 1746,
-  "n_codes": 1620,
+  "asof_latest_disclosure": "2026-08-31",
+  "pool": 1765,
+  "n_codes": 1644,
   "coverage": {
-   "has": 1620,
-   "value": 1620,
-   "ep": 1525,
-   "bp": 1614,
-   "netcash": 1617,
-   "kiyohara": 1620,
-   "payout": 1608,
-   "quality": 1620,
-   "moat": 1540,
-   "revision": 435,
-   "growth": 1601,
-   "ky_grow": 1620,
-   "opprof": 1532
+   "has": 1644,
+   "value": 1644,
+   "ep": 1547,
+   "bp": 1638,
+   "netcash": 1641,
+   "kiyohara": 1644,
+   "payout": 1632,
+   "quality": 1644,
+   "moat": 1559,
+   "revision": 440,
+   "growth": 1625,
+   "ky_grow": 1644,
+   "opprof": 1551
   },
   "jq": {
    "dates_asked": 521,
    "dates_with_data": 484,
-   "rows": 37555,
+   "rows": 37563,
    "codes": 4111,
    "req": 521,
    "n429": 0,
@@ -439,7 +438,7 @@
   "days_asked": 40,
   "days_with_rows": 2,
   "data_to": "2026-11-30",
-  "covered_to": "2027-01-19",
+  "covered_to": "2027-01-20",
   "rows_by_probe": {
    "予定日=今後40営業日": 3
   },
@@ -464,17 +463,17 @@
  },
  "cand_earnings": {
   "asked": 20,
-  "ok": 5,
+  "ok": 6,
   "from_jquants": 0,
   "from_jpx": 2,
-  "from_yf": 3,
+  "from_yf": 4,
   "recent": 0,
   "estimate": 0,
-  "unknown": 15,
+  "unknown": 14,
   "error": 0
  },
  "signals_appended": true,
- "signals_bar": "2026-11-25",
+ "signals_bar": "2026-11-24",
  "backtest_status": {
   "file_exists": true,
   "age_days": 23,
