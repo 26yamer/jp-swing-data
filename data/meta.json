@@ -1,5 +1,5 @@
 {
- "fetched_at_jst": "2026-11-27T02:17:18.101674+09:00",
+ "fetched_at_jst": "2026-11-27T20:19:46.436189+09:00",
  "sources": {
   "1306.T": "yfinance",
   "1540.T": "yfinance",
@@ -106,49 +106,51 @@
  "n_ok": 55,
  "n_total": 55,
  "holdings_ok": 9,
- "news_ok": 40,
+ "news_ok": 34,
  "jgb": {
-  "date": "2026-11-25",
-  "age_days": 2,
-  "y2": 1.731,
-  "y10": 2.713,
-  "y30": 3.998
+  "date": "2026-11-26",
+  "age_days": 1,
+  "y2": 1.747,
+  "y10": 2.704,
+  "y30": 3.956
  },
  "events_ok": 8,
  "n_anomalies": 9,
  "health": "ok",
  "master": {
-  "count": 4250,
-  "cached": true
+  "count": 4244,
+  "source": "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx"
  },
  "tdnet": {
   "skipped": "TDNET_ENABLED=False（JPXがスクレイピングの自動取得を控えるよう求めており、robots.txtも拒否しているため）"
  },
  "universe_source": "jpx_master",
- "screen_last_bar": "2026-11-25",
+ "screen_last_bar": "2026-11-27",
+ "koichi_settled": 4,
  "signals_settled": 0,
  "koichi_live": {
   "rule": "k02366a",
-  "pre": 380,
-  "checked": 379,
-  "cands": 15,
+  "pre": 559,
+  "checked": 557,
+  "cands": 23,
   "provisional": false,
-  "ledger": 759
+  "ledger": 772
  },
  "screen": {
-  "universe": 4250,
-  "scanned": 4250,
-  "passed": 1746,
+  "universe": 4244,
+  "scanned": 4244,
+  "passed": 1789,
   "named": true,
   "source": "jpx_master"
  },
  "splits": {
-  "events": 981,
-  "split_codes": 863,
-  "adjusted_rows": 2800,
-  "adjusted_codes": 477,
+  "events": 987,
+  "split_codes": 868,
+  "adjusted_rows": 2848,
+  "adjusted_codes": 483,
   "examples": [
    "1333",
+   "138A",
    "1414",
    "1436",
    "1450",
@@ -156,12 +158,11 @@
    "1491",
    "1515",
    "1518",
-   "151A",
-   "1663"
+   "151A"
   ]
  },
  "netcash": {
-  "pool": 1747,
+  "pool": 1790,
   "shortlist": 60,
   "sure": 0
  },
@@ -170,18 +171,18 @@
   "with_ca": 3994,
   "usable": 3955,
   "bs_bad": 0,
-  "refetch_bad": 19,
+  "refetch_bad": 16,
   "refetch_pl": 0,
   "names": 4212,
   "with_pl120": 151,
   "with_inv": 2605,
   "listed_days": 45,
-  "todo": 74,
-  "todo_priority": 1,
-  "priority_given": 141,
-  "downloaded": 74,
-  "parsed": 73,
-  "req": 119,
+  "todo": 42,
+  "todo_priority": 0,
+  "priority_given": 135,
+  "downloaded": 42,
+  "parsed": 41,
+  "req": 87,
   "n429": 0,
   "blocked": null,
   "enc": "utf-16",
@@ -208,7 +209,7 @@
   "hist_to": "2026-11-26",
   "nomatch": {
    "120:連結と個別が混在": 5,
-   "160:連結と個別が混在": 39
+   "160:連結と個別が混在": 36
   },
   "probe": [
    {
@@ -337,18 +338,18 @@
   }
  },
  "kiyohara": {
-  "universe": 4078,
-  "passed": 53,
+  "universe": 4090,
+  "passed": 43,
   "shown": 40,
   "sure": 0,
   "likely": 0,
   "no_div": 2,
-  "with_real": 53,
-  "real_ge1": 35,
-  "real_near": 18,
+  "with_real": 43,
+  "real_ge1": 31,
+  "real_near": 12,
   "bands": {
-   "real_ge1": 28,
-   "real_near": 12,
+   "real_ge1": 31,
+   "real_near": 9,
    "real_lo": 0,
    "sure": 0,
    "likely": 0,
@@ -357,15 +358,15 @@
    "unknown": 0
   },
   "dropped": {
-   "時価総額>500億円": 35,
-   "財務が引けない": 350,
-   "予想PERが出ない(赤字予想)": 229,
-   "売買代金が薄い": 641,
-   "PER>8倍": 2353,
-   "ネットキャッシュ比率<0.8(実測)": 36,
-   "本業が赤字": 20,
-   "PBR>0.8倍": 149,
-   "流動資産≤負債合計(実測)": 52,
+   "時価総額>500億円": 34,
+   "財務が引けない": 355,
+   "予想PERが出ない(赤字予想)": 231,
+   "売買代金が薄い": 638,
+   "PER>8倍": 2373,
+   "ネットキャッシュ比率<0.8(実測)": 37,
+   "本業が赤字": 19,
+   "PBR>0.8倍": 145,
+   "流動資産≤負債合計(実測)": 55,
    "銀行・金融（式が成立しない）": 159,
    "営業収益力がマイナス（本業の利益で金利を払えていない）": 1
   }
@@ -383,22 +384,22 @@
  },
  "fund": {
   "asof_latest_disclosure": "2026-09-01",
-  "pool": 1747,
-  "n_codes": 1620,
+  "pool": 1790,
+  "n_codes": 1662,
   "coverage": {
-   "has": 1620,
-   "value": 1620,
-   "ep": 1525,
-   "bp": 1614,
-   "netcash": 1617,
-   "kiyohara": 1620,
-   "payout": 1608,
-   "quality": 1620,
-   "moat": 1540,
-   "revision": 433,
-   "growth": 1601,
-   "ky_grow": 1620,
-   "opprof": 1532
+   "has": 1662,
+   "value": 1662,
+   "ep": 1563,
+   "bp": 1657,
+   "netcash": 1660,
+   "kiyohara": 1662,
+   "payout": 1650,
+   "quality": 1662,
+   "moat": 1573,
+   "revision": 453,
+   "growth": 1641,
+   "ky_grow": 1662,
+   "opprof": 1569
   },
   "jq": {
    "dates_asked": 522,
@@ -462,27 +463,27 @@
  },
  "cand_earnings": {
   "asked": 20,
-  "ok": 6,
+  "ok": 5,
   "from_jquants": 0,
   "from_jpx": 2,
-  "from_yf": 4,
+  "from_yf": 3,
   "recent": 0,
   "estimate": 0,
-  "unknown": 14,
+  "unknown": 15,
   "error": 0
  },
  "signals_appended": true,
- "signals_bar": "2026-11-25",
+ "signals_bar": "2026-11-27",
  "backtest_status": {
   "file_exists": true,
-  "age_days": 24,
+  "age_days": 25,
   "same_config": true,
   "max_age_d": 30,
   "min_indep": 20,
   "t_threshold": 2.8,
   "prev_ran_without_jquants": false
  },
- "backtest_skipped": "前回から24日（30日ごと）・設定変更なし",
+ "backtest_skipped": "前回から25日（30日ごと）・設定変更なし",
  "signals": {
   "closed": 93,
   "open": 14,
@@ -545,13 +546,13 @@
   ]
  },
  "regime": {
-  "px": 394.6000061035156,
-  "vs200": -2.26,
-  "vs25": -3.64,
+  "px": 401.3999938964844,
+  "vs200": -0.62,
+  "vs25": -1.75,
   "above200": false,
-  "breadth": "5/17",
-  "breadth_pct": 29.0,
-  "b_suggest": 0.2
+  "breadth": "7/17",
+  "breadth_pct": 41.0,
+  "b_suggest": 0.3
  },
  "swing_gate": {
   "open": false,
